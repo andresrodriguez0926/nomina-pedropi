@@ -274,6 +274,59 @@ if (typeof firebase !== 'undefined') {
         }
     };
 
+    // Database Wipe Utility (Danger)
+    window.wipeProductionDatabase = async () => {
+        const confirm1 = confirm("⚠️ ADVERTENCIA ⚠️\n\n¿Estás completamente seguro de que quieres BORRAR TODOS los datos del sistema? (Empleados, departamentos, historial de nómina, etc.)\n\nEsta acción NO se puede deshacer.");
+        if (!confirm1) return;
+
+        const confirm2 = prompt("Para confirmar, escribe borrar datos");
+        if (confirm2 !== "borrar datos") {
+            alert("Proceso cancelado. La confirmación no coincidió.");
+            return;
+        }
+
+        console.log("Iniciando formateo de base de datos...");
+        try {
+            // Eliminar solo la configuración y datos
+            window.globalState.departments = [];
+            window.globalState.operations = [];
+            window.globalState.activities = [];
+            window.globalState.employees = [];
+            window.globalState.periods = [];
+            window.globalState.activePayroll = null;
+            window.globalState.discounts = [];
+            window.globalState.incentives = [];
+            window.globalState.overtime = [];
+            window.globalState.christmasSalary = [];
+            window.globalState.payrollHistory = [];
+
+            // Mantener solo los usuarios para no perder acceso
+            const stateToSave = { ...window.globalState };
+            delete stateToSave.currentSection;
+            delete stateToSave.currentUser;
+
+            await db.collection('payroll').doc('globalState').set(stateToSave);
+
+            // Wipe Local Storage as well just in case
+            localStorage.removeItem('payroll_departments');
+            localStorage.removeItem('payroll_operations');
+            localStorage.removeItem('payroll_activities');
+            localStorage.removeItem('payroll_employees');
+            localStorage.removeItem('payroll_periods');
+            localStorage.removeItem('payroll_active');
+            localStorage.removeItem('payroll_discounts');
+            localStorage.removeItem('payroll_incentives');
+            localStorage.removeItem('payroll_overtime');
+            localStorage.removeItem('payroll_christmas');
+            localStorage.removeItem('payroll_history');
+
+            alert("✅ Sistema formateado con éxito. Ahora tienes una instalación limpia.");
+            window.location.reload();
+        } catch (e) {
+            alert("Error al limpiar: " + e.message);
+        }
+    };
+
 } else {
     console.error("Firebase SDKs not loaded.");
 }

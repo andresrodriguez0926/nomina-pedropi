@@ -439,11 +439,11 @@
                     <div class="stat-label">Nómina Activa</div>
                     <div class="stat-value">${state.activePayroll ? 'SÍ' : 'NO'}</div>
                 </div>
-                <div class="card stat-card" style="display: flex; align-items: center; justify-content: center; background: rgba(96, 165, 250, 0.1);">
-                    <button class="btn btn-primary" onclick="if(window.migrateLocalToFirebase) window.migrateLocalToFirebase()">
-                        <i class="fas fa-cloud-upload-alt"></i> Subir a la Nube
+                <div class="card stat-card admin-only" style="display: flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.1);">
+                    <button class="btn btn-primary" style="background: var(--danger);" onclick="if(window.wipeProductionDatabase) window.wipeProductionDatabase()">
+                        <i class="fas fa-trash-alt"></i> Limpiar Sistema
                     </button>
-                    <div style="font-size: 0.7rem; color: var(--gray); text-align: center; margin-top: 5px;">Migrar LocalStorage</div>
+                    <div style="font-size: 0.7rem; color: var(--danger); text-align: center; margin-top: 5px;">Borrar Todos los Datos</div>
                 </div>
             </div>
             
