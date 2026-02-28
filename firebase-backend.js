@@ -44,6 +44,24 @@ if (typeof firebase !== 'undefined') {
         }
     };
 
+    window.updateUserAccess = async (uid, updatedData) => {
+        try {
+            await db.collection('users').doc(uid).update(updatedData);
+
+            // Update local state instantly so UI reflects the change without waiting for snapshot
+            if (window.globalState.users) {
+                const index = window.globalState.users.findIndex(u => u.uid === uid);
+                if (index !== -1) {
+                    window.globalState.users[index] = { ...window.globalState.users[index], ...updatedData };
+                }
+            }
+            alert("Usuario actualizado correctamente.");
+        } catch (error) {
+            console.error("Error updating user:", error);
+            alert("Error al editar usuario: " + error.message);
+        }
+    };
+
     window.removeUserAccess = async (uid) => {
         try {
             await db.collection('users').doc(uid).update({ role: 'disabled' });

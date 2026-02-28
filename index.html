@@ -740,6 +740,9 @@
                                     </td>
                                     <td>
                                         <div class="action-buttons">
+                                            <button class="btn-icon edit admin-only" onclick="showEditUserModal('${u.uid}')" title="Editar Usuario">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
                                             <button class="btn-icon delete admin-only" onclick="deleteUser('${u.uid}')" title="Eliminar Acceso">
                                                 <i class="fas fa-trash"></i>
                                             </button>
@@ -754,6 +757,58 @@
         };
 
         // --- User Module Logic ---
+        window.showEditUserModal = (uid) => {
+            const user = state.users.find(u => u.uid === uid);
+            if (!user) return;
+
+            showModal('Editar Usuario', `
+                <div class="form-group">
+                    <label>Nombre Completo</label>
+                    <input type="text" id="edit-user-name" class="form-control" value="${user.name || ''}" placeholder="Ej. Juan Pérez">
+                </div>
+                <div class="form-group">
+                    <label>Nombre de Usuario</label>
+                    <input type="text" id="edit-user-email" class="form-control" value="${user.email || user.username || ''}" placeholder="Ej. jperez">
+                </div>
+                <div class="form-group">
+                    <label>Nueva Contraseña (Opcional)</label>
+                    <input type="password" id="edit-user-password" class="form-control" placeholder="Dejar en blanco para no cambiar">
+                </div>
+                <div class="form-group">
+                    <label>Rol / Nivel de Acceso</label>
+                    <select id="edit-user-role" class="form-control">
+                        <option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Lector (Solo ver reportes)</option>
+                        <option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor (Registrar nómina, sin borrar)</option>
+                        <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrador (Acceso total)</option>
+                    </select>
+                </div>
+            `, () => {
+                const name = document.getElementById('edit-user-name').value;
+                const email = document.getElementById('edit-user-email').value;
+                const password = document.getElementById('edit-user-password').value;
+                const role = document.getElementById('edit-user-role').value;
+
+                if (name && email) {
+                    if (window.updateUserAccess) {
+                        const updatedData = { name, email, role };
+                        if (password.length >= 6) {
+                            updatedData.password = password;
+                        } else if (password.length > 0) {
+                            alert("La contraseña debe tener al menos 6 caracteres.");
+                            return;
+                        }
+
+                        window.updateUserAccess(uid, updatedData);
+                        hideModal();
+                    } else {
+                        alert("Error: Script de Firebase Backend no responde.");
+                    }
+                } else {
+                    alert("El nombre y el usuario no pueden estar vacíos.");
+                }
+            });
+        };
+
         window.showAddUserModal = () => {
             showModal('Crear Nuevo Usuario', `
                 <div class="form-group">
