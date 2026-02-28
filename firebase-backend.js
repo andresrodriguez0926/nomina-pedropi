@@ -188,9 +188,17 @@ if (typeof firebase !== 'undefined') {
                         // Protect against null/undefined cloud fields overwriting valid local arrays
                         if (data[key] !== undefined && data[key] !== null) {
                             if (Array.isArray(window.globalState[key]) && Array.isArray(data[key])) {
-                                // Important: Empty and push to preserve memory references (pointers)
-                                window.globalState[key].length = 0;
-                                data[key].forEach(item => window.globalState[key].push(item));
+                                // Important: Protect rich local data from being wiped by an empty cloud state
+                                // If cloud is empty but local has data during initial load, WE SHOULD NOT OVERWRITE
+                                if (isInitialLoad && data[key].length === 0 && window.globalState[key].length > 0) {
+                                    console.log(`[SYNC PROTECT] Keeping local ${key} (${window.globalState[key].length}) because cloud is empty`);
+                                    // We trigger a save so the cloud gets our rich local data
+                                    setTimeout(() => window.saveStateToFirebase(), 2000);
+                                } else {
+                                    // Standard Sync: Empty and push to preserve memory references (pointers)
+                                    window.globalState[key].length = 0;
+                                    data[key].forEach(item => window.globalState[key].push(item));
+                                }
                             } else {
                                 window.globalState[key] = data[key];
                                 if (window.state && window.state !== window.globalState) {
