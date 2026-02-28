@@ -178,12 +178,17 @@ if (typeof firebase !== 'undefined') {
         const docRef = db.collection('payroll').doc('globalState');
 
         docRef.onSnapshot((doc) => {
+            console.log("[FIREBASE SNAPSHOT RECEIVED]", doc.exists ? "Data exists" : "No data");
             if (doc.exists) {
                 const data = doc.data();
+                console.log("[FIREBASE SNAPSHOT DATA LENGTHS:", Object.keys(data).map(k => `${k}: ${data[k]?.length || typeof data[k]}`).join(', '));
                 Object.keys(data).forEach(key => {
                     // Do not overwrite users array from globalState doc, it comes from users collection
                     if (key !== 'users' && window.globalState.hasOwnProperty(key)) {
-                        window.globalState[key] = data[key];
+                        // Protect against null/undefined cloud fields overwriting valid local arrays
+                        if (data[key] !== undefined && data[key] !== null) {
+                            window.globalState[key] = data[key];
+                        }
                     }
                 });
 
@@ -217,6 +222,7 @@ if (typeof firebase !== 'undefined') {
                 }
             } else {
                 console.log("No cloud data found. Starting fresh.");
+                window.isFirebaseStateLoaded = true;
                 if (isInitialLoad) {
                     window.renderSection('dashboard');
                     isInitialLoad = false;
@@ -245,12 +251,16 @@ if (typeof firebase !== 'undefined') {
     };
 
     window.saveStateToFirebase = async () => {
-        if (!window.isFirebaseStateLoaded && isInitialLoad) {
-            console.warn("Ignorando guardado: El estado de Firebase aún no ha cargado.");
+        console.log(`[FIREBASE SAVE TRIGGERED]. isFirebaseStateLoaded: ${window.isFirebaseStateLoaded}, isInitialLoad: ${isInitialLoad}`);
+
+        // Failsafe: Si Firebase no ha cargado los datos iniciales, NUNCA permitir guardar
+        // porque sobrescribirá la base de datos de producción con el estado local vacío.
+        if (!window.isFirebaseStateLoaded) {
+            console.warn("[FIREBASE SAVE BLOCKED] Ignorando guardado: El estado de Firebase aún no ha cargado completamente para este usuario.");
             return;
         }
 
-        console.log("Saving data to Firebase...");
+        console.log("[FIREBASE SAVE EXECUTING] Saving data to Firebase...");
         try {
             const stateToSave = { ...window.globalState };
             delete stateToSave.currentSection; // Do not sync UI state
