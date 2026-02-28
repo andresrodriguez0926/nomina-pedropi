@@ -1432,22 +1432,35 @@
                 <tbody>
                     ${(state.discounts || []).map((d, index) => {
                 if (!d.id) d.id = Date.now() + Math.random().toString(36).substr(2, 9);
+                const originalAmount = parseFloat(d.totalAmount || d.amount || 0);
+                const currentBalance = parseFloat(d.remainingBalance ?? originalAmount);
+                const hasPaid = currentBalance < originalAmount;
+
                 return `
                         <tr>
                             <td>${d.employeeName}</td>
-                            <td class="td-numeric">$${parseFloat(d.totalAmount || d.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric">$${originalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric">$${parseFloat(d.installment || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            <td class="td-numeric" style="font-weight: 600; color: ${parseFloat(d.remainingBalance || 0) > 0 ? 'var(--danger)' : 'var(--success)'}">
-                                $${parseFloat(d.remainingBalance ?? d.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <td class="td-numeric" style="font-weight: 600; color: ${currentBalance > 0 ? 'var(--danger)' : 'var(--success)'}">
+                                $${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td>${d.reason}</td>
                             <td style="display: flex; gap: 5px;">
                                 <button class="btn-icon" onclick="viewLoanHistory('${d.id}')" title="Ver Historial de Cobros">
                                     <i class="fas fa-history"></i>
                                 </button>
-                                <button class="btn-icon delete admin-only" onclick="deleteItem('discounts', ${index})">
+                                <button class="btn-icon edit admin-only" onclick="showEditDiscountModal('${d.id}')" title="Editar Descuento">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                ${!hasPaid ? `
+                                <button class="btn-icon delete admin-only" onclick="deleteItem('discounts', ${index})" title="Eliminar Descuento (Sin Cobros)">
                                     <i class="fas fa-trash"></i>
                                 </button>
+                                ` : `
+                                <button class="btn-icon delete admin-only" style="opacity: 0.3; cursor: not-allowed;" title="No se puede borrar porque ya tiene pagos registrados. Use Editar." disabled>
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                `}
                             </td>
                         </tr>
                     `;
@@ -1543,14 +1556,73 @@
                     }
                 });
             };
+            window.showEditDiscountModal = (loanId) => {
+                const d = state.discounts.find(x => x.id === loanId);
+                if (!d) return;
+
+                const originalAmount = parseFloat(d.amount || d.totalAmount || 0);
+                const currentBalance = parseFloat(d.remainingBalance ?? originalAmount);
+                const paidAmount = originalAmount - currentBalance;
+
+                showModal('Editar Descuento', `
+                    <div class="form-group">
+                        <label>Empleado</label>
+                        <input type="text" class="form-control" value="${d.employeeName}" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label>Monto Ya Descontado (Histórico)</label>
+                        <input type="text" class="form-control text-success" value="$${paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}" disabled>
+                        <small class="text-gray">El nuevo Monto Deuda Total no puede ser menor a esto.</small>
+                    </div>
+                    <div class="form-group mt-3">
+                        <label>Nuevo Monto Deuda Total</label>
+                        <input type="number" id="edit-disc-total" class="form-control" value="${originalAmount}" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Nueva Cuota por Nómina</label>
+                        <input type="number" id="edit-disc-installment" class="form-control" value="${d.installment}" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Concepto / Motivo</label>
+                        <input type="text" id="edit-disc-reason" class="form-control" value="${d.reason}">
+                    </div>
+                `, () => {
+                    const newTotalStr = document.getElementById('edit-disc-total').value;
+                    const newInstallmentStr = document.getElementById('edit-disc-installment').value;
+                    const newReason = document.getElementById('edit-disc-reason').value;
+
+                    if (!newTotalStr || !newInstallmentStr) {
+                        alert('Complete el monto total y la cuota.');
+                        return;
+                    }
+
+                    const newTotal = parseFloat(newTotalStr);
+                    const newInstallment = parseFloat(newInstallmentStr);
+
+                    if (newTotal < paidAmount) {
+                        alert(\`Transacción denegada. El empleado ya ha pagado $\${paidAmount.toFixed(2)}. La deuda total no puede ser menor a lo que ya se cobró.\`);
+                        return;
+                    }
+
+                    d.totalAmount = newTotal;
+                    d.amount = newTotal; // Legacy support
+                    d.installment = newInstallment;
+                    d.remainingBalance = newTotal - paidAmount;
+                    d.reason = newReason;
+
+                    saveState();
+                    renderSection('discounts');
+                    hideModal();
+                });
+            };
         };
 
         // --- Module: Overtime ---
         const renderOvertime = (container) => {
             container.innerHTML = `
-        <div class="header-action">
-            <h1>Gestión de Horas Extras</h1>
-        </div>
+                            < div class= "header-action" >
+                            <h1>Gestión de Horas Extras</h1>
+        </div >
         
         <div class="card mt-4">
             <div class="form-row">
@@ -1628,7 +1700,7 @@
                 </tbody>
             </table>
         </div>
-    `;
+        `;
 
             document.getElementById('save-ot-btn').onclick = () => {
                 const empSelect = document.getElementById('ot-emp');
@@ -1641,7 +1713,7 @@
                 if (salary && hours && date) {
                     const bounds = getPayrollBounds();
                     if (bounds && (date < bounds.min || date > bounds.max)) {
-                        alert(`La fecha debe estar dentro del rango de la nómina (${bounds.min} a ${bounds.max})`);
+                        alert(`La fecha debe estar dentro del rango de la nómina(${ bounds.min } a ${ bounds.max })`);
                         return;
                     }
 
@@ -1678,8 +1750,8 @@
                     const hourlyRate = dailyRate / 8;
                     const extraPay = hourlyRate * hours * factor;
 
-                    document.getElementById('ot-pay-value').innerText = `$${extraPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    document.getElementById('ot-formula-info').innerText = `Formula: ($${salary.toFixed(2)} / 23.83 / 8) * ${hours} * ${factor}`;
+                    document.getElementById('ot-pay-value').innerText = `$${ extraPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) } `;
+                    document.getElementById('ot-formula-info').innerText = `Formula: ($${ salary.toFixed(2) } / 23.83 / 8) * ${ hours } * ${ factor } `;
                     document.getElementById('ot-result').classList.remove('hidden');
                 } else {
                     document.getElementById('ot-result').classList.add('hidden');
@@ -1694,32 +1766,32 @@
         // --- Module: Incentives ---
         const renderIncentives = (container) => {
             container.innerHTML = `
-        <div class="header-action">
+            < div class="header-action" >
             <h1>Incentivos</h1>
             <button class="btn btn-primary" id="add-inc-btn">
                 <i class="fas fa-plus"></i> Aplicar Incentivo
             </button>
-        </div>
-        <div class="card mt-4">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Empleado</th>
-                        <th>Monto</th>
-                        <th>Motivo</th>
-                        <th style="width: 100px">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${(() => {
-                    const bounds = getPayrollBounds();
-                    const filtered = (state.incentives || []).map((inc, idx) => ({ ...inc, idx })).filter(inc => {
-                        if (!bounds) return false;
-                        return inc.date >= bounds.min && inc.date <= bounds.max;
-                    });
+        </div >
+            <div class="card mt-4">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Empleado</th>
+                            <th>Monto</th>
+                            <th>Motivo</th>
+                            <th style="width: 100px">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${(() => {
+                            const bounds = getPayrollBounds();
+                            const filtered = (state.incentives || []).map((inc, idx) => ({ ...inc, idx })).filter(inc => {
+                                if (!bounds) return false;
+                                return inc.date >= bounds.min && inc.date <= bounds.max;
+                            });
 
-                    return filtered.map(inc => `
+                            return filtered.map(inc => `
                             <tr>
                                 <td>${inc.date}</td>
                                 <td>${inc.employeeName}</td>
@@ -1732,20 +1804,20 @@
                                 </td>
                             </tr>
                         `).join('');
-                })()}
-                    ${(() => {
-                    const bounds = getPayrollBounds();
-                    const count = (state.incentives || []).filter(inc => bounds && inc.date >= bounds.min && inc.date <= bounds.max).length;
-                    return count === 0 ? '<tr><td colspan="5" style="text-align:center">No hay incentivos en este periodo</td></tr>' : '';
-                })()}
-                </tbody>
-            </table>
-        </div>
-    `;
+                        })()}
+                        ${(() => {
+                            const bounds = getPayrollBounds();
+                            const count = (state.incentives || []).filter(inc => bounds && inc.date >= bounds.min && inc.date <= bounds.max).length;
+                            return count === 0 ? '<tr><td colspan="5" style="text-align:center">No hay incentivos en este periodo</td></tr>' : '';
+                        })()}
+                    </tbody>
+                </table>
+            </div>
+        `;
 
             document.getElementById('add-inc-btn').onclick = () => {
                 showModal('Aplicar Incentivo', `
-            <div class="form-group">
+            < div class="form-group" >
                 <label>Fecha</label>
                 <input type="date" id="inc-date" class="form-control" value="${new Date().toISOString().split('T')[0]}">
             </div>
@@ -1774,7 +1846,7 @@
                     if (inc.employeeName && inc.amount && inc.date) {
                         const bounds = getPayrollBounds();
                         if (bounds && (inc.date < bounds.min || inc.date > bounds.max)) {
-                            alert(`La fecha debe estar dentro del rango de la nómina (${bounds.min} a ${bounds.max})`);
+                            alert(`La fecha debe estar dentro del rango de la nómina(${ bounds.min } a ${ bounds.max })`);
                             return;
                         }
 
@@ -1809,27 +1881,27 @@
         // --- Module: Payroll Runs (Abrir Nómina) ---
         const renderPayrollRuns = (container) => {
             container.innerHTML = `
-        <div class="header-action">
+            < div class="header-action" >
             <h1>Gestión de Pagos (Nóminas)</h1>
             <button class="btn btn-primary" id="open-payroll-btn">
                 <i class="fas fa-play"></i> Abrir Nueva Nómina
             </button>
-        </div>
-        <div class="card mt-4">
-            <div id="active-payroll-info">
-                ${state.activePayroll ? `
+        </div >
+            <div class="card mt-4">
+                <div id="active-payroll-info">
+                    ${state.activePayroll ? `
                     <div class="status-box success">
                         <h3>Nómina Actual: ${state.activePayroll.name}</h3>
                         <p>Periodo: ${state.activePayroll.periodType} | Inicio: ${state.activePayroll.startDate}</p>
                     </div>
                 ` : '<p>No hay ninguna nómina habilitada para pago en este momento.</p>'}
+                </div>
             </div>
-        </div>
-    `;
+        `;
 
             document.getElementById('open-payroll-btn').onclick = () => {
                 showModal('Abrir Nómina', `
-            <div class="form-group">
+            < div class="form-group" >
                 <label>Nombre identificador</label>
                 <input type="text" id="run-name" class="form-control" placeholder="Ej: Nómina Marzo Q1">
             </div>
@@ -1874,15 +1946,16 @@
             const defaultDate = bounds ? bounds.min : new Date().toISOString().split('T')[0];
 
             container.innerHTML = `
-        <div class="header-action">
+            < div class="header-action" >
             <h1>Registro Diario - Empleados Móviles</h1>
             <div class="tabs no-print">
                 <button class="tab-btn ${tab === 'individual' ? 'active' : ''}" onclick="window.dailyRegTab = 'individual'; renderSection('daily-registration')">Individual</button>
                 <button class="tab-btn ${tab === 'masivo' ? 'active' : ''}" onclick="window.dailyRegTab = 'masivo'; renderSection('daily-registration')">Registro Masivo</button>
             </div>
-        </div>
+        </div >
 
-        ${tab === 'individual' ? `
+            ${
+            tab === 'individual' ? `
         <div class="card mt-4">
             <div class="form-row">
                 <div class="form-group">
@@ -2029,16 +2102,16 @@
         <datalist id="list-act">
             ${state.activities.map(a => `<option value="${a.name}"></option>`).join('')}
         </datalist>
-    `;
+        `;
 
             document.getElementById('save-daily').onclick = () => {
                 const empName = document.getElementById('reg-emp').value;
                 const regDate = document.getElementById('reg-date').value;
 
                 // Validation: Hire Date
-                const employee = state.employees.find(e => `${e.firstName} ${e.lastName}` === empName);
+                const employee = state.employees.find(e => `${ e.firstName } ${ e.lastName } ` === empName);
                 if (employee && employee.hireDate && regDate < employee.hireDate) {
-                    alert(`No se puede registrar labor antes de la fecha de ingreso del empleado (${employee.hireDate})`);
+                    alert(`No se puede registrar labor antes de la fecha de ingreso del empleado(${ employee.hireDate })`);
                     return;
                 }
 
@@ -2057,7 +2130,7 @@
                     // Check for duplicates
                     const isDuplicate = state.activePayroll.dailyLogs.find(l => l.employee === log.employee && l.date === log.date);
                     if (isDuplicate) {
-                        alert(`Atención: El empleado ${log.employee} ya tiene un salario digitado para el día ${log.date}.`);
+                        alert(`Atención: El empleado ${ log.employee } ya tiene un salario digitado para el día ${ log.date }.`);
                         return;
                     }
 
@@ -2076,7 +2149,7 @@
                 const listEmp = document.getElementById('list-emp');
                 if (listEmp) {
                     listEmp.innerHTML = filteredEmps.map(e =>
-                        `<option value="${e.firstName} ${e.lastName}"></option>`
+                        `< option value = "${e.firstName} ${e.lastName}" ></option > `
                     ).join('');
                 }
                 const regEmpInput = document.getElementById('reg-emp');
@@ -2137,7 +2210,7 @@
             }
 
             tbody.innerHTML = emps.map(e => {
-                const fullName = `${e.firstName} ${e.lastName}`;
+                const fullName = `${ e.firstName } ${ e.lastName } `;
                 const hasLog = (state.activePayroll.dailyLogs || []).some(l => l.employee === fullName && l.date === date);
 
                 // Get pre-selected activity amount
@@ -2150,7 +2223,7 @@
                 }
 
                 return `
-                    <tr data-emp="${fullName}" class="${hasLog ? 'duplicate-row' : ''}">
+            < tr data - emp="${fullName}" class="${hasLog ? 'duplicate-row' : ''}" >
                         <td style="font-weight: 500;">
                             ${fullName}
                             ${hasLog ? '<br><small class="text-danger"><i class="fas fa-exclamation-triangle"></i> Ya tiene registro hoy</small>' : ''}
@@ -2169,8 +2242,8 @@
                                 <i class="fas fa-times"></i>
                             </button>
                         </td>
-                    </tr>
-                `;
+                    </tr >
+            `;
             }).join('');
         };
 
@@ -2232,20 +2305,20 @@
             }
 
             if (duplicates > 0) {
-                if (!confirm(`${duplicates} empleados ya tenían registros para esta fecha y fueron ignorados. ¿Desea guardar el resto?`)) return;
+                if (!confirm(`${ duplicates } empleados ya tenían registros para esta fecha y fueron ignorados. ¿Desea guardar el resto ? `)) return;
             }
 
             if (!state.activePayroll.dailyLogs) state.activePayroll.dailyLogs = [];
             state.activePayroll.dailyLogs.push(...logsToAdd);
             saveState();
-            alert(`Se han guardado ${logsToAdd.length} registros exitosamente.`);
+            alert(`Se han guardado ${ logsToAdd.length } registros exitosamente.`);
             renderSection('daily-registration');
         };
 
         // --- Module: Closing ---
         const renderClosing = (container) => {
             let html = `
-                <h1>Cierre de Nómina</h1>
+            < h1 > Cierre de Nómina</h1 >
                 <div class="card mt-4">
                     <p>Al cerrar la nómina, los registros del periodo actual quedarán bloqueados y no podrán ser modificados.</p>
                     ${state.activePayroll ? `
@@ -2259,20 +2332,20 @@
                         </div>
                     ` : '<p class="mt-4">No hay ninguna nómina abierta para cerrar.</p>'}
                 </div>
-            `;
+        `;
 
             if (!state.activePayroll) {
                 html += `
-                    <div class="card mt-4" style="text-align: center; padding: 40px;">
+            < div class="card mt-4" style = "text-align: center; padding: 40px;" >
                         <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success); margin-bottom: 20px;"></i>
                         <h2>No hay ninguna nómina abierta actualmente.</h2>
                         <p class="text-gray">Puede crear un nuevo periodo desde la sección de "Periodos".</p>
-                    </div>
-                `;
+                    </div >
+            `;
             }
 
             html += `
-                <div class="mt-5">
+            < div class="mt-5" >
                     <h2 class="mb-4"><i class="fas fa-history"></i> Historial de Nóminas Cerradas</h2>
                     <div class="card">
                         <table class="data-table">
@@ -2306,7 +2379,7 @@
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </div >
             `;
 
             container.innerHTML = html;
@@ -2333,7 +2406,7 @@
                                             const res = calculateEmployeePayrollData(emp, state.activePayroll);
                                             return {
                                                 idNumber: emp.idNumber,
-                                                fullName: `${emp.firstName} ${emp.lastName}`,
+                                                fullName: `${ emp.firstName } ${ emp.lastName } `,
                                                 type: emp.type,
                                                 dept: emp.department,
                                                 base: res.base || 0,
@@ -2347,8 +2420,8 @@
                                                 net: res.net || 0
                                             };
                                         } catch (err) {
-                                            console.error(`Error calculando empleado ${emp.firstName}:`, err);
-                                            throw new Error(`Error en empleado ${emp.firstName} ${emp.lastName}: ${err.message}`);
+                                            console.error(`Error calculando empleado ${ emp.firstName }: `, err);
+                                            throw new Error(`Error en empleado ${ emp.firstName } ${ emp.lastName }: ${ err.message } `);
                                         }
                                     })
                                 };
@@ -2399,7 +2472,7 @@
                 const deleteBtn = document.getElementById('delete-open-payroll-btn');
                 if (deleteBtn) {
                     deleteBtn.onclick = () => {
-                        if (confirm(`¿Está TOTALMENTE SEGURO de eliminar la nómina "${state.activePayroll.name}"? \n\nEsto borrará todos los registros diarios asociados y no se podrá deshacer.`)) {
+                        if (confirm(`¿Está TOTALMENTE SEGURO de eliminar la nómina "${state.activePayroll.name}" ?\n\nEsto borrará todos los registros diarios asociados y no se podrá deshacer.`)) {
                             state.activePayroll = null;
                             saveState();
                             renderSection('closing');
@@ -2466,7 +2539,7 @@
                     totalGenBrute += res.brute; totalGenTSS += res.tss; totalGenISR += res.isr; totalGenDiscounts += res.disc; totalGenNet += res.net;
 
                     return `
-                <tr>
+            < tr >
                     <td>${res.fullName}</td>
                     <td>${res.idNumber || '-'}</td>
                     <td>${res.type === 'fixed' ? 'Fijo' : 'Móvil'}</td>
@@ -2479,12 +2552,12 @@
                     <td class="td-numeric">$${res.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td class="td-numeric" style="color: var(--danger)">$${res.disc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td class="td-numeric" style="font-weight: bold; background: rgba(0,255,0,0.05)">$${res.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                </tr>
+                </tr >
             `;
                 }).join('');
 
                 reportHtml += `
-            <div class="dept-report-section mb-4">
+            < div class="dept-report-section mb-4" >
                 <h3 class="text-accent">${deptName}</h3>
                 <table class="data-table">
                     <thead>
@@ -2521,12 +2594,12 @@
                         </tr>
                     </tfoot>
                 </table>
-            </div>
-        `;
+            </div >
+            `;
             });
 
             contentArea.innerHTML = `
-        <div class="header-action no-print">
+            < div class="header-action no-print" >
             <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                 <button class="btn btn-secondary" onclick="renderSection('closing')">
                     <i class="fas fa-arrow-left"></i> Volver
@@ -2566,18 +2639,18 @@
                     <i class="fas fa-print"></i> Imprimir Reporte
                 </button>
             </div>
-        </div>
+        </div >
 
-        <div class="card mt-4 print-area">
-            <div style="text-align: center; margin-bottom: 20px;">
-                <h1 style="margin: 0; color: var(--primary);">REPORTE DE NÓMINA</h1>
-                <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.payrollName}</p>
-                <p class="text-gray">Periodo: ${run.periodStart} al ${run.periodEnd} | Cerrado el: ${new Date(run.closedAt).toLocaleString()}</p>
-            </div>
-            
-            ${reportHtml || '<p style="text-align: center; padding: 40px; color: var(--gray);">No hay datos para mostrar con los filtros seleccionados.</p>'}
+            <div class="card mt-4 print-area">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h1 style="margin: 0; color: var(--primary);">REPORTE DE NÓMINA</h1>
+                    <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.payrollName}</p>
+                    <p class="text-gray">Periodo: ${run.periodStart} al ${run.periodEnd} | Cerrado el: ${new Date(run.closedAt).toLocaleString()}</p>
+                </div>
 
-            ${reportHtml ? `
+                ${reportHtml || '<p style="text-align: center; padding: 40px; color: var(--gray);">No hay datos para mostrar con los filtros seleccionados.</p>'}
+
+                ${reportHtml ? `
             <div class="summary-card mt-4" style="background: var(--primary); color: white; padding: 20px; border-radius: 8px;">
                 <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px;">RESUMEN GENERAL SELECCIONADO</h3>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
@@ -2596,8 +2669,8 @@
                 </div>
             </div>
             ` : ''}
-        </div>
-    `;
+            </div>
+        `;
         };
 
         window.printHistoricalPayroll = (index) => {
@@ -2670,7 +2743,7 @@
             };
 
             let html = `
-                <div class="header-action no-print" style="flex-wrap: wrap; gap: 15px;">
+            < div class="header-action no-print" style = "flex-wrap: wrap; gap: 15px;" >
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <button class="btn btn-secondary" onclick="${isHistorical ? `window.viewHistoricalPayroll(${historyIndex})` : 'renderSection(\'reports\')'}">
                             <i class="fas fa-arrow-left"></i> Volver
@@ -2703,26 +2776,26 @@
                     <button class="btn btn-primary" onclick="window.print()">
                         <i class="fas fa-print"></i> Imprimir
                     </button>
+                </div >
+            <div class="card mt-4 print-area">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h1 style="margin: 0; color: var(--primary);">RELACIÓN DIARIA DE LABORES MÓVILES</h1>
+                    <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.name || run.payrollName}</p>
+                    <p class="text-gray">Periodo: ${bounds.min} al ${bounds.max}</p>
                 </div>
-                <div class="card mt-4 print-area">
-                    <div style="text-align: center; margin-bottom: 20px;">
-                        <h1 style="margin: 0; color: var(--primary);">RELACIÓN DIARIA DE LABORES MÓVILES</h1>
-                        <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.name || run.payrollName}</p>
-                        <p class="text-gray">Periodo: ${bounds.min} al ${bounds.max}</p>
-                    </div>
-                    <hr class="mt-4 mb-4" style="border: 0.5px solid var(--border-color)">
-            `;
+                <hr class="mt-4 mb-4" style="border: 0.5px solid var(--border-color)">
+                    `;
 
-            let grandTotal = 0;
-            const grandTotalByDate = {};
+                    let grandTotal = 0;
+                    const grandTotalByDate = { };
             dates.forEach(d => grandTotalByDate[d] = 0);
 
             Object.keys(grouped).sort().forEach(op => {
-                let opTotal = 0;
-                const opDailyTotals = {};
+                        let opTotal = 0;
+                    const opDailyTotals = { };
                 dates.forEach(d => opDailyTotals[d] = 0);
 
-                html += `
+                    html += `
                     <div class="mb-5">
                         <h3 class="text-accent" style="border-bottom: 2px solid var(--accent-color); padding-bottom: 5px; margin-bottom: 15px;">Operación: ${op}</h3>
                         <table class="data-table" style="font-size: 0.85rem">
@@ -2735,28 +2808,28 @@
                                 </tr>
                             </thead>
                             <tbody>
-                `;
+                                `;
 
                 Object.keys(grouped[op]).sort().forEach(emp => {
-                    Object.keys(grouped[op][emp]).sort().forEach(act => {
-                        let rowTotal = 0;
-                        html += `<tr><td>${emp}</td><td>${act}</td>`;
+                                    Object.keys(grouped[op][emp]).sort().forEach(act => {
+                                        let rowTotal = 0;
+                                        html += `<tr><td>${emp}</td><td>${act}</td>`;
 
-                        dates.forEach(d => {
-                            const val = grouped[op][emp][act][d] || 0;
-                            rowTotal += val;
-                            opDailyTotals[d] += val;
-                            grandTotalByDate[d] += val;
-                            html += `<td class="text-center">${val > 0 ? val.toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`;
-                        });
+                                        dates.forEach(d => {
+                                            const val = grouped[op][emp][act][d] || 0;
+                                            rowTotal += val;
+                                            opDailyTotals[d] += val;
+                                            grandTotalByDate[d] += val;
+                                            html += `<td class="text-center">${val > 0 ? val.toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`;
+                                        });
 
-                        opTotal += rowTotal;
-                        grandTotal += rowTotal;
-                        html += `<td class="text-right" style="font-weight: bold">$${rowTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
-                    });
+                                        opTotal += rowTotal;
+                                        grandTotal += rowTotal;
+                                        html += `<td class="text-right" style="font-weight: bold">$${rowTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+                                    });
                 });
 
-                html += `
+                                html += `
                             </tbody>
                             <tfoot style="background: rgba(var(--primary-rgb), 0.05); font-weight: bold; display: table-row-group;">
                                 <tr>
@@ -2767,11 +2840,11 @@
                             </tfoot>
                         </table>
                     </div>
-                `;
+                    `;
             });
 
             if (filterOps.length > 0 && Object.keys(grouped).length > 0) {
-                html += `
+                        html += `
                     <div class="summary-card mt-5" style="border: 2px solid var(--primary); padding: 20px; border-radius: 8px;">
                         <h3 style="text-align: center; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 20px;">RESUMEN DE OPERACIONES SELECCIONADAS</h3>
                         <table class="data-table">
@@ -2794,11 +2867,11 @@
                 `;
             }
 
-            if (Object.keys(grouped).length === 0) {
-                html += `<p style="text-align: center; padding: 40px; color: var(--gray);">No hay registros para las operaciones seleccionadas.</p>`;
+                    if (Object.keys(grouped).length === 0) {
+                        html += `<p style="text-align: center; padding: 40px; color: var(--gray);">No hay registros para las operaciones seleccionadas.</p>`;
             }
 
-            html += `</div>`;
+                    html += `</div>`;
             contentArea.innerHTML = html;
         };
         window.renderMobileDetailedReport = renderMobileDetailedReport;
@@ -2813,7 +2886,7 @@
 
             let base = 0;
             let tss = 0;
-            const empFullName = `${emp.firstName || ''} ${emp.lastName || ''}`.trim().toLowerCase();
+            const empFullName = `${ emp.firstName || '' } ${ emp.lastName || '' } `.trim().toLowerCase();
 
             if (emp.type === 'fixed') {
                 const monthlySalary = parseFloat(emp.salary) || 0;
@@ -2935,7 +3008,7 @@
             const filter = window.currentReportFilter;
 
             container.innerHTML = `
-        <div class="header-action">
+            < div class="header-action" >
             <div style="display: flex; align-items: center; gap: 20px;">
                 <h1>Reporte de Nómina</h1>
                 <div class="multi-select-container no-print" id="dept-multi-select">
@@ -2972,10 +3045,10 @@
                     <i class="fas fa-print"></i> Imprimir Reporte
                 </button>
             </div>
-        </div>
-        <div class="card mt-4 print-area">
-            <h2 style="text-align: center">Resumen de Pagos por Departamento</h2>
-            ${(() => {
+        </div >
+            <div class="card mt-4 print-area">
+                <h2 style="text-align: center">Resumen de Pagos por Departamento</h2>
+                ${(() => {
                     const bounds = getPayrollBounds();
                     if (bounds && state.activePayroll) {
                         return `<p style="text-align: center; font-weight: 500; font-size: 1.1rem; color: var(--gray); margin-top: 5px; margin-bottom: 20px;">
@@ -2984,59 +3057,59 @@
                     }
                     return '';
                 })()}
-            <hr class="mt-4 mb-4" style="border: 0.5px solid var(--border-color)">
-            
-            ${(() => {
-                    let reportHtml = '';
-                    const renderedEmpIds = new Set();
-                    let totalGenBase = 0;
-                    let totalGenIncentives = 0;
-                    let totalGenOvertime = 0;
-                    let totalGenChristmas = 0;
-                    let totalGenBrute = 0;
-                    let totalGenTSS = 0;
-                    let totalGenISR = 0;
-                    let totalGenDiscounts = 0;
-                    let totalGenNet = 0;
-                    const deptSummaries = [];
+                <hr class="mt-4 mb-4" style="border: 0.5px solid var(--border-color)">
 
-                    // 1. Render por Departamento
-                    const filteredDepts = state.departments.filter(d => filter.includes(d.name));
+                    ${(() => {
+                        let reportHtml = '';
+                        const renderedEmpIds = new Set();
+                        let totalGenBase = 0;
+                        let totalGenIncentives = 0;
+                        let totalGenOvertime = 0;
+                        let totalGenChristmas = 0;
+                        let totalGenBrute = 0;
+                        let totalGenTSS = 0;
+                        let totalGenISR = 0;
+                        let totalGenDiscounts = 0;
+                        let totalGenNet = 0;
+                        const deptSummaries = [];
 
-                    filteredDepts.forEach(dept => {
-                        const deptName = (dept.name || '').trim().toLowerCase();
-                        const deptEmps = state.employees.filter(e => {
-                            const eDept = (e.department || '').trim().toLowerCase();
-                            return eDept === deptName && e.active !== false;
-                        });
+                        // 1. Render por Departamento
+                        const filteredDepts = state.departments.filter(d => filter.includes(d.name));
 
-                        if (deptEmps.length === 0) return;
+                        filteredDepts.forEach(dept => {
+                            const deptName = (dept.name || '').trim().toLowerCase();
+                            const deptEmps = state.employees.filter(e => {
+                                const eDept = (e.department || '').trim().toLowerCase();
+                                return eDept === deptName && e.active !== false;
+                            });
 
-                        let deptBase = 0;
-                        let deptIncentives = 0;
-                        let deptOvertime = 0;
-                        let deptChristmas = 0;
-                        let deptBrute = 0;
-                        let deptTSS = 0;
-                        let deptISR = 0;
-                        let deptDiscounts = 0;
-                        let deptNet = 0;
+                            if (deptEmps.length === 0) return;
 
-                        const rows = deptEmps.map(emp => {
-                            const empId = emp.idNumber || `${emp.firstName}-${emp.lastName}`;
-                            renderedEmpIds.add(empId);
+                            let deptBase = 0;
+                            let deptIncentives = 0;
+                            let deptOvertime = 0;
+                            let deptChristmas = 0;
+                            let deptBrute = 0;
+                            let deptTSS = 0;
+                            let deptISR = 0;
+                            let deptDiscounts = 0;
+                            let deptNet = 0;
 
-                            const res = calculateEmployeePayrollData(emp, state.activePayroll);
+                            const rows = deptEmps.map(emp => {
+                                const empId = emp.idNumber || `${emp.firstName}-${emp.lastName}`;
+                                renderedEmpIds.add(empId);
 
-                            if (window.reportOnlyWithPayment && res.net <= 0.005) return '';
+                                const res = calculateEmployeePayrollData(emp, state.activePayroll);
 
-                            deptBase += res.base; deptIncentives += res.inc; deptOvertime += res.ot; deptChristmas += res.chr;
-                            deptBrute += res.brute; deptTSS += res.tss; deptISR += res.isr; deptDiscounts += res.disc; deptNet += res.net;
+                                if (window.reportOnlyWithPayment && res.net <= 0.005) return '';
 
-                            totalGenBase += res.base; totalGenIncentives += res.inc; totalGenOvertime += res.ot; totalGenChristmas += res.chr;
-                            totalGenBrute += res.brute; totalGenTSS += res.tss; totalGenISR += res.isr; totalGenDiscounts += res.disc; totalGenNet += res.net;
+                                deptBase += res.base; deptIncentives += res.inc; deptOvertime += res.ot; deptChristmas += res.chr;
+                                deptBrute += res.brute; deptTSS += res.tss; deptISR += res.isr; deptDiscounts += res.disc; deptNet += res.net;
 
-                            return `
+                                totalGenBase += res.base; totalGenIncentives += res.inc; totalGenOvertime += res.ot; totalGenChristmas += res.chr;
+                                totalGenBrute += res.brute; totalGenTSS += res.tss; totalGenISR += res.isr; totalGenDiscounts += res.disc; totalGenNet += res.net;
+
+                                return `
                         <tr>
                             <td>${emp.firstName} ${emp.lastName}</td>
                             <td>${emp.idNumber || '-'}</td>
@@ -3052,22 +3125,22 @@
                             <td class="td-numeric" style="font-weight: bold; background: rgba(0,255,0,0.05)">$${res.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                         `;
-                        }).join('');
+                            }).join('');
 
-                        deptSummaries.push({
-                            name: dept.name,
-                            base: deptBase,
-                            incentives: deptIncentives,
-                            overtime: deptOvertime,
-                            christmas: deptChristmas,
-                            brute: deptBrute,
-                            tss: deptTSS,
-                            isr: deptISR,
-                            discounts: deptDiscounts,
-                            net: deptNet
-                        });
+                            deptSummaries.push({
+                                name: dept.name,
+                                base: deptBase,
+                                incentives: deptIncentives,
+                                overtime: deptOvertime,
+                                christmas: deptChristmas,
+                                brute: deptBrute,
+                                tss: deptTSS,
+                                isr: deptISR,
+                                discounts: deptDiscounts,
+                                net: deptNet
+                            });
 
-                        reportHtml += `
+                            reportHtml += `
                         <div class="dept-report-section mb-4">
                             <h3 class="text-accent">${dept.name}</h3>
                             <table class="data-table">
@@ -3107,17 +3180,17 @@
                             </table>
                         </div>
                     `;
-                    });
-
-                    // 2. Lost & Found (Only show when viewing all departments)
-                    if (filter.length === state.departments.length) {
-                        const missingEmps = state.employees.filter(e => {
-                            const empId = e.idNumber || `${e.firstName}-${e.lastName}`;
-                            return !renderedEmpIds.has(empId);
                         });
 
-                        if (missingEmps.length > 0) {
-                            reportHtml += `
+                        // 2. Lost & Found (Only show when viewing all departments)
+                        if (filter.length === state.departments.length) {
+                            const missingEmps = state.employees.filter(e => {
+                                const empId = e.idNumber || `${e.firstName}-${e.lastName}`;
+                                return !renderedEmpIds.has(empId);
+                            });
+
+                            if (missingEmps.length > 0) {
+                                reportHtml += `
                             <div class="dept-report-section mb-4" style="border: 1px dashed var(--warning); padding: 10px;">
                                 <h3 style="color: var(--warning)">Otros Empleados (Sin departamento o desajustado)</h3>
                                 <table class="data-table">
@@ -3130,12 +3203,12 @@
                                 </table>
                             </div>
                         `;
+                            }
                         }
-                    }
 
-                    // 3. Resumen por Departamento (Show if more than one dept is selected)
-                    if (deptSummaries.length > 0) {
-                        reportHtml += `
+                        // 3. Resumen por Departamento (Show if more than one dept is selected)
+                        if (deptSummaries.length > 0) {
+                            reportHtml += `
                         <div class="dept-report-section mb-4" style="page-break-before: auto;">
                             <h3 class="text-accent" style="text-align: center; border-bottom: 2px solid var(--accent-color); padding-bottom: 10px;">RESUMEN GENERAL POR DEPARTAMENTO</h3>
                             <table class="data-table">
@@ -3186,10 +3259,10 @@
                             </table>
                         </div>
                     `;
-                    }
+                        }
 
-                    // 4. Totales Generales (Visual Card)
-                    reportHtml += `
+                        // 4. Totales Generales (Visual Card)
+                        reportHtml += `
                     <div class="card mt-4" style="background: var(--glass-bg); border: 2px solid var(--accent-color)">
                         <div class="stats-row">
                             <div class="stat-card">
@@ -3208,12 +3281,12 @@
                     </div>
                 `;
 
-                    return reportHtml;
-                })()}
-            
-            ${state.employees.length === 0 ? '<p style="text-align: center">No hay datos para mostrar en el reporte.</p>' : ''}
-        </div>
-    `;
+                        return reportHtml;
+                    })()}
+
+                    ${state.employees.length === 0 ? '<p style="text-align: center">No hay datos para mostrar en el reporte.</p>' : ''}
+            </div>
+        `;
         };
 
         window.toggleReportDept = (deptName) => {
@@ -3443,7 +3516,7 @@
                     if (res.type === 'fixed') {
                         // Find employee to get operation/activity (since snapshot might only have names/ids)
                         const emp = state.employees.find(e => e.idNumber === res.idNumber);
-                        const key = `${emp?.operation || 'Sin Cuenta'}| ${emp?.activity || '-'} `;
+                        const key = `${ emp?.operation || 'Sin Cuenta' }| ${ emp?.activity || '-' } `;
                         debits[key] = (debits[key] || 0) + (res.base || 0);
                     }
                 });
@@ -3452,22 +3525,22 @@
                 // Mobile: Only if dailyLogs were saved
                 const logs = run.dailyLogs || [];
                 logs.forEach(l => {
-                    const key = `${l.op || 'Sin Cuenta'}| ${l.act || '-'} `;
+                    const key = `${ l.op || 'Sin Cuenta' }| ${ l.act || '-' } `;
                     debits[key] = (debits[key] || 0) + (parseFloat(l.amount) || 0);
                 });
 
                 // Global accounts (Incentives/OT/Christmas) - usually stored in results
                 run.results.forEach(res => {
                     if (res.incentives > 0) {
-                        const incKey = `${state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente'}| -`;
+                        const incKey = `${ state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente' }| -`;
                         debits[incKey] = (debits[incKey] || 0) + res.incentives;
                     }
                     if (res.overtime > 0) {
-                        const otKey = `${state.settings.payrollAccounts?.overtime || 'Horas Extras Pendiente'}| -`;
+                        const otKey = `${ state.settings.payrollAccounts?.overtime || 'Horas Extras Pendiente' }| -`;
                         debits[otKey] = (debits[otKey] || 0) + res.overtime;
                     }
                     if (res.christmas > 0) {
-                        const chrKey = `${state.settings.payrollAccounts?.christmas || 'Navidad Pendiente'}| -`;
+                        const chrKey = `${ state.settings.payrollAccounts?.christmas || 'Navidad Pendiente' }| -`;
                         debits[chrKey] = (debits[chrKey] || 0) + res.christmas;
                     }
                 });
@@ -3476,7 +3549,7 @@
                 // Active Case or Fallback: Calculate fresh
                 state.employees.filter(e => e.active !== false).forEach(emp => {
                     const data = calculateEmployeePayrollData(emp, run);
-                    const empFullName = `${emp.firstName} ${emp.lastName} `;
+                    const empFullName = `${ emp.firstName } ${ emp.lastName } `;
 
                     totalCredits.tss += data.tss;
                     totalCredits.isr += data.isr;
@@ -3484,26 +3557,26 @@
                     totalCredits.net += data.net;
 
                     if (emp.type === 'fixed') {
-                        const key = `${emp.operation || 'Sin Cuenta'}| ${emp.activity || '-'} `;
+                        const key = `${ emp.operation || 'Sin Cuenta' }| ${ emp.activity || '-' } `;
                         debits[key] = (debits[key] || 0) + data.base;
                     } else {
                         const logs = (run.dailyLogs || []).filter(l => (l.employee || '').trim().toLowerCase() === empFullName.trim().toLowerCase());
                         logs.forEach(l => {
-                            const key = `${l.op || 'Sin Cuenta'}| ${l.act || '-'} `;
+                            const key = `${ l.op || 'Sin Cuenta' }| ${ l.act || '-' } `;
                             debits[key] = (debits[key] || 0) + (parseFloat(l.amount) || 0);
                         });
                     }
 
                     if (data.inc > 0) {
-                        const incKey = `${state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente'}| -`;
+                        const incKey = `${ state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente' }| -`;
                         debits[incKey] = (debits[incKey] || 0) + data.inc;
                     }
                     if (data.ot > 0) {
-                        const otKey = `${state.settings.payrollAccounts?.overtime || 'Horas Extras Pendiente'}| -`;
+                        const otKey = `${ state.settings.payrollAccounts?.overtime || 'Horas Extras Pendiente' }| -`;
                         debits[otKey] = (debits[otKey] || 0) + data.ot;
                     }
                     if (data.chr > 0) {
-                        const chrKey = `${state.settings.payrollAccounts?.christmas || 'Navidad Pendiente'}| -`;
+                        const chrKey = `${ state.settings.payrollAccounts?.christmas || 'Navidad Pendiente' }| -`;
                         debits[chrKey] = (debits[chrKey] || 0) + data.chr;
                     }
                 });
@@ -3581,8 +3654,8 @@
                             </thead>
                             <tbody>
                                 ${Object.entries(debits).map(([key, amount]) => {
-                const [accountName, activity] = key.split('|');
-                return `
+                    const [accountName, activity] = key.split('|');
+                    return `
                                         <tr>
                                             <td>EXPENSE: ${accountName}</td>
                                             <td>${getAccNum(accountName)}</td>
@@ -3591,7 +3664,7 @@
                                             <td class="amount-col"></td>
                                         </tr>
                                     `;
-            }).join('')}
+                }).join('')}
 
                                 ${totalCredits.tss > 0 ? `
                                     <tr>
@@ -3733,7 +3806,7 @@
                 const h = (state.payrollHistory || []).find(x => x.id === runId);
                 if (h) runName = h.name;
             }
-            const filename = `Entrada_Diario_${runName.replace(/\s+/g, '_')}.xls`;
+            const filename = `Entrada_Diario_${ runName.replace(/\s+/g, '_') }.xls`;
 
             let html = table.outerHTML;
             const uri = 'data:application/vnd.ms-excel;base64,';
@@ -3762,11 +3835,11 @@
             const christmasData = state.employees.filter(e => e.active !== false).map(emp => {
                 try {
                     const empId = emp.idNumber;
-                    const empName = `${emp.firstName} ${emp.lastName} `;
+                    const empName = `${ emp.firstName } ${ emp.lastName } `;
 
                     // Find the latest payment to determine the start date
                     const lastPayments = (state.christmasSalary || []).filter(p => p.employeeName === empName && p.periodEnd);
-                    let startDate = `${currentYear}-01-01`;
+                    let startDate = `${ currentYear }-01-01`;
                     if (lastPayments.length > 0) {
                         lastPayments.sort((a, b) => (b.periodEnd || '').localeCompare(a.periodEnd || ''));
                         const latest = lastPayments[0];
@@ -3792,7 +3865,7 @@
                                 const amount = (parseFloat(res.base) || 0) + (parseFloat(res.incentives) || 0) + (parseFloat(res.overtime) || 0);
                                 accumulated += amount;
                                 payrollsCounted++;
-                                detailList.push(`${run.payrollName} (${run.periodEnd}): $${amount.toFixed(2)} `);
+                                detailList.push(`${ run.payrollName } (${ run.periodEnd }): $${ amount.toFixed(2) } `);
                             }
                         }
                     });
@@ -3939,7 +4012,7 @@
                 const mode = document.getElementById('chr-payment-mode').value;
                 if (mode === 'current' && !state.activePayroll) return alert('Abra una nómina primero.');
 
-                if (!confirm(`¿Procesar pagos para ${selected.length} empleados ? `)) return;
+                if (!confirm(`¿Procesar pagos para ${ selected.length } empleados ? `)) return;
 
                 const payments = selected.map(idx => {
                     const data = christmasData[idx];
@@ -3959,7 +4032,7 @@
                 } else {
                     const newPayroll = {
                         id: Date.now(),
-                        name: `REGALÍA PASCUAL ${new Date().getFullYear()} `,
+                        name: `REGALÍA PASCUAL ${ new Date().getFullYear() } `,
                         periodType: 'Especial (Navidad)',
                         startDate: payments[0].periodStart,
                         endDate: payments[0].periodEnd,
@@ -4282,7 +4355,7 @@
                 if (inc.employeeName && inc.amount && inc.date) {
                     const bounds = getPayrollBounds();
                     if (bounds && (inc.date < bounds.min || inc.date > bounds.max)) {
-                        alert(`La fecha debe estar dentro del rango de la nómina(${bounds.min} a ${bounds.max})`);
+                        alert(`La fecha debe estar dentro del rango de la nómina(${ bounds.min } a ${ bounds.max })`);
                         return;
                     }
 
@@ -4297,7 +4370,7 @@
         };
 
         window.quickAddOvertime = (employeeName) => {
-            const employee = state.employees.find(e => `${e.firstName} ${e.lastName} ` === employeeName);
+            const employee = state.employees.find(e => `${ e.firstName } ${ e.lastName } ` === employeeName);
             if (!employee || employee.type !== 'fixed') {
                 alert('Solo empleados fijos aplican para horas extras automáticas.');
                 return;
@@ -4331,7 +4404,7 @@
                 if (hours && date) {
                     const bounds = getPayrollBounds();
                     if (bounds && (date < bounds.min || date > bounds.max)) {
-                        alert(`La fecha debe estar dentro del rango de la nómina(${bounds.min} a ${bounds.max})`);
+                        alert(`La fecha debe estar dentro del rango de la nómina(${ bounds.min } a ${ bounds.max })`);
                         return;
                     }
 
