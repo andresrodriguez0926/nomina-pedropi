@@ -1,9 +1,22 @@
 /**
- * Payroll App Core Engine
- * Handles routing, state, and UI rendering
- */
+         * Payroll App Core Engine
+         * Handles routing, state, and UI rendering
+         */
 
 // --- State Management ---
+window.addEventListener('error', function (e) {
+    const contentArea = document.getElementById('content-area');
+    if (contentArea) {
+        contentArea.innerHTML = `<div style="padding: 20px; color: #ef4444; background: #fff; border: 1px solid #ef4444; border-radius: 8px; margin: 20px;">
+                    <h3>Error Interno</h3>
+                    <p>${e.message}</p>
+                    <small>Línea: ${e.lineno}</small>
+                </div>`;
+    } else {
+        alert("Error: " + e.message);
+    }
+});
+
 const state = {
     currentSection: 'dashboard',
     departments: JSON.parse(localStorage.getItem('payroll_departments') || '[]'),
@@ -17,40 +30,95 @@ const state = {
     incentives: JSON.parse(localStorage.getItem('payroll_incentives') || '[]'),
     christmasSalary: JSON.parse(localStorage.getItem('payroll_christmas') || '[]'),
     payrollHistory: JSON.parse(localStorage.getItem('payroll_history') || '[]'),
-    settings: JSON.parse(localStorage.getItem('payroll_settings') || '{"tss_rate": 0.05, "payrollAccounts": {}, "isrThresholds": {"exempt": 416220.00, "mid": 624329.00, "high": 867123.00, "base1": 31216.00, "base2": 79776.00}}'),
+    settings: JSON.parse(localStorage.getItem('payroll_settings') || JSON.stringify({
+        tss_rate: 0.05,
+        payrollAccounts: {},
+        isrThresholds: {
+            exempt: 416220.00,
+            mid: 624329.00,
+            high: 867123.00,
+            base1: 31216.00,
+            base2: 79776.00
+        }
+    }))
 };
 
-// Ensure default thresholds exist if settings were previously saved
-if (!state.settings.isrThresholds) {
-    state.settings.isrThresholds = {
-        exempt: 416220.00,
-        mid: 624329.00,
-        high: 867123.00,
-        base1: 31216.00,
-        base2: 79776.00
-    };
-}
+window.globalState = state; // Allow firebase-backend to write directly to it
+window.state = state; // Backup explicit reference
+
+window.syncToLocalStorage = () => {
+    localStorage.setItem('payroll_departments', JSON.stringify(state.departments || []));
+    localStorage.setItem('payroll_operations', JSON.stringify(state.operations || []));
+    localStorage.setItem('payroll_activities', JSON.stringify(state.activities || []));
+    localStorage.setItem('payroll_employees', JSON.stringify(state.employees || []));
+    localStorage.setItem('payroll_periods', JSON.stringify(state.periods || []));
+    localStorage.setItem('payroll_active', JSON.stringify(state.activePayroll || null));
+    localStorage.setItem('payroll_discounts', JSON.stringify(state.discounts || []));
+    localStorage.setItem('payroll_incentives', JSON.stringify(state.incentives || []));
+    localStorage.setItem('payroll_overtime', JSON.stringify(state.overtime || []));
+    localStorage.setItem('payroll_christmas', JSON.stringify(state.christmasSalary || []));
+    localStorage.setItem('payroll_history', JSON.stringify(state.payrollHistory || []));
+    localStorage.setItem('payroll_settings', JSON.stringify(state.settings || {}));
+};
 
 const saveState = () => {
-    localStorage.setItem('payroll_departments', JSON.stringify(state.departments));
-    localStorage.setItem('payroll_operations', JSON.stringify(state.operations));
-    localStorage.setItem('payroll_activities', JSON.stringify(state.activities));
-    localStorage.setItem('payroll_employees', JSON.stringify(state.employees));
-    localStorage.setItem('payroll_periods', JSON.stringify(state.periods));
-    localStorage.setItem('payroll_active', JSON.stringify(state.activePayroll));
-    localStorage.setItem('payroll_discounts', JSON.stringify(state.discounts));
-    localStorage.setItem('payroll_incentives', JSON.stringify(state.incentives));
-    localStorage.setItem('payroll_overtime', JSON.stringify(state.overtime));
-    localStorage.setItem('payroll_christmas', JSON.stringify(state.christmasSalary));
-    localStorage.setItem('payroll_history', JSON.stringify(state.payrollHistory));
-    localStorage.setItem('payroll_settings', JSON.stringify(state.settings));
+    // Local Storage Persistence (Always execute for safety and offline support)
+    window.syncToLocalStorage();
+
+    // Prevent attempting to save state before Firebase has loaded the actual production data
+    if (window.isFirebaseStateLoaded === false) {
+        console.warn("Carga inicial de la nube en proceso. Guardado prevenido para no borrar datos en Firebase, aunque se guardaron localmente.");
+        return;
+    }
+
+    if (window.saveStateToFirebase) {
+        window.saveStateToFirebase();
+    } else {
+        console.log("Saving state locally (pending firebase link)");
+    }
+};
+
+const calculateLegislativeDays = (start, end) => {
+    let current = new Date(start.getTime());
+    let total = 0;
+    // Ensure we are comparing dates only, reset time to 00:00:00
+    current.setHours(0, 0, 0, 0);
+    const endDate = new Date(end.getTime());
+    endDate.setHours(0, 0, 0, 0);
+
+    while (current <= endDate) {
+        const day = current.getDay(); // 0: Sun, 1: Mon, ..., 6: Sat
+        if (day >= 1 && day <= 5) {
+            total += 1; // Mon-Fri
+        } else if (day === 6) {
+            total += 0.5; // Sat
+        }
+        // Sunday (0) is implicit 0
+        current.setDate(current.getDate() + 1);
+    }
+    return total;
 };
 
 const getPayrollBounds = () => {
     if (!state.activePayroll) return null;
     const startStr = state.activePayroll.startDate;
-    const period = state.periods.find(p => p.name === state.activePayroll.periodType);
-    if (!period) return { min: startStr, max: '' };
+    const pType = (state.activePayroll.periodType || '').toLowerCase();
+    const period = state.periods.find(p => p.name.toLowerCase() === pType || pType.includes(p.name.toLowerCase()));
+
+    if (!period) {
+        // Infer end date if period object is missing
+        let inferredEnd = new Date(startStr + 'T00:00:00');
+        if (pType.includes('bisemanal')) inferredEnd.setDate(inferredEnd.getDate() + 13);
+        else if (pType.includes('quincenal')) inferredEnd.setDate(inferredEnd.getDate() + 14);
+        else if (pType.includes('semanal')) inferredEnd.setDate(inferredEnd.getDate() + 6);
+        else if (pType.includes('mensual')) {
+            inferredEnd.setMonth(inferredEnd.getMonth() + 1);
+            inferredEnd.setDate(0);
+        } else {
+            return { min: startStr, max: '' };
+        }
+        return { min: startStr, max: inferredEnd.toISOString().split('T')[0] };
+    }
 
     const start = new Date(startStr + 'T00:00:00');
     let end = new Date(start);
@@ -102,7 +170,7 @@ const initRouter = () => {
     });
 };
 
-const switchSection = (sectionId) => {
+window.switchSection = (sectionId) => {
     state.currentSection = sectionId;
 
     // Update Sidebar
@@ -110,11 +178,11 @@ const switchSection = (sectionId) => {
         item.classList.toggle('active', item.getAttribute('data-section') === sectionId);
     });
 
-    renderSection(sectionId);
+    window.renderSection(sectionId);
 };
 
 // --- Rendering Logic ---
-const renderSection = (sectionId) => {
+window.renderSection = (sectionId) => {
     const contentArea = document.getElementById('content-area');
     contentArea.innerHTML = '<div class="loading-spinner"><div class="spinner"></div></div>';
 
@@ -126,6 +194,7 @@ const renderSection = (sectionId) => {
 
         switch (sectionId) {
             case 'dashboard': renderDashboard(contentArea); break;
+            case 'users': renderUsers(contentArea); break;
             case 'departments': renderDepartments(contentArea); break;
             case 'operations': renderOperations(contentArea); break;
             case 'activities': renderActivities(contentArea); break;
@@ -140,31 +209,76 @@ const renderSection = (sectionId) => {
             case 'daily-registration': renderDailyRegistration(contentArea); break;
             case 'closing': renderClosing(contentArea); break;
             case 'reports': renderReports(contentArea); break;
+            case 'employee-record': renderEmployeeRecord(contentArea); break;
+            case 'payroll-entry': renderPayrollEntry(contentArea); break;
             default:
                 contentArea.innerHTML = `<h2>Módulo ${sectionId} en construcción</h2>`;
         }
     }, 150);
 };
 
+// --- Data Migration (Export / Import) ---
+window.exportLocalData = () => {
+    const dump = {
+        departments: state.departments,
+        operations: state.operations,
+        activities: state.activities,
+        employees: state.employees,
+        periods: state.periods,
+        activePayroll: state.activePayroll,
+        discounts: state.discounts,
+        incentives: state.incentives,
+        overtime: state.overtime,
+        christmasSalary: state.christmasSalary,
+        payrollHistory: state.payrollHistory,
+        settings: state.settings
+    };
+    const json = JSON.stringify(dump);
+    navigator.clipboard.writeText(json).then(() => {
+        alert("¡Tus datos locales han sido copiados! Ve a la versión de la nube (Netlify), dale a 'Importar' y pégalos.");
+    }).catch(err => {
+        prompt("Hubo un error al copiar automáticamente. Copia el siguiente texto manualmente:", json);
+    });
+};
+
+window.importLocalData = () => {
+    const json = prompt("Pega aquí los datos que exportaste de tu PC:");
+    if (!json) return;
+    try {
+        const dump = JSON.parse(json);
+        state.departments = dump.departments || [];
+        state.operations = dump.operations || [];
+        state.activities = dump.activities || [];
+        state.employees = dump.employees || [];
+        state.periods = dump.periods || [];
+        state.activePayroll = dump.activePayroll || null;
+        state.discounts = dump.discounts || [];
+        state.incentives = dump.incentives || [];
+        state.overtime = dump.overtime || [];
+        state.christmasSalary = dump.christmasSalary || [];
+        state.payrollHistory = dump.payrollHistory || [];
+        state.settings = dump.settings || {};
+
+        saveState(); // Trigger a Firebase save
+        alert("¡Datos importados y subidos a la nube exitosamente! La página se recargará.");
+        setTimeout(() => window.location.reload(), 1000);
+    } catch (e) {
+        alert("Código inválido. Asegúrate de pegar el texto exacto.");
+    }
+};
+
 // --- Module: Dashboard ---
 const renderDashboard = (container) => {
     // --- Data Extraction for Charts ---
-    // 1. Payroll Expenses by Month (from historical data)
-    // Grouping by "YYYY-MM"
     const monthlyExpenses = {};
     state.payrollHistory.forEach(run => {
         if (!run.periodStart) return;
-        // periodStart is YYYY-MM-DD
         const monthKey = run.periodStart.substring(0, 7);
         const runTotalBrute = run.results.reduce((sum, res) => sum + (res.brute || 0), 0);
-
-        if (!monthlyExpenses[monthKey]) {
-            monthlyExpenses[monthKey] = 0;
-        }
+        if (!monthlyExpenses[monthKey]) monthlyExpenses[monthKey] = 0;
         monthlyExpenses[monthKey] += runTotalBrute;
     });
 
-    // Sort by month ascending
     const sortedMonths = Object.keys(monthlyExpenses).sort();
     const monthlyLabels = sortedMonths.map(m => {
         const [year, month] = m.split('-');
@@ -173,20 +287,14 @@ const renderDashboard = (container) => {
     });
     const monthlyData = sortedMonths.map(m => monthlyExpenses[m]);
 
-    // 2. Highest Expenditure Activity (Historical + Active)
     const activityExpenses = {};
-
-    // Get active payroll exact daily logs (mobile)
     if (state.activePayroll && state.activePayroll.dailyLogs) {
         state.activePayroll.dailyLogs.forEach(log => {
             const actName = log.act || 'Sin Actividad';
             if (!activityExpenses[actName]) activityExpenses[actName] = 0;
-            // Solo sumar el sueldo base (amount) para móviles, no es bruto total, pero da la idea del costo directo
             activityExpenses[actName] += parseFloat(log.amount) || 0;
         });
     }
-
-    // Fixed employees in active payroll (estimated proportional base based on default activity)
     if (state.activePayroll) {
         state.employees.filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
             const actName = emp.activity || 'Sin Actividad';
@@ -195,27 +303,53 @@ const renderDashboard = (container) => {
             activityExpenses[actName] += res.base || 0;
         });
     }
-
-    // Historical (approximating using default activities at time of closing - we use current default as fallback)
     state.payrollHistory.forEach(run => {
         run.results.forEach(res => {
-            // Re-find the employee to get their default activity
             const emp = state.employees.find(e => e.idNumber === res.idNumber || `${e.firstName} ${e.lastName}` === res.fullName);
             const actName = emp ? (emp.activity || 'Sin Actividad') : 'Sin Actividad';
-
             if (!activityExpenses[actName]) activityExpenses[actName] = 0;
-            // Summing only standard base cost + overtime + incentives, excluding TSS/ISR
             activityExpenses[actName] += res.brute || 0;
         });
     });
 
-    // Top Activities sorted descending
     const sortedActivities = Object.keys(activityExpenses).sort((a, b) => activityExpenses[b] - activityExpenses[a]);
-    // Take top 5 for the chart
     const topActivitiesCount = 5;
     const activityLabels = sortedActivities.slice(0, topActivitiesCount);
     const activityDataSeries = activityLabels.map(a => activityExpenses[a]);
 
+    const opStats = {};
+    const processCost = (opName, actName, amount) => {
+        const op = opName || 'Sin Operación';
+        const act = actName || 'Sin Actividad';
+        if (!opStats[op]) opStats[op] = { total: 0, activities: {} };
+        if (!opStats[op].activities[act]) opStats[op].activities[act] = 0;
+        opStats[op].total += amount;
+        opStats[op].activities[act] += amount;
+    };
+
+    if (state.activePayroll && state.activePayroll.dailyLogs) {
+        state.activePayroll.dailyLogs.forEach(log => processCost(log.op, log.act, parseFloat(log.amount) || 0));
+    }
+    if (state.activePayroll) {
+        state.employees.filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
+            const res = calculateEmployeePayrollData(emp, state.activePayroll);
+            processCost(emp.operation, emp.activity, res.base || 0);
+        });
+    }
+    state.payrollHistory.forEach(run => {
+        run.results.forEach(res => {
+            const emp = state.employees.find(e => e.idNumber === res.idNumber || (e.firstName + ' ' + e.lastName) === res.fullName);
+            const actName = emp ? emp.activity : 'Sin Actividad';
+            const opName = emp ? emp.operation : 'Sin Operación';
+            processCost(opName, actName, res.brute || 0);
+        });
+    });
+
+    window.dashboardOpStats = opStats;
+    let reportHtml = '';
+    if (Object.keys(opStats).length > 0) {
+        reportHtml = '<div class="card mt-4 print-area" id="op-comparison-card"></div>';
+    }
 
     container.innerHTML = `
         <div class="dashboard-grid">
@@ -234,33 +368,145 @@ const renderDashboard = (container) => {
                 </div>
                 <div class="card stat-card">
                     <div class="stat-label">Nómina Activa</div>
-                    <div class="stat-value">${state.activePayroll ? 'SÍ' : 'NO'}</div>
+                    <div class="stat-value text-danger" id="dash-active-payroll">NO</div>
+                </div>
+                <div class="card stat-card" style="display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 8px;">
+                    <button class="btn btn-secondary w-100" onclick="exportLocalData()" title="Copiar datos de esta PC" style="font-size: 0.85rem; padding: 6px;">
+                        <i class="fas fa-file-export"></i> Exportar Datos (Local)
+                    </button>
+                    <button class="btn btn-secondary w-100" onclick="importLocalData()" title="Pegar datos de otra PC aquí" style="font-size: 0.85rem; padding: 6px;">
+                        <i class="fas fa-file-import"></i> Importar Datos
+                    </button>
+                    <button class="btn btn-danger admin-only w-100" onclick="wipeProductionDatabase()" title="Borrar Todos los Datos" style="font-size: 0.85rem; padding: 6px;">
+                        <i class="fas fa-trash"></i> Limpiar Sistema
+                    </button>
                 </div>
             </div>
-
+            
             <div class="charts-row mt-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
                 <div class="card">
-                    <h3 class="mb-3">Gasto de Nómina por Mes (Histórico)</h3>
+                    <h3 class="mb-3" style="font-size: 1.1rem; color: var(--gray);">Gasto de Nómina por Mes (Histórico)</h3>
                     ${sortedMonths.length > 0 ? `<div style="position: relative; height:300px; width:100%"><canvas id="monthlyChart"></canvas></div>` : '<p class="text-gray" style="text-align: center; padding: 40px 0;">No hay datos históricos suficientes.</p>'}
                 </div>
                 <div class="card">
-                    <h3 class="mb-3">Top ${topActivitiesCount} Actividades con Mayor Gasto (Bruto)</h3>
+                    <h3 class="mb-3" style="font-size: 1.1rem; color: var(--gray);">Top ${topActivitiesCount} Actividades con Mayor Gasto</h3>
                     ${activityLabels.length > 0 ? `<div style="position: relative; height:300px; width:100%"><canvas id="activityChart"></canvas></div>` : '<p class="text-gray" style="text-align: center; padding: 40px 0;">No hay datos de actividades suficientes.</p>'}
                 </div>
             </div>
+            
+            ${reportHtml}
         </div>
     `;
 
-    // Render Charts after DOM updates
+    window.renderOpComparison = () => {
+        const card = document.getElementById('op-comparison-card');
+        if (!card) return;
+        const stats = window.dashboardOpStats;
+        const ops = Object.keys(stats).sort();
+
+        if (ops.length === 0) {
+            card.innerHTML = '<p class="text-center text-gray" style="padding: 20px;">No hay datos de operaciones.</p>';
+            return;
+        }
+
+        if (!window.dashboardOp1 && ops.length > 0) window.dashboardOp1 = ops[0];
+        if (!window.dashboardOp2 && ops.length > 1) window.dashboardOp2 = ops[1];
+        if (!window.dashboardOp2 && ops.length === 1) window.dashboardOp2 = ops[0];
+
+        // Make sure selected ops exist
+        if (!stats[window.dashboardOp1]) window.dashboardOp1 = ops[0];
+        if (!stats[window.dashboardOp2]) window.dashboardOp2 = ops[0];
+
+        let op1 = window.dashboardOp1;
+        let op2 = window.dashboardOp2;
+
+        const actMap = {};
+        if (stats[op1]) {
+            Object.keys(stats[op1].activities).forEach(act => actMap[act] = true);
+        }
+        if (stats[op2]) {
+            Object.keys(stats[op2].activities).forEach(act => actMap[act] = true);
+        }
+
+        const allActs = Object.keys(actMap).sort();
+
+        let html = `
+                    <div class="header-action mb-3" style="border:none; flex-wrap: wrap;">
+                        <h3 style="font-size: 1.1rem; color: var(--gray); margin: 0;">Comparativa de Operaciones</h3>
+                        <div style="display: flex; gap: 15px; align-items: center;" class="no-print">
+                            <select class="form-control" style="width: auto;" onchange="window.dashboardOp1 = this.value; window.renderOpComparison()">
+                                ${ops.map(o => `<option value="${o}" ${o === op1 ? 'selected' : ''}>${o}</option>`).join('')}
+                            </select>
+                            <span style="font-weight: bold; color: var(--gray);">VS</span>
+                            <select class="form-control" style="width: auto;" onchange="window.dashboardOp2 = this.value; window.renderOpComparison()">
+                                ${ops.map(o => `<option value="${o}" ${o === op2 ? 'selected' : ''}>${o}</option>`).join('')}
+                            </select>
+                            <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+                        </div>
+                    </div>
+                    
+                    <div style="overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Actividad</th>
+                                    <th class="text-right" style="color: var(--primary);">${op1}</th>
+                                    <th class="text-right" style="color: var(--accent-color);">${op2}</th>
+                                    <th class="text-right">Diferencia</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+        let tot1 = 0, tot2 = 0, totDiff = 0;
+
+        allActs.forEach(act => {
+            const val1 = (stats[op1] && stats[op1].activities[act]) ? stats[op1].activities[act] : 0;
+            const val2 = (stats[op2] && stats[op2].activities[act]) ? stats[op2].activities[act] : 0;
+            const diff = val1 - val2;
+
+            tot1 += val1;
+            tot2 += val2;
+            totDiff += diff;
+
+            html += `
+                        <tr>
+                            <td>${act}</td>
+                            <td class="td-numeric" style="font-weight: bold;">$${val1.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric" style="font-weight: bold;">$${val2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric" style="color: ${diff > 0 ? 'var(--danger)' : (diff < 0 ? 'var(--success)' : 'inherit')}; font-weight: ${Math.abs(diff) > 0 ? 'bold' : 'normal'}">
+                                $${diff.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                        </tr>
+                    `;
+        });
+
+        html += `
+                            </tbody>
+                            <tfoot style="display: table-row-group; font-weight: bold; border-top: 2px solid #333;">
+                                <tr>
+                                    <td class="text-right">TOTALES:</td>
+                                    <td class="td-numeric" style="font-size: 1.1rem; color: var(--primary);">$${tot1.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="td-numeric" style="font-size: 1.1rem; color: var(--accent-color);">$${tot2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="td-numeric" style="font-size: 1.1rem; color: ${totDiff > 0 ? 'var(--danger)' : (totDiff < 0 ? 'var(--success)' : 'inherit')};">
+                                        $${totDiff.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                `;
+
+        card.innerHTML = html;
+    };
+
     setTimeout(() => {
-        // Shared Tooltip Callback format
+        window.renderOpComparison();
         const currencyTooltip = {
             callbacks: {
                 label: function (context) {
                     let label = context.dataset.label || '';
-                    if (label) {
-                        label += ': ';
-                    }
+                    if (label) label += ': ';
                     if (context.parsed.y !== null) {
                         label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y).replace('$', 'RD$');
                     }
@@ -268,37 +514,21 @@ const renderDashboard = (container) => {
                 }
             }
         };
-
         const chartCommonOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    labels: { color: 'rgba(255, 255, 255, 0.7)' }
-                },
-                tooltip: currencyTooltip
-            },
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: 'rgba(255, 255, 255, 0.7)' } }, tooltip: currencyTooltip },
             scales: {
-                x: {
-                    ticks: { color: 'rgba(255, 255, 255, 0.5)' },
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' }
-                },
+                x: { ticks: { color: 'rgba(255, 255, 255, 0.5)' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
                 y: {
                     ticks: {
                         color: 'rgba(255, 255, 255, 0.5)',
-                        callback: function (value, index, values) {
-                            if (value >= 1000) {
-                                return 'RD$' + (value / 1000) + 'k';
-                            }
-                            return 'RD$' + value;
-                        }
+                        callback: function (value) { return value >= 1000 ? 'RD$' + (value / 1000) + 'k' : 'RD$' + value; }
                     },
                     grid: { color: 'rgba(255, 255, 255, 0.1)' }
                 }
             }
         };
 
-        // Monthly Expense Chart
         const monthlyCanvas = document.getElementById('monthlyChart');
         if (monthlyCanvas) {
             new Chart(monthlyCanvas, {
@@ -306,21 +536,15 @@ const renderDashboard = (container) => {
                 data: {
                     labels: monthlyLabels,
                     datasets: [{
-                        label: 'Gasto Total Bruto',
-                        data: monthlyData,
-                        borderColor: '#60a5fa', // blue-400
-                        backgroundColor: 'rgba(96, 165, 250, 0.2)',
-                        borderWidth: 2,
-                        tension: 0.3,
-                        fill: true,
-                        pointBackgroundColor: '#3b82f6',
+                        label: 'Gasto Total Bruto', data: monthlyData,
+                        borderColor: '#60a5fa', backgroundColor: 'rgba(96, 165, 250, 0.2)',
+                        borderWidth: 2, tension: 0.3, fill: true, pointBackgroundColor: '#3b82f6',
                     }]
                 },
                 options: chartCommonOptions
             });
         }
 
-        // Activity Expense Chart
         const activityCanvas = document.getElementById('activityChart');
         if (activityCanvas) {
             new Chart(activityCanvas, {
@@ -328,17 +552,9 @@ const renderDashboard = (container) => {
                 data: {
                     labels: activityLabels,
                     datasets: [{
-                        label: 'Gasto Generado (Aprox. Bruto)',
-                        data: activityDataSeries,
-                        backgroundColor: [
-                            'rgba(248, 113, 113, 0.8)', // red-400
-                            'rgba(52, 211, 153, 0.8)', // emerald-400
-                            'rgba(251, 191, 36, 0.8)', // amber-400
-                            'rgba(167, 139, 250, 0.8)', // violet-400
-                            'rgba(56, 189, 248, 0.8)'  // sky-400
-                        ],
-                        borderWidth: 0,
-                        borderRadius: 4
+                        label: 'Gasto Generado (Aprox. Bruto)', data: activityDataSeries,
+                        backgroundColor: ['rgba(248, 113, 113, 0.8)', 'rgba(52, 211, 153, 0.8)', 'rgba(251, 191, 36, 0.8)', 'rgba(167, 139, 250, 0.8)', 'rgba(56, 189, 248, 0.8)'],
+                        borderWidth: 0, borderRadius: 4
                     }]
                 },
                 options: chartCommonOptions
@@ -347,12 +563,163 @@ const renderDashboard = (container) => {
     }, 100);
 };
 
+// --- Module: Usuarios ---
+const renderUsers = (container) => {
+    const users = state.users || [];
+    container.innerHTML = `
+                <div class="header-actions">
+                    <h2>Gestión de Usuarios</h2>
+                    <button class="btn btn-primary admin-only" onclick="showAddUserModal()">
+                        <i class="fas fa-plus"></i> Nuevo Usuario
+                    </button>
+                </div>
+                <div class="card mt-4">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Usuario</th>
+                                <th>Rol / Permisos</th>
+                                <th style="width: 100px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${users.length === 0 ? '<tr><td colspan="4" class="text-center text-gray">No hay usuarios adicionales (Solo Admin Base).</td></tr>' : ''}
+                            ${users.map((u, index) => `
+                                <tr>
+                                    <td style="font-weight: 500;">${u.name}</td>
+                                    <td>${u.email}</td>
+                                    <td>
+                                        <span class="badge ${u.role === 'admin' ? 'bg-primary' : (u.role === 'editor' ? 'bg-success' : 'bg-gray')}">
+                                            ${u.role.toUpperCase()}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="btn-icon edit admin-only" onclick="showEditUserModal('${u.uid}')" title="Editar Usuario">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn-icon delete admin-only" onclick="deleteUser('${u.uid}')" title="Eliminar Acceso">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+};
+
+// --- User Module Logic ---
+window.showEditUserModal = (uid) => {
+    const user = state.users.find(u => u.uid === uid);
+    if (!user) return;
+
+    showModal('Editar Usuario', `
+                <div class="form-group">
+                    <label>Nombre Completo</label>
+                    <input type="text" id="edit-user-name" class="form-control" value="${user.name || ''}" placeholder="Ej. Juan Pérez">
+                </div>
+                <div class="form-group">
+                    <label>Nombre de Usuario</label>
+                    <input type="text" id="edit-user-email" class="form-control" value="${user.email || user.username || ''}" placeholder="Ej. jperez">
+                </div>
+                <div class="form-group">
+                    <label>Nueva Contraseña (Opcional)</label>
+                    <input type="password" id="edit-user-password" class="form-control" placeholder="Dejar en blanco para no cambiar">
+                </div>
+                <div class="form-group">
+                    <label>Rol / Nivel de Acceso</label>
+                    <select id="edit-user-role" class="form-control">
+                        <option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Lector (Solo ver reportes)</option>
+                        <option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor (Registrar nómina, sin borrar)</option>
+                        <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrador (Acceso total)</option>
+                    </select>
+                </div>
+            `, () => {
+        const name = document.getElementById('edit-user-name').value;
+        const email = document.getElementById('edit-user-email').value;
+        const password = document.getElementById('edit-user-password').value;
+        const role = document.getElementById('edit-user-role').value;
+
+        if (name && email) {
+            if (window.updateUserAccess) {
+                const updatedData = { name, email, role };
+                if (password.length >= 6) {
+                    updatedData.password = password;
+                } else if (password.length > 0) {
+                    alert("La contraseña debe tener al menos 6 caracteres.");
+                    return;
+                }
+
+                window.updateUserAccess(uid, updatedData);
+                hideModal();
+            } else {
+                alert("Error: Script de Firebase Backend no responde.");
+            }
+        } else {
+            alert("El nombre y el usuario no pueden estar vacíos.");
+        }
+    });
+};
+
+window.showAddUserModal = () => {
+    showModal('Crear Nuevo Usuario', `
+                <div class="form-group">
+                    <label>Nombre Completo</label>
+                    <input type="text" id="new-user-name" class="form-control" placeholder="Ej. Juan Pérez">
+                </div>
+                <div class="form-group">
+                    <label>Nombre de Usuario</label>
+                    <input type="text" id="new-user-email" class="form-control" placeholder="Ej. jperez">
+                </div>
+                <div class="form-group">
+                    <label>Contraseña Provisional</label>
+                    <input type="password" id="new-user-password" class="form-control" placeholder="Mínimo 6 caracteres">
+                </div>
+                <div class="form-group">
+                    <label>Rol / Nivel de Acceso</label>
+                    <select id="new-user-role" class="form-control">
+                        <option value="viewer">Lector (Solo ver reportes)</option>
+                        <option value="editor">Editor (Registrar nómina, sin borrar)</option>
+                        <option value="admin">Administrador (Acceso total)</option>
+                    </select>
+                </div>
+            `, () => {
+        const name = document.getElementById('new-user-name').value;
+        const email = document.getElementById('new-user-email').value;
+        const password = document.getElementById('new-user-password').value;
+        const role = document.getElementById('new-user-role').value;
+
+        if (name && email && password.length >= 6) {
+            if (window.registerSecondaryUser) {
+                window.registerSecondaryUser(email, password, name, role);
+                hideModal();
+            } else {
+                alert("Error: Script de Firebase Backend no responde.");
+            }
+        } else {
+            alert("Complete todos los campos. La contraseña debe tener al menos 6 caracteres.");
+        }
+    });
+};
+
+window.deleteUser = (uid) => {
+    if (confirm('¿Está seguro de revocar el acceso a este usuario?')) {
+        if (window.removeUserAccess) {
+            window.removeUserAccess(uid);
+        }
+    }
+};
+
 // --- Module: Departments ---
 const renderDepartments = (container) => {
     container.innerHTML = `
         <div class="header-action">
             <h1>Departamentos</h1>
-            <button class="btn btn-primary" id="add-dept-btn">
+            <button class="btn btn-primary admin-only" id="add-dept-btn">
                 <i class="fas fa-plus"></i> Nuevo Departamento
             </button>
         </div>
@@ -369,7 +736,7 @@ const renderDepartments = (container) => {
                         <tr>
                             <td>${dept.name}</td>
                             <td>
-                                <button class="btn-icon delete" onclick="deleteItem('departments', ${index})">
+                                <button class="btn-icon delete admin-only" onclick="deleteItem('departments', ${index})">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </td>
@@ -414,6 +781,7 @@ const renderOperations = (container) => {
                     <tr>
                         <th>Nombre</th>
                         <th>Cuenta Contable</th>
+                        <th>Propósito</th>
                         <th style="width: 100px">Acciones</th>
                     </tr>
                 </thead>
@@ -423,16 +791,22 @@ const renderOperations = (container) => {
                             <td>${op.name}</td>
                             <td>${op.account}</td>
                             <td>
+                                <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                                    ${(op.useInAccounting === undefined || op.useInAccounting) ? '<span class="status-badge fixed" style="font-size: 0.6rem">Contabilidad</span>' : ''}
+                                    ${(op.useInLabor === undefined || op.useInLabor) ? '<span class="status-badge mobile" style="font-size: 0.6rem">Fijos/Móviles</span>' : ''}
+                                </div>
+                            </td>
+                            <td>
                                 <button class="btn-icon edit" onclick="editOperation(${index})">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn-icon delete" onclick="deleteItem('operations', ${index})">
+                                <button class="btn-icon delete admin-only" onclick="deleteItem('operations', ${index})">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </td>
                         </tr>
                     `).join('')}
-                    ${state.operations.length === 0 ? '<tr><td colspan="3" style="text-align:center">No hay operaciones registradas</td></tr>' : ''}
+                    ${state.operations.length === 0 ? '<tr><td colspan="4" style="text-align:center">No hay operaciones registradas</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -448,11 +822,24 @@ const renderOperations = (container) => {
                 <label>Número de Cuenta Contable</label>
                 <input type="text" id="op-account" class="form-control" placeholder="Ej: 6010101">
             </div>
+            <div class="form-group">
+                <label>Propósitos de la Operación:</label>
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="op-use-acc" checked> Utilizar en contabilidad
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="op-use-labor" checked> Utilizar en empleados fijos y móviles
+                    </label>
+                </div>
+            </div>
         `, () => {
             const name = document.getElementById('op-name').value;
             const account = document.getElementById('op-account').value;
+            const useInAccounting = document.getElementById('op-use-acc').checked;
+            const useInLabor = document.getElementById('op-use-labor').checked;
             if (name && account) {
-                state.operations.push({ name, account });
+                state.operations.push({ name, account, useInAccounting, useInLabor });
                 saveState();
                 renderSection('operations');
                 hideModal();
@@ -476,6 +863,7 @@ const renderActivities = (container) => {
                     <tr>
                         <th>Nombre</th>
                         <th>Valor/Número</th>
+                        <th>Salario Diario</th>
                         <th style="width: 100px">Acciones</th>
                     </tr>
                 </thead>
@@ -483,18 +871,19 @@ const renderActivities = (container) => {
                     ${state.activities.map((act, index) => `
                         <tr>
                             <td>${act.name}</td>
-                            <td>$${parseFloat(act.value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td>$${parseFloat(act.value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td>$${parseFloat(act.dailySalary || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td>
                                 <button class="btn-icon edit" onclick="editActivity(${index})">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn-icon delete" onclick="deleteItem('activities', ${index})">
+                                <button class="btn-icon delete admin-only" onclick="deleteItem('activities', ${index})">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </td>
                         </tr>
                     `).join('')}
-                    ${state.activities.length === 0 ? '<tr><td colspan="3" style="text-align:center">No hay actividades registradas</td></tr>' : ''}
+                    ${state.activities.length === 0 ? '<tr><td colspan="4" style="text-align:center">No hay actividades registradas</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -507,14 +896,19 @@ const renderActivities = (container) => {
                 <input type="text" id="act-name" class="form-control" placeholder="Ej: Limpieza">
             </div>
             <div class="form-group">
-                <label>Valor / Número</label>
+                <label>Valor / Número (Otro objetivo)</label>
                 <input type="number" id="act-value" class="form-control" placeholder="Ej: 50.00">
+            </div>
+            <div class="form-group">
+                <label>Salario Diario (Para Registro Diario)</label>
+                <input type="number" id="act-daily-salary" class="form-control" placeholder="Ej: 800.00">
             </div>
         `, () => {
             const name = document.getElementById('act-name').value;
             const value = document.getElementById('act-value').value;
-            if (name && value) {
-                state.activities.push({ name, value });
+            const dailySalary = document.getElementById('act-daily-salary').value;
+            if (name) {
+                state.activities.push({ name, value: parseFloat(value) || 0, dailySalary: parseFloat(dailySalary) || 0 });
                 saveState();
                 renderSection('activities');
                 hideModal();
@@ -528,7 +922,7 @@ const renderEmployees = (container) => {
     container.innerHTML = `
         <div class="header-action">
             <h1>Empleados</h1>
-            <button class="btn btn-primary" id="add-emp-btn">
+            <button class="btn btn-primary admin-only" id="add-emp-btn">
                 <i class="fas fa-user-plus"></i> Nuevo Empleado
             </button>
         </div>
@@ -539,10 +933,11 @@ const renderEmployees = (container) => {
                         <th>Nombre Completo</th>
                         <th>Cédula/Pasaporte</th>
                         <th>Tipo</th>
+                        <th>Estado</th>
                         <th>Departamento</th>
                         <th>Ingreso</th>
                         <th>Salario</th>
-                        <th style="width: 100px">Acciones</th>
+                        <th style="width: 120px">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -551,6 +946,11 @@ const renderEmployees = (container) => {
                             <td>${emp.firstName} ${emp.lastName}</td>
                             <td>${emp.idNumber}</td>
                             <td><span class="status-badge ${emp.type}">${emp.type === 'fixed' ? 'Fijo' : 'Móvil'}</span></td>
+                            <td>
+                                <span class="status-badge ${emp.active !== false ? 'success' : 'gray'}" style="cursor: pointer" onclick="window.toggleEmployeeStatus(${index})">
+                                    ${emp.active !== false ? 'Activo' : 'Inactivo'}
+                                </span>
+                            </td>
                             <td>${emp.department || '-'}</td>
                             <td>${emp.hireDate || '-'}</td>
                             <td>${emp.type === 'fixed' ? '$' + parseFloat(emp.salary).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'N/A'}</td>
@@ -571,7 +971,7 @@ const renderEmployees = (container) => {
                                     <button class="btn-icon edit" onclick="editEmployee(${index})" title="Editar">
                                         <i class="fas fa-edit"></i>
                                     </button>
-                                    <button class="btn-icon delete" onclick="deleteItem('employees', ${index})" title="Eliminar">
+                                    <button class="btn-icon delete admin-only" onclick="deleteItem('employees', ${index})" title="Eliminar">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </div>
@@ -633,7 +1033,7 @@ const renderEmployees = (container) => {
                     <label>Operación Defecto</label>
                     <select id="emp-op" class="form-control">
                         <option value="">Seleccionar...</option>
-                        ${state.operations.map(o => `<option value="${o.name}">${o.name}</option>`).join('')}
+                        ${state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => `<option value="${o.name}">${o.name}</option>`).join('')}
                     </select>
                 </div>
             </div>
@@ -643,6 +1043,11 @@ const renderEmployees = (container) => {
                     <option value="">Seleccionar...</option>
                     ${state.activities.map(a => `<option value="${a.name}">${a.name}</option>`).join('')}
                 </select>
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="emp-active" checked> Empleado Activo (Aparece en Nómina)
+                </label>
             </div>
         `, () => {
             const emp = {
@@ -656,6 +1061,7 @@ const renderEmployees = (container) => {
                 department: document.getElementById('emp-dept').value,
                 operation: document.getElementById('emp-op').value,
                 activity: document.getElementById('emp-act').value,
+                active: document.getElementById('emp-active').checked
             };
 
             if (emp.firstName && emp.idNumber) {
@@ -676,78 +1082,100 @@ const renderEmployees = (container) => {
     };
 };
 
+// --- Module: TSS ---
 const renderTSS = (container) => {
-    const accounts = state.settings.payrollAccounts || {};
-    const isr = state.settings.isrThresholds || {};
-
     container.innerHTML = `
-        <h1>Configuración</h1>
-        <div class="card mt-4" style="max-width: 600px">
-            <h3>Seguridad Social / TSS</h3>
-            <div class="form-group">
-                <label>Tasa de Retención Seguro (%)</label>
-                <input type="number" id="tss-rate" class="form-control" value="${(state.settings.tss_rate || 0.05) * 100}">
-            </div>
-            
-            <h3 class="mt-4">Cuentas Contables (Operaciones Defecto)</h3>
-            <div class="form-group">
-                <label>Incentivos</label>
-                <select id="acc-inc" class="form-control">
-                    <option value="">Seleccionar...</option>
-                    ${state.operations.map(op => `<option value="${op.name}" ${accounts.incentives === op.name ? 'selected' : ''}>${op.name} (${op.account})</option>`).join('')}
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Horas Extras</label>
-                <select id="acc-ot" class="form-control">
-                    <option value="">Seleccionar...</option>
-                    ${state.operations.map(op => `<option value="${op.name}" ${accounts.overtime === op.name ? 'selected' : ''}>${op.name} (${op.account})</option>`).join('')}
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Descuentos</label>
-                <select id="acc-disc" class="form-control">
-                    <option value="">Seleccionar...</option>
-                    ${state.operations.map(op => `<option value="${op.name}" ${accounts.discounts === op.name ? 'selected' : ''}>${op.name} (${op.account})</option>`).join('')}
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Salario Navidad</label>
-                <select id="acc-chr" class="form-control">
-                    <option value="">Seleccionar...</option>
-                    ${state.operations.map(op => `<option value="${op.name}" ${accounts.christmas === op.name ? 'selected' : ''}>${op.name} (${op.account})</option>`).join('')}
-                </select>
-            </div>
-
-            <h3 class="mt-4">Escalas de ISR (Anual)</h3>
-            <p class="text-xs text-gray mb-2">Configure los límites anuales para el cálculo del ISR.</p>
-            
-            <div class="form-group">
-                <label>Exento Hasta (RD$)</label>
-                <input type="number" id="isr-exempt" class="form-control" value="${isr.exempt || 416220.00}">
-            </div>
-            <div class="form-group">
-                <label>Tramo 15% Hasta (RD$)</label>
-                <input type="number" id="isr-mid" class="form-control" value="${isr.mid || 624329.00}">
-            </div>
-            <div class="form-group">
-                <label>Tramo 20% Hasta (RD$)</label>
-                <input type="number" id="isr-high" class="form-control" value="${isr.high || 867123.00}">
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Base Fija T2 (RD$)</label>
-                    <input type="number" id="isr-base1" class="form-control" value="${isr.base1 || 31216.00}">
+                <h1>Configuración General y Contable</h1>
+                <div class="card mt-4">
+                    <div style="max-width: 500px">
+                        <div class="form-group">
+                            <label>Tasa de Retención Seguro (%)</label>
+                            <input type="number" id="tss-rate" class="form-control" value="${state.settings.tss_rate * 100}">
+                        </div>
+                        
+                        <h3 class="mt-4 mb-2">Cuentas Contables por Defecto</h3>
+                        <p class="text-sm text-gray mb-4">Seleccione la cuenta (Operación) que se asociará automáticamente a cada rubro de nómina.</p>
+                        
+                        <div class="form-group">
+                            <label>Cuenta para Cuadre de Incentivos</label>
+                            <select id="acc-inc" class="form-control">
+                                <option value="">Seleccionar...</option>
+                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.incentives === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Cuenta para Horas Extras</label>
+                            <select id="acc-ot" class="form-control">
+                                <option value="">Seleccionar...</option>
+                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.overtime === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Cuenta para Descuentos / Cuentas por Cobrar</label>
+                            <select id="acc-disc" class="form-control">
+                                <option value="">Seleccionar...</option>
+                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.discounts === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Cuenta para Salario de Navidad</label>
+                            <select id="acc-chr" class="form-control">
+                                <option value="">Seleccionar...</option>
+                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.christmas === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Cuenta para Retención TSS (Crédito)</label>
+                            <select id="acc-tss" class="form-control">
+                                <option value="">Seleccionar...</option>
+                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.tss === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Cuenta para Retención ISR (Crédito)</label>
+                            <select id="acc-isr" class="form-control">
+                                <option value="">Seleccionar...</option>
+                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.isr === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Cuenta para Nómina por Pagar (Neto - Crédito)</label>
+                            <select id="acc-payable" class="form-control">
+                                <option value="">Seleccionar...</option>
+                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.payable === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        
+                        <h3 class="mt-4 mb-2">Escalas de ISR (Escala Anual)</h3>
+                        <p class="text-sm text-gray mb-4">Configure los límites anuales para el cálculo del Impuesto Sobre la Renta.</p>
+                        
+                        <div class="form-group">
+                            <label>Límite Exento Anual (RD$)</label>
+                            <input type="number" id="isr-exempt" class="form-control" value="${state.settings.isrThresholds.exempt}">
+                        </div>
+                        <div class="form-group">
+                            <label>Límite Tramo 15% (RD$)</label>
+                            <input type="number" id="isr-mid" class="form-control" value="${state.settings.isrThresholds.mid}">
+                        </div>
+                        <div class="form-group">
+                            <label>Límite Tramo 20% (RD$)</label>
+                            <input type="number" id="isr-high" class="form-control" value="${state.settings.isrThresholds.high}">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Base Fija Tramo 2 (RD$)</label>
+                                <input type="number" id="isr-base1" class="form-control" value="${state.settings.isrThresholds.base1}">
+                            </div>
+                            <div class="form-group">
+                                <label>Base Fija Tramo 3 (RD$)</label>
+                                <input type="number" id="isr-base2" class="form-control" value="${state.settings.isrThresholds.base2}">
+                            </div>
+                        </div>
+                        
+                        <button class="btn btn-primary mt-4" id="save-settings">Guardar Todas las Configuraciones</button>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Base Fija T3 (RD$)</label>
-                    <input type="number" id="isr-base2" class="form-control" value="${isr.base2 || 79776.00}">
-                </div>
-            </div>
-            
-            <button class="btn btn-primary mt-4" id="save-settings">Guardar Configuración</button>
-        </div>
-    `;
+            `;
 
     document.getElementById('save-settings').onclick = () => {
         state.settings.tss_rate = parseFloat(document.getElementById('tss-rate').value) / 100;
@@ -755,7 +1183,10 @@ const renderTSS = (container) => {
             incentives: document.getElementById('acc-inc').value,
             overtime: document.getElementById('acc-ot').value,
             discounts: document.getElementById('acc-disc').value,
-            christmas: document.getElementById('acc-chr').value
+            christmas: document.getElementById('acc-chr').value,
+            tss: document.getElementById('acc-tss').value,
+            isr: document.getElementById('acc-isr').value,
+            payable: document.getElementById('acc-payable').value
         };
         state.settings.isrThresholds = {
             exempt: parseFloat(document.getElementById('isr-exempt').value),
@@ -778,32 +1209,32 @@ const renderPeriods = (container) => {
                 <i class="fas fa-plus"></i> Nuevo Tipo de Periodo
             </button>
         </div>
-    <div class="card mt-4">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Nombre</th>
-                    <th>Frecuencia</th>
-                    <th style="width: 100px">Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${state.periods.map((p, index) => `
+        <div class="card mt-4">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Frecuencia</th>
+                        <th style="width: 100px">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${state.periods.map((p, index) => `
                         <tr>
                             <td>${p.name}</td>
                             <td>${p.frequency}</td>
                             <td>
-                                <button class="btn-icon delete" onclick="deleteItem('periods', ${index})">
+                                <button class="btn-icon delete admin-only" onclick="deleteItem('periods', ${index})">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </td>
                         </tr>
                     `).join('')}
-                ${state.periods.length === 0 ? '<tr><td colspan="3" style="text-align:center">No hay periodos definidos</td></tr>' : ''}
-            </tbody>
-        </table>
-    </div>
-`;
+                    ${state.periods.length === 0 ? '<tr><td colspan="3" style="text-align:center">No hay periodos definidos</td></tr>' : ''}
+                </tbody>
+            </table>
+        </div>
+    `;
 
     document.getElementById('add-period-btn').onclick = () => {
         showModal('Nuevo Periodo', `
@@ -820,7 +1251,7 @@ const renderPeriods = (container) => {
                     <option value="Mensual">Mensual</option>
                 </select>
             </div>
-`, () => {
+        `, () => {
             const name = document.getElementById('p-name').value;
             const frequency = document.getElementById('p-freq').value;
             if (name) {
@@ -842,59 +1273,202 @@ const renderDiscounts = (container) => {
                 <i class="fas fa-plus"></i> Crear Descuento
             </button>
         </div>
-    <div class="card mt-4">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Empleado</th>
-                    <th>Monto</th>
-                    <th>Concepto</th>
-                    <th style="width: 100px">Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${state.discounts.map((d, index) => `
+        <div class="card mt-4">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Empleado</th>
+                        <th class="text-right">Deuda Total</th>
+                        <th class="text-right">Cuota</th>
+                        <th class="text-right">Balance Pendiente</th>
+                        <th>Concepto</th>
+                        <th style="width: 80px">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${(state.discounts || []).map((d, index) => {
+        if (!d.id) d.id = Date.now() + Math.random().toString(36).substr(2, 9);
+        const originalAmount = parseFloat(d.totalAmount || d.amount || 0);
+        const currentBalance = parseFloat(d.remainingBalance ?? originalAmount);
+        const hasPaid = currentBalance < originalAmount;
+
+        return `
                         <tr>
                             <td>${d.employeeName}</td>
-                            <td>$${parseFloat(d.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric">$${originalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric">$${parseFloat(d.installment || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric" style="font-weight: 600; color: ${currentBalance > 0 ? 'var(--danger)' : 'var(--success)'}">
+                                $${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
                             <td>${d.reason}</td>
-                            <td>
-                                <button class="btn-icon delete" onclick="deleteItem('discounts', ${index})">
+                            <td style="display: flex; gap: 5px;">
+                                <button class="btn-icon" onclick="viewLoanHistory('${d.id}')" title="Ver Historial de Cobros">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                                <button class="btn-icon edit admin-only" onclick="showEditDiscountModal('${d.id}')" title="Editar Descuento">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                ${!hasPaid ? `
+                                <button class="btn-icon delete admin-only" onclick="deleteItem('discounts', ${index})" title="Eliminar Descuento (Sin Cobros)">
                                     <i class="fas fa-trash"></i>
                                 </button>
+                                ` : `
+                                <button class="btn-icon delete admin-only" style="opacity: 0.3; cursor: not-allowed;" title="No se puede borrar porque ya tiene pagos registrados. Use Editar." disabled>
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                `}
                             </td>
                         </tr>
-                    `).join('')}
-                ${state.discounts.length === 0 ? '<tr><td colspan="4" style="text-align:center">No hay descuentos registrados</td></tr>' : ''}
-            </tbody>
-        </table>
-    </div>
-`;
+                    `;
+    }).join('')}
+                    ${(!state.discounts || state.discounts.length === 0) ? '<tr><td colspan="6" style="text-align:center">No hay préstamos o descuentos registrados</td></tr>' : ''}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    window.viewLoanHistory = (loanId) => {
+        const loan = state.discounts.find(d => d.id === loanId);
+        if (!loan) return;
+
+        let history = [];
+        state.payrollHistory.forEach(run => {
+            run.results.forEach(res => {
+                if (res.loanDeductions) {
+                    const ded = res.loanDeductions.find(ld => ld.loanId === loanId);
+                    if (ded) {
+                        history.push({
+                            payrollName: run.payrollName || run.name,
+                            date: run.closedAt,
+                            amount: ded.amount
+                        });
+                    }
+                }
+            });
+        });
+
+        showModal(`Historial de Cobros: ${loan.reason}`, `
+                    <p class="mb-4">Empleado: <strong>${loan.employeeName}</strong></p>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nómina</th>
+                                <th>Fecha</th>
+                                <th class="text-right">Monto Cobrado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${history.map(h => `
+                                <tr>
+                                    <td>${h.payrollName}</td>
+                                    <td>${new Date(h.date).toLocaleDateString()}</td>
+                                    <td class="text-right" style="font-weight: bold">$${parseFloat(h.amount).toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                            ${history.length === 0 ? '<tr><td colspan="3" style="text-align:center">No se han registrado cobros aún para este préstamo.</td></tr>' : ''}
+                        </tbody>
+                    </table>
+                `, () => hideModal());
+    };
 
     document.getElementById('add-disc-btn').onclick = () => {
         showModal('Crear Descuento', `
+            <div class="form-group">
+                <label>Empleado</label>
+                <select id="disc-emp" class="form-control">
+                    ${state.employees.filter(e => e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}">${e.firstName} ${e.lastName}</option>`).join('')}
+                </select>
             </div>
             <div class="form-group">
-                <label>Monto</label>
-                <input type="number" id="disc-amount" class="form-control" placeholder="0.00">
+                <label>Monto Deuda Total</label>
+                <input type="number" id="disc-total" class="form-control" placeholder="0.00">
+            </div>
+            <div class="form-group">
+                <label>Cuota a Descontar por Nómina</label>
+                <input type="number" id="disc-installment" class="form-control" placeholder="0.00">
             </div>
             <div class="form-group">
                 <label>Concepto / Motivo</label>
-                <input type="text" id="disc-reason" class="form-control">
+                <input type="text" id="disc-reason" class="form-control" placeholder="Ej: Préstamo personal">
             </div>
-`, () => {
+        `, () => {
             const d = {
+                id: Date.now() + Math.random().toString(36).substr(2, 9),
                 employeeName: document.getElementById('disc-emp').value,
-                amount: document.getElementById('disc-amount').value,
+                totalAmount: document.getElementById('disc-total').value,
+                installment: document.getElementById('disc-installment').value,
+                remainingBalance: document.getElementById('disc-total').value,
                 reason: document.getElementById('disc-reason').value,
                 operation: state.settings.payrollAccounts?.discounts || ''
             };
-            if (d.employeeName && d.amount) {
+            if (d.employeeName && d.totalAmount && d.installment) {
+                if (!state.discounts) state.discounts = [];
                 state.discounts.push(d);
                 saveState();
                 renderSection('discounts');
                 hideModal();
+            } else {
+                alert('Por favor complete el monto total y la cuota.');
             }
+        });
+    };
+    window.showEditDiscountModal = (loanId) => {
+        const d = state.discounts.find(x => x.id === loanId);
+        if (!d) return;
+
+        const originalAmount = parseFloat(d.amount || d.totalAmount || 0);
+        const currentBalance = parseFloat(d.remainingBalance ?? originalAmount);
+        const paidAmount = originalAmount - currentBalance;
+
+        showModal('Editar Descuento', `
+                    <div class="form-group">
+                        <label>Empleado</label>
+                        <input type="text" class="form-control" value="${d.employeeName}" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label>Monto Ya Descontado (Histórico)</label>
+                        <input type="text" class="form-control text-success" value="$${paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}" disabled>
+                        <small class="text-gray">El nuevo Monto Deuda Total no puede ser menor a esto.</small>
+                    </div>
+                    <div class="form-group mt-3">
+                        <label>Nuevo Monto Deuda Total</label>
+                        <input type="number" id="edit-disc-total" class="form-control" value="${originalAmount}" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Nueva Cuota por Nómina</label>
+                        <input type="number" id="edit-disc-installment" class="form-control" value="${d.installment}" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Concepto / Motivo</label>
+                        <input type="text" id="edit-disc-reason" class="form-control" value="${d.reason}">
+                    </div>
+                `, () => {
+            const newTotalStr = document.getElementById('edit-disc-total').value;
+            const newInstallmentStr = document.getElementById('edit-disc-installment').value;
+            const newReason = document.getElementById('edit-disc-reason').value;
+
+            if (!newTotalStr || !newInstallmentStr) {
+                alert('Complete el monto total y la cuota.');
+                return;
+            }
+
+            const newTotal = parseFloat(newTotalStr);
+            const newInstallment = parseFloat(newInstallmentStr);
+
+            if (newTotal < paidAmount) {
+                alert(`Transacción denegada. El empleado ya ha pagado $\${paidAmount.toFixed(2)}. La deuda total no puede ser menor a lo que ya se cobró.`);
+                return;
+            }
+
+            d.totalAmount = newTotal;
+            d.amount = newTotal; // Legacy support
+            d.installment = newInstallment;
+            d.remainingBalance = newTotal - paidAmount;
+            d.reason = newReason;
+
+            saveState();
+            renderSection('discounts');
+            hideModal();
         });
     };
 };
@@ -902,9 +1476,10 @@ const renderDiscounts = (container) => {
 // --- Module: Overtime ---
 const renderOvertime = (container) => {
     container.innerHTML = `
-        <div class="header-action">
-        <h1>Horas Extras</h1>
-        </div>
+                            < div class= "header-action" >
+                            <h1>Gestión de Horas Extras</h1>
+        </div >
+        
         <div class="card mt-4">
             <div class="form-row">
                 <div class="form-group">
@@ -914,138 +1489,198 @@ const renderOvertime = (container) => {
                 <div class="form-group">
                     <label>Empleado</label>
                     <select id="ot-emp" class="form-control">
-                        ${state.employees.filter(e => e.type === 'fixed').map(e => `<option value="${e.firstName} ${e.lastName}" data-salary="${e.salary}">${e.firstName} ${e.lastName}</option>`).join('')}
+                        ${state.employees.filter(e => e.type === 'fixed' && e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}" data-salary="${e.salary}">${e.firstName} ${e.lastName}</option>`).join('')}
                     </select>
                 </div>
             </div>
-            <div class="form-row mt-2">
+            <div class="form-row">
                 <div class="form-group">
                     <label>Cant. Horas</label>
                     <input type="number" id="ot-hours" class="form-control" placeholder="0">
                 </div>
                 <div class="form-group">
-                    <label>Factor (Ej: 1.35)</label>
+                    <label>Factor Mult. (Ej: 1.35 o 2.0)</label>
                     <input type="number" id="ot-factor" class="form-control" value="1.35" step="0.01">
                 </div>
             </div>
             <div id="ot-result" class="mt-4 p-4 glass-bg rounded-md hidden">
-                <h3>Resumen de Pago: <span id="ot-pay-value" class="text-accent"></span></h3>
+                <h3 style="margin-bottom: 5px;">Cálculo Estimado: <span id="ot-pay-value" class="text-accent"></span></h3>
+                <small id="ot-formula-info" class="text-gray"></small>
             </div>
-            <button class="btn btn-primary mt-4" id="calc-ot">Calcular y Registrar</button>
+            <button class="btn btn-primary mt-4" id="save-ot-btn">
+                <i class="fas fa-save"></i> Calcular y Registrar
+            </button>
         </div>
 
         <div class="card mt-4">
-            <h3>Horas Extras Registradas</h3>
-            <table class="data-table">
+            <h3>Registros del Periodo Actual</h3>
+            <table class="data-table mt-2">
                 <thead>
                     <tr>
                         <th>Fecha</th>
                         <th>Empleado</th>
                         <th>Horas</th>
                         <th>Factor</th>
-                        <th>Monto</th>
-                        <th style="width: 100px">Acciones</th>
+                        <th class="text-right">Monto</th>
+                        <th style="width: 80px">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${state.overtime.map((ot, index) => `
-                        <tr>
-                            <td>${ot.date}</td>
-                            <td>${ot.employeeName}</td>
-                            <td>${ot.hours}</td>
-                            <td>${ot.factor}</td>
-                            <td>$${parseFloat(ot.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            <td>
-                                <button class="btn-icon delete" onclick="deleteItem('overtime', ${index})">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    `).join('')}
-                    ${state.overtime.length === 0 ? '<tr><td colspan="6" style="text-align:center">No hay registros de horas extras</td></tr>' : ''}
+                    ${(() => {
+            const bounds = getPayrollBounds();
+            const filtered = (state.overtime || []).map((ot, idx) => ({ ...ot, idx })).filter(ot => {
+                if (!bounds) return false;
+                return ot.date >= bounds.min && ot.date <= bounds.max;
+            });
+
+            return filtered.map(ot => `
+                            <tr>
+                                <td>${ot.date}</td>
+                                <td>${ot.employeeName}</td>
+                                <td>${ot.hours}</td>
+                                <td>${ot.factor}</td>
+                                <td class="td-numeric">$${parseFloat(ot.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td>
+                                    <button class="btn-icon delete admin-only" onclick="deleteItem('overtime', ${ot.idx})">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('');
+        })()}
+                    ${(() => {
+            const bounds = getPayrollBounds();
+            const count = (state.overtime || []).filter(ot => bounds && ot.date >= bounds.min && ot.date <= bounds.max).length;
+            return count === 0 ? '<tr><td colspan="6" style="text-align:center">No hay horas extras en este periodo</td></tr>' : '';
+        })()}
                 </tbody>
             </table>
         </div>
-`;
+        `;
 
-    document.getElementById('calc-ot').onclick = () => {
+    document.getElementById('save-ot-btn').onclick = () => {
         const empSelect = document.getElementById('ot-emp');
+        const empName = empSelect.value;
         const salary = parseFloat(empSelect.selectedOptions[0].dataset.salary);
         const hours = parseFloat(document.getElementById('ot-hours').value);
         const factor = parseFloat(document.getElementById('ot-factor').value);
         const date = document.getElementById('ot-date').value;
 
         if (salary && hours && date) {
-            const hourlyRate = (salary / 23.83) / 8;
+            const bounds = getPayrollBounds();
+            if (bounds && (date < bounds.min || date > bounds.max)) {
+                alert(`La fecha debe estar dentro del rango de la nómina(${bounds.min} a ${bounds.max})`);
+                return;
+            }
+
+            const dailyRate = salary / 23.83;
+            const hourlyRate = dailyRate / 8;
             const extraPay = hourlyRate * hours * factor;
 
-            const ot = {
-                date: date,
-                employeeName: empSelect.value,
-                hours: hours,
-                factor: factor,
-                amount: extraPay.toFixed(2)
-            };
+            state.overtime.push({
+                date,
+                employeeName: empName,
+                hours,
+                factor,
+                amount: extraPay.toFixed(2),
+                operation: state.settings.payrollAccounts?.overtime || ''
+            });
 
-            state.overtime.push(ot);
             saveState();
             renderSection('overtime');
+            alert('Horas extras registradas correctamente.');
         } else {
             alert('Por favor complete todos los campos.');
         }
     };
+
+    // Real-time calculation preview
+    const updatePreview = () => {
+        const empSelect = document.getElementById('ot-emp');
+        const salary = parseFloat(empSelect.selectedOptions[0].dataset.salary);
+        const hours = parseFloat(document.getElementById('ot-hours').value) || 0;
+        const factor = parseFloat(document.getElementById('ot-factor').value) || 1.35;
+
+        if (salary && hours > 0) {
+            const dailyRate = salary / 23.83;
+            const hourlyRate = dailyRate / 8;
+            const extraPay = hourlyRate * hours * factor;
+
+            document.getElementById('ot-pay-value').innerText = `$${extraPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `;
+            document.getElementById('ot-formula-info').innerText = `Formula: ($${salary.toFixed(2)} / 23.83 / 8) * ${hours} * ${factor} `;
+            document.getElementById('ot-result').classList.remove('hidden');
+        } else {
+            document.getElementById('ot-result').classList.add('hidden');
+        }
+    };
+
+    document.getElementById('ot-hours').oninput = updatePreview;
+    document.getElementById('ot-factor').oninput = updatePreview;
+    document.getElementById('ot-emp').onchange = updatePreview;
 };
 
 // --- Module: Incentives ---
 const renderIncentives = (container) => {
     container.innerHTML = `
-        <div class="header-action">
+            < div class="header-action" >
             <h1>Incentivos</h1>
             <button class="btn btn-primary" id="add-inc-btn">
-                <i class="fas fa-gift"></i> Aplicar Incentivo
+                <i class="fas fa-plus"></i> Aplicar Incentivo
             </button>
-        </div>
-    <div class="card mt-4">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Fecha</th>
-                    <th>Empleado</th>
-                    <th>Monto</th>
-                    <th>Motivo</th>
-                    <th style="width: 100px">Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${state.incentives.map((inc, index) => `
+        </div >
+            <div class="card mt-4">
+                <table class="data-table">
+                    <thead>
                         <tr>
-                            <td>${inc.date}</td>
-                            <td>${inc.employeeName}</td>
-                            <td>$${parseFloat(inc.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            <td>${inc.reason}</td>
-                            <td>
-                                <button class="btn-icon delete" onclick="deleteItem('incentives', ${index})">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </td>
+                            <th>Fecha</th>
+                            <th>Empleado</th>
+                            <th>Monto</th>
+                            <th>Motivo</th>
+                            <th style="width: 100px">Acciones</th>
                         </tr>
-                    `).join('')}
-                ${state.incentives.length === 0 ? '<tr><td colspan="5" style="text-align:center">No hay incentivos registrados</td></tr>' : ''}
-            </tbody>
-        </table>
-    </div>
-`;
+                    </thead>
+                    <tbody>
+                        ${(() => {
+            const bounds = getPayrollBounds();
+            const filtered = (state.incentives || []).map((inc, idx) => ({ ...inc, idx })).filter(inc => {
+                if (!bounds) return false;
+                return inc.date >= bounds.min && inc.date <= bounds.max;
+            });
+
+            return filtered.map(inc => `
+                            <tr>
+                                <td>${inc.date}</td>
+                                <td>${inc.employeeName}</td>
+                                <td>$${parseFloat(inc.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td>${inc.reason}</td>
+                                <td>
+                                    <button class="btn-icon delete admin-only" onclick="deleteItem('incentives', ${inc.idx})">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('');
+        })()}
+                        ${(() => {
+            const bounds = getPayrollBounds();
+            const count = (state.incentives || []).filter(inc => bounds && inc.date >= bounds.min && inc.date <= bounds.max).length;
+            return count === 0 ? '<tr><td colspan="5" style="text-align:center">No hay incentivos en este periodo</td></tr>' : '';
+        })()}
+                    </tbody>
+                </table>
+            </div>
+        `;
 
     document.getElementById('add-inc-btn').onclick = () => {
         showModal('Aplicar Incentivo', `
-            <div class="form-group">
+            < div class="form-group" >
                 <label>Fecha</label>
                 <input type="date" id="inc-date" class="form-control" value="${new Date().toISOString().split('T')[0]}">
             </div>
             <div class="form-group">
                 <label>Empleado</label>
                 <select id="inc-emp" class="form-control">
-                    ${state.employees.map(e => `<option value="${e.firstName} ${e.lastName}">${e.firstName} ${e.lastName}</option>`).join('')}
+                    ${state.employees.filter(e => e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}">${e.firstName} ${e.lastName}</option>`).join('')}
                 </select>
             </div>
             <div class="form-group">
@@ -1056,7 +1691,7 @@ const renderIncentives = (container) => {
                 <label>Motivo</label>
                 <input type="text" id="inc-reason" class="form-control" placeholder="Ej: Bono por meta">
             </div>
-`, () => {
+        `, () => {
             const inc = {
                 date: document.getElementById('inc-date').value,
                 employeeName: document.getElementById('inc-emp').value,
@@ -1065,6 +1700,13 @@ const renderIncentives = (container) => {
                 operation: state.settings.payrollAccounts?.incentives || ''
             };
             if (inc.employeeName && inc.amount && inc.date) {
+                const bounds = getPayrollBounds();
+                if (bounds && (inc.date < bounds.min || inc.date > bounds.max)) {
+                    alert(`La fecha debe estar dentro del rango de la nómina(${bounds.min} a ${bounds.max})`);
+                    return;
+                }
+
+                if (!state.incentives) state.incentives = [];
                 state.incentives.push(inc);
                 saveState();
                 renderSection('incentives');
@@ -1074,38 +1716,55 @@ const renderIncentives = (container) => {
     };
 };
 
-// ... More modules in next turn ...
+const getNextDateSuggestion = (periodName) => {
+    // Priority 1: Check if there's an active payroll of this type (if we are allowed to have multiple, otherwise it's closed)
+    // But usually we close before opening. So check history.
+    const history = state.payrollHistory || [];
+    const sameType = history
+        .filter(h => h.periodType === periodName && h.periodEnd)
+        .sort((a, b) => new Date(b.periodEnd) - new Date(a.periodEnd));
+
+    if (sameType.length > 0) {
+        const lastEnd = new Date(sameType[0].periodEnd + 'T00:00:00');
+        lastEnd.setDate(lastEnd.getDate() + 1);
+        return lastEnd.toISOString().split('T')[0];
+    }
+
+    // Priority 2: Return today
+    return new Date().toISOString().split('T')[0];
+};
 
 // --- Module: Payroll Runs (Abrir Nómina) ---
 const renderPayrollRuns = (container) => {
     container.innerHTML = `
-        <div class="header-action">
+            < div class="header-action" >
             <h1>Gestión de Pagos (Nóminas)</h1>
             <button class="btn btn-primary" id="open-payroll-btn">
                 <i class="fas fa-play"></i> Abrir Nueva Nómina
             </button>
-        </div>
-    <div class="card mt-4">
-        <div id="active-payroll-info">
-            ${state.activePayroll ? `
+        </div >
+            <div class="card mt-4">
+                <div id="active-payroll-info">
+                    ${state.activePayroll ? `
                     <div class="status-box success">
                         <h3>Nómina Actual: ${state.activePayroll.name}</h3>
                         <p>Periodo: ${state.activePayroll.periodType} | Inicio: ${state.activePayroll.startDate}</p>
                     </div>
                 ` : '<p>No hay ninguna nómina habilitada para pago en este momento.</p>'}
-        </div>
-    </div>
-`;
+                </div>
+            </div>
+        `;
 
     document.getElementById('open-payroll-btn').onclick = () => {
         showModal('Abrir Nómina', `
-            <div class="form-group">
+            < div class="form-group" >
                 <label>Nombre identificador</label>
                 <input type="text" id="run-name" class="form-control" placeholder="Ej: Nómina Marzo Q1">
             </div>
             <div class="form-group">
                 <label>Tipo de Periodo</label>
-                <select id="run-period" class="form-control">
+                <select id="run-period" class="form-control" onchange="document.getElementById('run-date').value = getNextDateSuggestion(this.value)">
+                    <option value="" disabled selected>Seleccione un periodo...</option>
                     ${state.periods.map(p => `<option value="${p.name}">${p.name} (${p.frequency})</option>`).join('')}
                 </select>
             </div>
@@ -1113,7 +1772,7 @@ const renderPayrollRuns = (container) => {
                 <label>Fecha de Inicio del Pago</label>
                 <input type="date" id="run-date" class="form-control">
             </div>
-`, () => {
+        `, () => {
             state.activePayroll = {
                 id: Date.now(),
                 name: document.getElementById('run-name').value,
@@ -1136,15 +1795,28 @@ const renderDailyRegistration = (container) => {
         return;
     }
 
+    if (!window.dailyRegTab) window.dailyRegTab = 'individual';
+    const tab = window.dailyRegTab;
+
     const bounds = getPayrollBounds();
+    const defaultDate = bounds ? bounds.min : new Date().toISOString().split('T')[0];
+
     container.innerHTML = `
-    <h1>Registro Diario - Empleados Móviles</h1>
+            < div class="header-action" >
+            <h1>Registro Diario - Empleados Móviles</h1>
+            <div class="tabs no-print">
+                <button class="tab-btn ${tab === 'individual' ? 'active' : ''}" onclick="window.dailyRegTab = 'individual'; renderSection('daily-registration')">Individual</button>
+                <button class="tab-btn ${tab === 'masivo' ? 'active' : ''}" onclick="window.dailyRegTab = 'masivo'; renderSection('daily-registration')">Registro Masivo</button>
+            </div>
+        </div >
+
+            ${tab === 'individual' ? `
         <div class="card mt-4">
             <div class="form-row">
                 <div class="form-group">
                     <label>Fecha</label>
                     <input type="date" id="reg-date" class="form-control" 
-                           value="${bounds ? bounds.min : new Date().toISOString().split('T')[0]}"
+                           value="${defaultDate}"
                            ${bounds ? `min="${bounds.min}" max="${bounds.max}"` : ''}>
                 </div>
                 <div class="form-group">
@@ -1156,23 +1828,17 @@ const renderDailyRegistration = (container) => {
                 </div>
                 <div class="form-group">
                     <label>Empleado Móvil</label>
-                    <select id="reg-emp" class="form-control">
-                        ${state.employees.filter(e => e.type === 'mobile').map(e => `<option value="${e.firstName} ${e.lastName}">${e.firstName} ${e.lastName}</option>`).join('')}
-                    </select>
+                    <input list="list-emp" id="reg-emp" class="form-control" placeholder="Buscar empleado...">
                 </div>
             </div>
             <div class="form-row">
                 <div class="form-group">
                     <label>Operación</label>
-                    <select id="reg-op" class="form-control">
-                        ${state.operations.map(o => `<option value="${o.name}">${o.name}</option>`).join('')}
-                    </select>
+                    <input list="list-op" id="reg-op" class="form-control" placeholder="Buscar operación...">
                 </div>
                 <div class="form-group">
                     <label>Actividad</label>
-                    <select id="reg-act" class="form-control">
-                        ${state.activities.map(a => `<option value="${a.name}">${a.name}</option>`).join('')}
-                    </select>
+                    <input list="list-act" id="reg-act" class="form-control" placeholder="Buscar actividad...">
                 </div>
             </div>
             <div class="form-row">
@@ -1184,12 +1850,68 @@ const renderDailyRegistration = (container) => {
                     <label>¿Aplicar Descuento TSS?</label>
                     <select id="reg-tss" class="form-control">
                         <option value="si">Sí — Descontar TSS</option>
-                        <option value="no">No — Sin descuento TSS</option>
+                        <option value="no" selected>No — Sin descuento TSS</option>
                     </select>
                 </div>
             </div>
             <button class="btn btn-primary" id="save-daily">Registrar Día de Trabajo</button>
         </div>
+        ` : `
+        <div class="card mt-4">
+            <div class="form-row" style="align-items: flex-end;">
+                <div class="form-group">
+                    <label>Fecha del Lote</label>
+                    <input type="date" id="bulk-date" class="form-control" 
+                           value="${defaultDate}"
+                           ${bounds ? `min="${bounds.min}" max="${bounds.max}"` : ''}
+                           onchange="renderBulkTable()">
+                </div>
+                <div class="form-group">
+                    <label>Departamento</label>
+                    <select id="bulk-dept" class="form-control" onchange="renderBulkTable()">
+                        <option value="">Seleccione Departamento...</option>
+                        ${state.departments.map(d => `<option value="${d.name}">${d.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 2;">
+                    <label>Acción en Lote (Aplicar a todos)</label>
+                    <div style="display: flex; gap: 5px;">
+                        <input list="list-op" id="batch-op" class="form-control" placeholder="Operación...">
+                        <input list="list-act" id="batch-act" class="form-control" placeholder="Actividad..." onchange="updateBatchAmount(this.value)">
+                        <select id="batch-tss" class="form-control" style="width: 100px;">
+                            <option value="no">No TSS</option>
+                            <option value="si">Sí</option>
+                        </select>
+                        <button class="btn btn-secondary" onclick="applyBatchToAll()">Aplicar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4" style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Trabajador</th>
+                            <th>Operación</th>
+                            <th>Actividad</th>
+                            <th>Monto</th>
+                            <th>TSS</th>
+                            <th style="width: 50px"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="bulk-tbody">
+                        <tr><td colspan="6" style="text-align:center" class="text-gray">Seleccione un departamento para cargar los empleados</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-4" style="display: flex; justify-content: flex-end;">
+                <button class="btn btn-primary" onclick="saveBulkLogs()">
+                    <i class="fas fa-save"></i> Guardar Todo el Lote
+                </button>
+            </div>
+        </div>
+        `}
 
         <div class="card mt-4">
             <h3>Registros del Periodo Actual</h3>
@@ -1204,7 +1926,7 @@ const renderDailyRegistration = (container) => {
                         <th style="width: 100px">Acciones</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="daily-logs-tbody">
                     ${(state.activePayroll.dailyLogs || []).map((log, index) => `
                         <tr>
                             <td>${log.date}</td>
@@ -1216,7 +1938,7 @@ const renderDailyRegistration = (container) => {
                                 <button class="btn-icon edit" onclick="editDailyLog(${index})">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn-icon delete" onclick="deleteDailyLog(${index})">
+                                <button class="btn-icon delete admin-only" onclick="deleteDailyLog(${index})">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </td>
@@ -1225,7 +1947,17 @@ const renderDailyRegistration = (container) => {
                 </tbody>
             </table>
         </div>
-`;
+
+        <datalist id="list-emp">
+            ${state.employees.filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}"></option>`).join('')}
+        </datalist>
+        <datalist id="list-op">
+            ${state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => `<option value="${o.name}"></option>`).join('')}
+        </datalist>
+        <datalist id="list-act">
+            ${state.activities.map(a => `<option value="${a.name}"></option>`).join('')}
+        </datalist>
+        `;
 
     document.getElementById('save-daily').onclick = () => {
         const empName = document.getElementById('reg-emp').value;
@@ -1234,7 +1966,7 @@ const renderDailyRegistration = (container) => {
         // Validation: Hire Date
         const employee = state.employees.find(e => `${e.firstName} ${e.lastName} ` === empName);
         if (employee && employee.hireDate && regDate < employee.hireDate) {
-            alert(`No se puede registrar labor antes de la fecha de ingreso del empleado (${employee.hireDate})`);
+            alert(`No se puede registrar labor antes de la fecha de ingreso del empleado(${employee.hireDate})`);
             return;
         }
 
@@ -1249,137 +1981,361 @@ const renderDailyRegistration = (container) => {
 
         if (log.employee && log.amount) {
             if (!state.activePayroll.dailyLogs) state.activePayroll.dailyLogs = [];
+
+            // Check for duplicates
+            const isDuplicate = state.activePayroll.dailyLogs.find(l => l.employee === log.employee && l.date === log.date);
+            if (isDuplicate) {
+                alert(`Atención: El empleado ${log.employee} ya tiene un salario digitado para el día ${log.date}.`);
+                return;
+            }
+
             state.activePayroll.dailyLogs.push(log);
             saveState();
             renderSection('daily-registration');
-            alert('Registro guardado');
         }
     };
 
     const deptSelect = document.getElementById('reg-dept');
-    const empSelect = document.getElementById('reg-emp');
     deptSelect.onchange = () => {
         const selectedDept = deptSelect.value;
         const filteredEmps = state.employees.filter(e =>
-            e.type === 'mobile' && (selectedDept === 'all' || e.department === selectedDept)
+            e.type === 'mobile' && e.active !== false && (selectedDept === 'all' || e.department === selectedDept)
         );
-        empSelect.innerHTML = filteredEmps.map(e =>
-            `<option value="${e.firstName} ${e.lastName}">${e.firstName} ${e.lastName}</option>`
-        ).join('');
+        const listEmp = document.getElementById('list-emp');
+        if (listEmp) {
+            listEmp.innerHTML = filteredEmps.map(e =>
+                `< option value = "${e.firstName} ${e.lastName}" ></option > `
+            ).join('');
+        }
+        const regEmpInput = document.getElementById('reg-emp');
+        if (regEmpInput) {
+            regEmpInput.value = '';
+            const rows = document.querySelectorAll('#daily-logs-tbody tr');
+            rows.forEach(row => row.style.display = '');
+        }
     };
+
+    const regEmpInput = document.getElementById('reg-emp');
+    if (regEmpInput) {
+        regEmpInput.oninput = () => {
+            const filter = regEmpInput.value.toLowerCase().trim();
+            const rows = document.querySelectorAll('#daily-logs-tbody tr');
+            rows.forEach(row => {
+                const empName = row.cells[1].textContent.toLowerCase();
+                row.style.display = empName.includes(filter) ? '' : 'none';
+            });
+        };
+    }
+
+    // Auto-populate amount based on activity
+    const regActInput = document.getElementById('reg-act');
+    const regAmountInput = document.getElementById('reg-amount');
+    if (regActInput && regAmountInput) {
+        regActInput.oninput = () => {
+            const val = regActInput.value.trim();
+            const activity = state.activities.find(a => a.name === val);
+            if (activity && activity.dailySalary) {
+                regAmountInput.value = activity.dailySalary;
+            }
+        };
+    }
+};
+
+window.updateBatchAmount = (actName) => {
+    const activity = state.activities.find(a => a.name === actName);
+    if (activity && activity.dailySalary) {
+        // We don't have a batch amount input, but maybe we should or it applies to rows
+    }
+};
+
+window.renderBulkTable = () => {
+    const dept = document.getElementById('bulk-dept').value;
+    const date = document.getElementById('bulk-date').value;
+    const tbody = document.getElementById('bulk-tbody');
+
+    if (!dept) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center" class="text-gray">Seleccione un departamento</td></tr>';
+        return;
+    }
+
+    const emps = state.employees.filter(e => e.type === 'mobile' && e.active !== false && e.department === dept);
+    if (emps.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center" class="text-gray">No hay empleados móviles en este departamento</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = emps.map(e => {
+        const fullName = `${e.firstName} ${e.lastName} `;
+        const hasLog = (state.activePayroll.dailyLogs || []).some(l => l.employee === fullName && l.date === date);
+
+        // Get pre-selected activity amount
+        let defaultAmount = '';
+        if (e.activity) {
+            const activity = state.activities.find(a => a.name === e.activity);
+            if (activity && activity.dailySalary) {
+                defaultAmount = activity.dailySalary;
+            }
+        }
+
+        return `
+            < tr data - emp="${fullName}" class="${hasLog ? 'duplicate-row' : ''}" >
+                        <td style="font-weight: 500;">
+                            ${fullName}
+                            ${hasLog ? '<br><small class="text-danger"><i class="fas fa-exclamation-triangle"></i> Ya tiene registro hoy</small>' : ''}
+                        </td>
+                        <td><input list="list-op" class="form-control bulk-op" value="${e.operation || ''}"></td>
+                        <td><input list="list-act" class="form-control bulk-act" value="${e.activity || ''}" oninput="updateRowAmount(this)"></td>
+                        <td><input type="number" class="form-control bulk-amt" value="${defaultAmount}" placeholder="0.00"></td>
+                        <td>
+                            <select class="form-control bulk-tss">
+                                <option value="no">No</option>
+                                <option value="si">Sí</option>
+                            </select>
+                        </td>
+                        <td>
+                            <button class="btn-icon delete admin-only" onclick="this.closest('tr').remove()" title="Quitar del lote">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </td>
+                    </tr >
+            `;
+    }).join('');
+};
+
+window.updateRowAmount = (input) => {
+    const actName = input.value;
+    const targetRow = input.closest('tr');
+    const amtInput = targetRow.querySelector('.bulk-amt');
+    const activity = state.activities.find(a => a.name === actName);
+    if (activity && activity.dailySalary) {
+        amtInput.value = activity.dailySalary;
+    }
+};
+
+window.applyBatchToAll = () => {
+    const op = document.getElementById('batch-op').value;
+    const act = document.getElementById('batch-act').value;
+    const tss = document.getElementById('batch-tss').value;
+    const activity = state.activities.find(a => a.name === act);
+
+    document.querySelectorAll('#bulk-tbody tr').forEach(row => {
+        if (op) row.querySelector('.bulk-op').value = op;
+        if (act) {
+            row.querySelector('.bulk-act').value = act;
+            if (activity && activity.dailySalary) {
+                row.querySelector('.bulk-amt').value = activity.dailySalary;
+            }
+        }
+        if (tss) row.querySelector('.bulk-tss').value = tss;
+    });
+};
+
+window.saveBulkLogs = () => {
+    const date = document.getElementById('bulk-date').value;
+    const rows = document.querySelectorAll('#bulk-tbody tr');
+    const logsToAdd = [];
+    let duplicates = 0;
+
+    rows.forEach(row => {
+        const emp = row.getAttribute('data-emp');
+        const op = row.querySelector('.bulk-op').value;
+        const act = row.querySelector('.bulk-act').value;
+        const amt = row.querySelector('.bulk-amt').value;
+        const tss = row.querySelector('.bulk-tss').value;
+
+        if (emp && amt) {
+            // Final check for duplicates in state
+            const exists = (state.activePayroll.dailyLogs || []).some(l => l.employee === emp && l.date === date);
+            if (exists) {
+                duplicates++;
+            } else {
+                logsToAdd.push({ date, employee: emp, op, act, amount: amt, applyTSS: tss });
+            }
+        }
+    });
+
+    if (logsToAdd.length === 0) {
+        alert("No hay registros válidos para guardar o todos son duplicados.");
+        return;
+    }
+
+    if (duplicates > 0) {
+        if (!confirm(`${duplicates} empleados ya tenían registros para esta fecha y fueron ignorados. ¿Desea guardar el resto ? `)) return;
+    }
+
+    if (!state.activePayroll.dailyLogs) state.activePayroll.dailyLogs = [];
+    state.activePayroll.dailyLogs.push(...logsToAdd);
+    saveState();
+    alert(`Se han guardado ${logsToAdd.length} registros exitosamente.`);
+    renderSection('daily-registration');
 };
 
 // --- Module: Closing ---
 const renderClosing = (container) => {
-    container.innerHTML = `
-    <h1>Cierre de Nómina</h1>
-        <div class="card mt-4">
-            <p>Al cerrar la nómina, los registros del periodo actual quedarán bloqueados y no podrán ser modificados.</p>
-            ${state.activePayroll ? `
-                <div class="mt-4">
-                    <button class="btn btn-danger" id="close-payroll-btn">
-                        <i class="fas fa-lock"></i> Cerrar Nómina Actual (${state.activePayroll.name})
-                    </button>
+    let html = `
+            < h1 > Cierre de Nómina</h1 >
+                <div class="card mt-4">
+                    <p>Al cerrar la nómina, los registros del periodo actual quedarán bloqueados y no podrán ser modificados.</p>
+                    ${state.activePayroll ? `
+                        <div class="mt-4" style="display: flex; gap: 15px;">
+                            <button class="btn btn-danger" id="close-payroll-btn">
+                                <i class="fas fa-lock"></i> Cerrar Nómina Actual (${state.activePayroll.name})
+                            </button>
+                            <button class="btn btn-secondary" id="delete-open-payroll-btn" style="background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;">
+                                <i class="fas fa-trash-alt"></i> Eliminar Nómina (Descartar)
+                            </button>
+                        </div>
+                    ` : '<p class="mt-4">No hay ninguna nómina abierta para cerrar.</p>'}
                 </div>
-            ` : '<p class="mt-4">No hay ninguna nómina abierta para cerrar.</p>'}
-        </div>
-`;
-
-    if (state.activePayroll) {
-        document.getElementById('close-payroll-btn').onclick = () => {
-            if (confirm('¿Está seguro que desea cerrar esta nómina? Los montos calculados se guardarán en el historial para fines de Regalía Pascual.')) {
-
-                // Save snapshots of each employee results
-                const bounds = getPayrollBounds();
-                const snapshot = {
-                    payrollName: state.activePayroll.name,
-                    periodStart: bounds.min,
-                    periodEnd: bounds.max,
-                    closedAt: new Date().toISOString(),
-                    results: state.employees.map(emp => {
-                        const res = calculateEmployeePayrollData(emp, state.activePayroll);
-                        return {
-                            idNumber: emp.idNumber,
-                            fullName: `${emp.firstName} ${emp.lastName}`,
-                            firstName: emp.firstName,
-                            lastName: emp.lastName,
-                            type: emp.type,
-                            dept: emp.department,
-                            base: res.base,
-                            incentives: res.inc,
-                            overtime: res.ot,
-                            christmas: res.chr,
-                            brute: res.brute,
-                            tss: res.tss,
-                            isr: res.isr,
-                            disc: res.disc,
-                            net: res.net
-                        };
-                    })
-                };
-
-                state.payrollHistory.push(snapshot);
-                state.activePayroll = null;
-                saveState();
-                renderSection('closing');
-                alert('La nómina ha sido cerrada y guardada en el historial.');
-            }
-        };
-    } else {
-        container.innerHTML += `
-            <div class="card mt-4" style="text-align: center; padding: 40px;">
-                <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success); margin-bottom: 20px;"></i>
-                <h2>No hay ninguna nómina abierta actualmente.</h2>
-                <p class="text-gray">Puede crear un nuevo periodo desde la sección de "Periodos".</p>
-            </div>
         `;
+
+    if (!state.activePayroll) {
+        html += `
+            < div class="card mt-4" style = "text-align: center; padding: 40px;" >
+                        <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success); margin-bottom: 20px;"></i>
+                        <h2>No hay ninguna nómina abierta actualmente.</h2>
+                        <p class="text-gray">Puede crear un nuevo periodo desde la sección de "Periodos".</p>
+                    </div >
+            `;
     }
 
-    // --- Section: Historical Payrolls ---
-    container.innerHTML += `
-        <div class="mt-5">
-            <h2 class="mb-4"><i class="fas fa-history"></i> Historial de Nóminas Cerradas</h2>
-            <div class="card">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Nombre de la Nómina</th>
-                            <th>Periodo</th>
-                            <th>Fecha de Cierre</th>
-                            <th style="text-align: center">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${state.payrollHistory.length > 0 ?
-            state.payrollHistory.slice().reverse().map((run, i) => `
+    html += `
+            < div class="mt-5" >
+                    <h2 class="mb-4"><i class="fas fa-history"></i> Historial de Nóminas Cerradas</h2>
+                    <div class="card">
+                        <table class="data-table">
+                            <thead>
                                 <tr>
-                                    <td style="font-weight: 500">${run.payrollName}</td>
-                                    <td>${run.periodStart} al ${run.periodEnd}</td>
-                                    <td>${new Date(run.closedAt).toLocaleString()}</td>
-                                    <td style="text-align: center">
-                                        <button class="btn btn-sm btn-secondary" onclick="window.viewHistoricalPayroll(${state.payrollHistory.length - 1 - i})">
-                                            <i class="fas fa-eye"></i> Consultar
-                                        </button>
-                                        <button class="btn btn-sm btn-primary" onclick="window.printHistoricalPayroll(${state.payrollHistory.length - 1 - i})">
-                                            <i class="fas fa-print"></i> Imprimir
-                                        </button>
-                                    </td>
+                                    <th>Nombre de la Nómina</th>
+                                    <th>Periodo</th>
+                                    <th>Fecha de Cierre</th>
+                                    <th style="text-align: center">Acciones</th>
                                 </tr>
-                            `).join('') :
+                            </thead>
+                            <tbody>
+                                ${state.payrollHistory.length > 0 ?
+            state.payrollHistory.slice().reverse().map((run, i) => `
+                                        <tr>
+                                            <td style="font-weight: 500">${run.payrollName || run.name || 'Sin nombre'}</td>
+                                            <td>${run.periodStart} al ${run.periodEnd}</td>
+                                            <td>${new Date(run.closedAt).toLocaleString()}</td>
+                                            <td style="text-align: center">
+                                                <button class="btn btn-sm btn-secondary" onclick="window.viewHistoricalPayroll(${state.payrollHistory.length - 1 - i})">
+                                                    <i class="fas fa-eye"></i> Consultar
+                                                </button>
+                                                <button class="btn btn-sm btn-primary" onclick="window.printHistoricalPayroll(${state.payrollHistory.length - 1 - i})">
+                                                    <i class="fas fa-print"></i> Imprimir
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('') :
             '<tr><td colspan="4" style="text-align: center; padding: 20px;">No hay nóminas cerradas en el historial.</td></tr>'
         }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    `;
-};
+                            </tbody>
+                        </table>
+                    </div>
+                </div >
+            `;
 
-window.printHistoricalPayroll = (index) => {
-    window.viewHistoricalPayroll(index);
-    setTimeout(() => {
-        window.print();
-    }, 500);
+    container.innerHTML = html;
+
+    if (state.activePayroll) {
+        const closeBtn = document.getElementById('close-payroll-btn');
+        if (closeBtn) {
+            closeBtn.onclick = () => {
+                if (confirm('¿Está seguro que desea cerrar esta nómina? Los montos calculados se guardarán en el historial para fines de Regalía Pascual.')) {
+                    try {
+                        const bounds = getPayrollBounds();
+                        if (!bounds) throw new Error("No se pudierón calcular los límites del periodo.");
+
+                        const snapshot = {
+                            id: Date.now(),
+                            payrollName: state.activePayroll.name || "Nómina sin nombre",
+                            periodType: state.activePayroll.periodType,
+                            periodStart: bounds.min,
+                            periodEnd: bounds.max,
+                            closedAt: new Date().toISOString(),
+                            dailyLogs: [...(state.activePayroll.dailyLogs || [])],
+                            results: state.employees.filter(e => e && e.active !== false).map(emp => {
+                                try {
+                                    const res = calculateEmployeePayrollData(emp, state.activePayroll);
+                                    return {
+                                        idNumber: emp.idNumber,
+                                        fullName: `${emp.firstName} ${emp.lastName} `,
+                                        type: emp.type,
+                                        dept: emp.department,
+                                        base: res.base || 0,
+                                        incentives: res.inc || 0,
+                                        overtime: res.ot || 0,
+                                        christmas: res.chr || 0,
+                                        brute: res.brute || 0,
+                                        tss: res.tss || 0,
+                                        isr: res.isr || 0,
+                                        disc: res.disc || 0,
+                                        net: res.net || 0
+                                    };
+                                } catch (err) {
+                                    console.error(`Error calculando empleado ${emp.firstName}: `, err);
+                                    throw new Error(`Error en empleado ${emp.firstName} ${emp.lastName}: ${err.message} `);
+                                }
+                            })
+                        };
+
+                        // Update Loan Balances and Track History
+                        snapshot.results.forEach(res => {
+                            if (res.disc > 0) {
+                                const empLoans = state.discounts.filter(d => (d.employeeName || '').trim().toLowerCase() === (res.fullName || '').trim().toLowerCase());
+                                let remainingToDeduct = res.disc;
+                                res.loanDeductions = []; // Track which loans were hit
+
+                                for (let loan of empLoans) {
+                                    if (remainingToDeduct <= 0.005) break;
+                                    const balance = parseFloat(loan.remainingBalance) || 0;
+                                    if (balance <= 0) continue;
+
+                                    const deductionCap = parseFloat(loan.installment) || balance;
+                                    const deduction = Math.min(remainingToDeduct, balance, deductionCap);
+
+                                    // Ensure loan has an ID if it's old
+                                    if (!loan.id) loan.id = Date.now() + Math.random().toString(36).substr(2, 9);
+
+                                    loan.remainingBalance = Math.max(0, balance - deduction).toFixed(2);
+                                    remainingToDeduct -= deduction;
+
+                                    // Record for history
+                                    res.loanDeductions.push({
+                                        loanId: loan.id,
+                                        amount: deduction
+                                    });
+                                }
+                            }
+                        });
+
+                        state.payrollHistory.push(snapshot);
+                        state.activePayroll = null;
+                        saveState();
+                        renderSection('closing');
+                        alert('Nómina cerrada exitosamente.');
+                    } catch (globalErr) {
+                        console.error("Error crítico al cerrar nómina:", globalErr);
+                        alert("No se pudo cerrar la nómina. Error: " + globalErr.message);
+                    }
+                }
+            };
+        }
+
+        const deleteBtn = document.getElementById('delete-open-payroll-btn');
+        if (deleteBtn) {
+            deleteBtn.onclick = () => {
+                if (confirm(`¿Está TOTALMENTE SEGURO de eliminar la nómina "${state.activePayroll.name}" ?\n\nEsto borrará todos los registros diarios asociados y no se podrá deshacer.`)) {
+                    state.activePayroll = null;
+                    saveState();
+                    renderSection('closing');
+                    alert('Nómina eliminada permanentemente.');
+                }
+            };
+        }
+    }
 };
 
 window.toggleHistoricalDept = (index, deptName) => {
@@ -1416,6 +2372,7 @@ window.viewHistoricalPayroll = (index) => {
     run.results.forEach(res => {
         const dName = res.dept || 'Sin Departamento';
         if (!filter.includes(dName)) return;
+        if (window.reportOnlyWithPayment && (res.net || 0) <= 0.005) return;
         if (!depts[dName]) depts[dName] = [];
         depts[dName].push(res);
     });
@@ -1437,7 +2394,7 @@ window.viewHistoricalPayroll = (index) => {
             totalGenBrute += res.brute; totalGenTSS += res.tss; totalGenISR += res.isr; totalGenDiscounts += res.disc; totalGenNet += res.net;
 
             return `
-                <tr>
+            < tr >
                     <td>${res.fullName}</td>
                     <td>${res.idNumber || '-'}</td>
                     <td>${res.type === 'fixed' ? 'Fijo' : 'Móvil'}</td>
@@ -1450,12 +2407,12 @@ window.viewHistoricalPayroll = (index) => {
                     <td class="td-numeric">$${res.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td class="td-numeric" style="color: var(--danger)">$${res.disc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td class="td-numeric" style="font-weight: bold; background: rgba(0,255,0,0.05)">$${res.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                </tr>
+                </tr >
             `;
         }).join('');
 
         reportHtml += `
-            <div class="dept-report-section mb-4">
+            < div class="dept-report-section mb-4" >
                 <h3 class="text-accent">${deptName}</h3>
                 <table class="data-table">
                     <thead>
@@ -1492,12 +2449,12 @@ window.viewHistoricalPayroll = (index) => {
                         </tr>
                     </tfoot>
                 </table>
-            </div>
-        `;
+            </div >
+            `;
     });
 
     contentArea.innerHTML = `
-        <div class="header-action no-print">
+            < div class="header-action no-print" >
             <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                 <button class="btn btn-secondary" onclick="renderSection('closing')">
                     <i class="fas fa-arrow-left"></i> Volver
@@ -1522,21 +2479,33 @@ window.viewHistoricalPayroll = (index) => {
                     </div>
                 </div>
             </div>
-            <button class="btn btn-primary" onclick="window.print()">
-                <i class="fas fa-print"></i> Imprimir Reporte
-            </button>
-        </div>
-
-        <div class="card mt-4 print-area">
-            <div style="text-align: center; margin-bottom: 20px;">
-                <h1 style="margin: 0; color: var(--primary);">REPORTE DE NÓMINA</h1>
-                <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.payrollName}</p>
-                <p class="text-gray">Periodo: ${run.periodStart} al ${run.periodEnd} | Cerrado el: ${new Date(run.closedAt).toLocaleString()}</p>
+            <div class="no-print" style="margin-left: 15px; display: flex; align-items: center;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
+                    <input type="checkbox" id="chk-hist-only-with-payment" ${window.reportOnlyWithPayment ? 'checked' : ''} 
+                        onchange="window.reportOnlyWithPayment = this.checked; window.viewHistoricalPayroll(${index})">
+                    Solo con monto a cobrar
+                </label>
             </div>
-            
-            ${reportHtml || '<p style="text-align: center; padding: 40px; color: var(--gray);">No hay datos para mostrar con los filtros seleccionados.</p>'}
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-info" onclick="window.renderMobileDetailedReport(${index})">
+                    <i class="fas fa-list-alt"></i> Detalle Labores Móviles
+                </button>
+                <button class="btn btn-primary" onclick="window.print()">
+                    <i class="fas fa-print"></i> Imprimir Reporte
+                </button>
+            </div>
+        </div >
 
-            ${reportHtml ? `
+            <div class="card mt-4 print-area">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h1 style="margin: 0; color: var(--primary);">REPORTE DE NÓMINA</h1>
+                    <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.payrollName}</p>
+                    <p class="text-gray">Periodo: ${run.periodStart} al ${run.periodEnd} | Cerrado el: ${new Date(run.closedAt).toLocaleString()}</p>
+                </div>
+
+                ${reportHtml || '<p style="text-align: center; padding: 40px; color: var(--gray);">No hay datos para mostrar con los filtros seleccionados.</p>'}
+
+                ${reportHtml ? `
             <div class="summary-card mt-4" style="background: var(--primary); color: white; padding: 20px; border-radius: 8px;">
                 <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px;">RESUMEN GENERAL SELECCIONADO</h3>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
@@ -1555,40 +2524,261 @@ window.viewHistoricalPayroll = (index) => {
                 </div>
             </div>
             ` : ''}
-        </div>
-    `;
+            </div>
+        `;
 };
+
+window.printHistoricalPayroll = (index) => {
+    window.viewHistoricalPayroll(index);
+    setTimeout(() => {
+        window.print();
+    }, 500);
+};
+
+const renderMobileDetailedReport = (historyIndex = null, filterOps = null) => {
+    const isHistorical = historyIndex !== null;
+    const run = isHistorical ? state.payrollHistory[historyIndex] : state.activePayroll;
+
+    if (!run) return;
+
+    const logs = run.dailyLogs || [];
+    const allOpsInRun = [...new Set(logs.map(l => l.op))].sort();
+
+    if (filterOps === null) {
+        filterOps = [...allOpsInRun];
+    }
+
+    const bounds = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds();
+    if (!bounds || !bounds.min || !bounds.max) {
+        alert("No hay un periodo definido para esta nómina.");
+        return;
+    }
+
+    // Generate date range
+    const dates = [];
+    let current = new Date(bounds.min + 'T00:00:00');
+    const end = new Date(bounds.max + 'T00:00:00');
+    while (current <= end) {
+        dates.push(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+    }
+
+    const dayNames = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+    const dateHeaders = dates.map(d => {
+        const dateObj = new Date(d + 'T00:00:00');
+        return { date: d, day: dayNames[dateObj.getDay()] };
+    });
+
+    // Group by Operation -> Employee -> Activity
+    const grouped = {};
+    logs.forEach(log => {
+        // Filter by Operation
+        if (!filterOps.includes(log.op)) return;
+
+        if (!grouped[log.op]) grouped[log.op] = {};
+        if (!grouped[log.op][log.employee]) grouped[log.op][log.employee] = {};
+        if (!grouped[log.op][log.employee][log.act]) grouped[log.op][log.employee][log.act] = {};
+
+        grouped[log.op][log.employee][log.act][log.date] = (grouped[log.op][log.employee][log.act][log.date] || 0) + parseFloat(log.amount);
+    });
+
+    const contentArea = document.getElementById('content-area');
+
+    // Window level helpers for toggling operations
+    window.toggleMobileReportOp = (op) => {
+        const idx = filterOps.indexOf(op);
+        if (idx > -1) filterOps.splice(idx, 1);
+        else filterOps.push(op);
+        renderMobileDetailedReport(historyIndex, filterOps);
+    };
+
+    window.selectAllMobileReportOps = (all) => {
+        const ops = all ? [...allOpsInRun] : [];
+        renderMobileDetailedReport(historyIndex, ops);
+    };
+
+    let html = `
+            < div class="header-action no-print" style = "flex-wrap: wrap; gap: 15px;" >
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button class="btn btn-secondary" onclick="${isHistorical ? `window.viewHistoricalPayroll(${historyIndex})` : 'renderSection(\'reports\')'}">
+                            <i class="fas fa-arrow-left"></i> Volver
+                        </button>
+                        <h1>Detalle Móvil</h1>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <div class="multi-select-container no-print" style="min-width: 250px;">
+                            <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Filtrar Operaciones:</label>
+                            <div class="multi-select-btn" onclick="this.parentElement.classList.toggle('active')">
+                                ${filterOps.length === allOpsInRun.length ? 'Todas las Operaciones' : (filterOps.length === 0 ? 'Ninguna Seleccionada' : `${filterOps.length} Operaciones Seleccionadas`)}
+                            </div>
+                            <div class="multi-select-content">
+                                <div class="multi-select-actions">
+                                    <span onclick="window.selectAllMobileReportOps(true)">Todas</span>
+                                    <span onclick="window.selectAllMobileReportOps(false)">Ninguna</span>
+                                </div>
+                                ${allOpsInRun.map(op => `
+                                    <div class="multi-select-item" onclick="event.stopPropagation();">
+                                        <input type="checkbox" id="op-chk-${op}" ${filterOps.includes(op) ? 'checked' : ''} 
+                                            onchange="window.toggleMobileReportOp('${op}')">
+                                        <label for="op-chk-${op}" onclick="event.preventDefault(); window.toggleMobileReportOp('${op}')">${op}</label>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="window.print()">
+                        <i class="fas fa-print"></i> Imprimir
+                    </button>
+                </div >
+            <div class="card mt-4 print-area">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h1 style="margin: 0; color: var(--primary);">RELACIÓN DIARIA DE LABORES MÓVILES</h1>
+                    <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.name || run.payrollName}</p>
+                    <p class="text-gray">Periodo: ${bounds.min} al ${bounds.max}</p>
+                </div>
+                <hr class="mt-4 mb-4" style="border: 0.5px solid var(--border-color)">
+                    `;
+
+    let grandTotal = 0;
+    const grandTotalByDate = {};
+    dates.forEach(d => grandTotalByDate[d] = 0);
+
+    Object.keys(grouped).sort().forEach(op => {
+        let opTotal = 0;
+        const opDailyTotals = {};
+        dates.forEach(d => opDailyTotals[d] = 0);
+
+        html += `
+                    <div class="mb-5">
+                        <h3 class="text-accent" style="border-bottom: 2px solid var(--accent-color); padding-bottom: 5px; margin-bottom: 15px;">Operación: ${op}</h3>
+                        <table class="data-table" style="font-size: 0.85rem">
+                            <thead>
+                                <tr>
+                                    <th>Empleado</th>
+                                    <th>Actividad</th>
+                                    ${dateHeaders.map(h => `<th class="text-center" style="width: 40px">${h.day}<br><small style="font-size: 0.6rem">${h.date.split('-')[2]}</small></th>`).join('')}
+                                    <th class="text-right" style="font-weight: bold">Suma</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                `;
+
+        Object.keys(grouped[op]).sort().forEach(emp => {
+            Object.keys(grouped[op][emp]).sort().forEach(act => {
+                let rowTotal = 0;
+                html += `<tr><td>${emp}</td><td>${act}</td>`;
+
+                dates.forEach(d => {
+                    const val = grouped[op][emp][act][d] || 0;
+                    rowTotal += val;
+                    opDailyTotals[d] += val;
+                    grandTotalByDate[d] += val;
+                    html += `<td class="text-center">${val > 0 ? val.toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`;
+                });
+
+                opTotal += rowTotal;
+                grandTotal += rowTotal;
+                html += `<td class="text-right" style="font-weight: bold">$${rowTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+            });
+        });
+
+        html += `
+                            </tbody>
+                            <tfoot style="background: rgba(var(--primary-rgb), 0.05); font-weight: bold; display: table-row-group;">
+                                <tr>
+                                    <td colspan="2" class="text-right">SUBTOTAL ${op} :</td>
+                                    ${dates.map(d => `<td class="text-center">${opDailyTotals[d] > 0 ? opDailyTotals[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
+                                    <td class="text-right">$${opTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    `;
+    });
+
+    if (filterOps.length > 0 && Object.keys(grouped).length > 0) {
+        html += `
+                    <div class="summary-card mt-5" style="border: 2px solid var(--primary); padding: 20px; border-radius: 8px;">
+                        <h3 style="text-align: center; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 20px;">RESUMEN DE OPERACIONES SELECCIONADAS</h3>
+                        <table class="data-table">
+                             <thead style="background: var(--primary); color: white;">
+                                <tr>
+                                    <th colspan="2" class="text-right">CONCEPTO</th>
+                                    ${dateHeaders.map(h => `<th class="text-center">${h.day}</th>`).join('')}
+                                    <th class="text-right">TOTAL</th>
+                                </tr>
+                             </thead>
+                             <tbody>
+                                <tr style="font-weight: bold; background: rgba(0,0,0,0.02);">
+                                    <td colspan="2" class="text-right">TOTAL ACUMULADO :</td>
+                                    ${dates.map(d => `<td class="text-center">${grandTotalByDate[d] > 0 ? grandTotalByDate[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
+                                    <td class="text-right" style="font-size: 1.1rem; color: var(--primary);">$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                             </tbody>
+                        </table>
+                    </div>
+                `;
+    }
+
+    if (Object.keys(grouped).length === 0) {
+        html += `<p style="text-align: center; padding: 40px; color: var(--gray);">No hay registros para las operaciones seleccionadas.</p>`;
+    }
+
+    html += `</div>`;
+    contentArea.innerHTML = html;
+};
+window.renderMobileDetailedReport = renderMobileDetailedReport;
 
 // --- Utility: Payroll Calculation ---
 const calculateEmployeePayrollData = (emp, activePayroll) => {
     const bounds = getPayrollBounds();
     const filterByPeriod = (item) => {
-        if (!bounds || !item.date) return true;
+        if (!bounds || !item.date) return false;
         return item.date >= bounds.min && item.date <= bounds.max;
     };
 
     let base = 0;
     let tss = 0;
-    const empFullName = `${emp.firstName || ''} ${emp.lastName || ''}`.trim().toLowerCase();
+    const empFullName = `${emp.firstName || ''} ${emp.lastName || ''} `.trim().toLowerCase();
 
     if (emp.type === 'fixed') {
         const monthlySalary = parseFloat(emp.salary) || 0;
-        const dailyRate = monthlySalary / 23.83;
-        if (bounds && emp.hireDate) {
-            try {
-                const periodStart = new Date(bounds.min + 'T00:00:00');
-                const periodEnd = new Date(bounds.max + 'T00:00:00');
-                const hireDate = new Date(emp.hireDate + 'T00:00:00');
-                const effectiveStart = hireDate > periodStart ? hireDate : periodStart;
-                if (effectiveStart > periodEnd) {
+
+        // Robust frequency detection
+        const pType = (activePayroll?.periodType || '').toLowerCase();
+        const periodObj = state.periods.find(p => p.name.toLowerCase() === pType || pType.includes(p.name.toLowerCase()));
+        const frequency = (periodObj ? periodObj.frequency : pType).toLowerCase();
+
+        let divisor = 1;
+        if (frequency.includes('bisemanal') || frequency.includes('quincenal')) divisor = 2;
+        else if (frequency.includes('semanal')) divisor = 4;
+        else if (frequency.includes('mensual')) divisor = 1;
+
+        if (bounds && bounds.max && emp.hireDate) {
+            const periodStart = new Date(bounds.min + 'T00:00:00');
+            const periodEnd = new Date(bounds.max + 'T00:00:00');
+            const hireDate = new Date(emp.hireDate + 'T00:00:00');
+
+            const isPartial = hireDate > periodStart;
+
+            if (isPartial) {
+                const effectiveStart = hireDate > periodEnd ? null : (hireDate > periodStart ? hireDate : periodStart);
+                if (!effectiveStart) {
                     base = 0;
                 } else {
-                    const workedDays = Math.round((periodEnd - effectiveStart) / (1000 * 60 * 60 * 24)) + 1;
+                    const dailyRate = monthlySalary / 23.83;
+                    const workedDays = calculateLegislativeDays(effectiveStart, periodEnd);
                     base = dailyRate * workedDays;
                 }
-            } catch (e) { base = monthlySalary; }
+            } else {
+                // Full period logic
+                base = monthlySalary / divisor;
+            }
         } else {
-            base = monthlySalary;
+            // Fallback to divisor logic if hireDate is missing
+            base = monthlySalary / divisor;
         }
         tss = base * (state.settings.tss_rate || 0);
     } else {
@@ -1601,12 +2791,63 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
     const inc = (state.incentives || []).filter(i => (i.employeeName || '').trim().toLowerCase() === empFullName && filterByPeriod(i)).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
     const ot = (state.overtime || []).filter(o => (o.employeeName || '').trim().toLowerCase() === empFullName && filterByPeriod(o)).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
-    const disc = (state.discounts || []).filter(d => (d.employeeName || '').trim().toLowerCase() === empFullName).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
+
+    // Automated Loan/Discount deduction
+    const disc = (state.discounts || []).filter(d => (d.employeeName || '').trim().toLowerCase() === empFullName && parseFloat(d.remainingBalance) > 0)
+        .reduce((acc, d) => {
+            const installment = parseFloat(d.installment) || 0;
+            const balance = parseFloat(d.remainingBalance) || 0;
+            return acc + Math.min(installment, balance);
+        }, 0);
     const chr = (state.christmasSalary || []).filter(c => (c.employeeName || '').trim().toLowerCase() === empFullName).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
 
     const brute = base + inc + ot + chr;
-    const taxableIncome = (base + inc + ot) - tss;
-    const isr = calculateMonthlyISR(taxableIncome);
+    // ISR is calculated on the taxable income (Gross - TSS). 
+    // Christmas salary (chr) is excluded as it is exempt by law in DR.
+    const currentTaxableIncome = (base + inc + ot) - tss;
+
+    // --- ISR Progressive Projection Logic ---
+    let isr = 0;
+    if (currentTaxableIncome > 0 && bounds) {
+        const currentMonth = bounds.min.substring(0, 7); // YYYY-MM
+        let accumulatedTaxable = 0;
+        let accumulatedISR = 0;
+        let unitsSoFar = 1;
+
+        (state.payrollHistory || []).forEach(run => {
+            const runMonth = run.periodStart ? run.periodStart.substring(0, 7) : (run.closedAt ? run.closedAt.substring(0, 7) : '');
+            if (runMonth === currentMonth) {
+                const prevResult = run.results.find(r => (r.fullName || '').trim().toLowerCase() === empFullName || (r.idNumber && r.idNumber === emp.idNumber));
+                if (prevResult) {
+                    accumulatedTaxable += (prevResult.base || 0) + (prevResult.incentives || 0) + (prevResult.overtime || 0) - (prevResult.tss || 0);
+                    accumulatedISR += (prevResult.isr || 0);
+                    unitsSoFar++;
+                }
+            }
+        });
+
+        // Roburt frequency detection for projection
+        const pType = (activePayroll?.periodType || '').toLowerCase();
+        const periodObj = state.periods.find(p => p.name.toLowerCase() === pType || pType.includes(p.name.toLowerCase()));
+        const frequency = (periodObj ? periodObj.frequency : pType).toLowerCase();
+        let divisor = 1;
+        if (frequency.includes('bisemanal') || frequency.includes('quincenal')) divisor = 2;
+        else if (frequency.includes('semanal')) divisor = 4;
+        else if (frequency.includes('mensual')) divisor = 1;
+
+        // Projection logic: Project the accumulated + current average to a full month
+        // This prevents the "spike" in the last week and taxes proportionally from week 1
+        const totalIncomeSoFar = accumulatedTaxable + currentTaxableIncome;
+        const projectedMonthlyTaxable = totalIncomeSoFar * (divisor / unitsSoFar);
+
+        const totalMonthlyISR = calculateMonthlyISR(projectedMonthlyTaxable);
+        const taxDueSoFar = totalMonthlyISR * (unitsSoFar / divisor);
+
+        isr = Math.max(0, taxDueSoFar - accumulatedISR);
+    } else {
+        isr = calculateMonthlyISR(currentTaxableIncome);
+    }
+
     const net = brute - tss - disc - isr;
 
     return { base, tss, inc, ot, disc, chr, brute, isr, net };
@@ -1614,32 +2855,20 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
 // --- Module: Reports ---
 const renderReports = (container) => {
+    if (window.reportOnlyWithPayment === undefined) window.reportOnlyWithPayment = false;
+
     if (!window.currentReportFilter || !Array.isArray(window.currentReportFilter)) {
         window.currentReportFilter = state.departments.map(d => d.name);
     }
     const filter = window.currentReportFilter;
-    const currentTab = window.currentReportTab || 'departments';
 
-    let html = `
-        <div class="header-action">
+    container.innerHTML = `
+            < div class="header-action" >
             <div style="display: flex; align-items: center; gap: 20px;">
-                <h1>Reportes</h1>
-                
-                <div class="tabs no-print" style="display: flex; gap: 10px; background: var(--glass-bg); padding: 5px; border-radius: 8px;">
-                    <button class="btn ${currentTab === 'departments' ? 'btn-primary' : 'btn-secondary'}" onclick="window.setReportTab('departments')">
-                        <i class="fas fa-sitemap"></i> Por Departamento
-                    </button>
-                    <button class="btn ${currentTab === 'operations' ? 'btn-primary' : 'btn-secondary'}" onclick="window.setReportTab('operations')">
-                        <i class="fas fa-cogs"></i> Operaciones vs Actividad
-                    </button>
-                </div>
-    `;
-
-    if (currentTab === 'departments') {
-        html += `
+                <h1>Reporte de Nómina</h1>
                 <div class="multi-select-container no-print" id="dept-multi-select">
                     <div class="multi-select-btn" onclick="this.parentElement.classList.toggle('active')">
-                        ${filter.length === state.departments.length ? 'Todos los Departamentos' : (filter.length === 0 ? 'Ningun Departamento' : `${filter.length} Seleccionados`)}
+                        ${filter.length === state.departments.length ? 'Todos los Departamentos' : (filter.length === 0 ? 'Ningún Departamento' : `${filter.length} Seleccionados`)}
                     </div>
                     <div class="multi-select-content">
                         <div class="multi-select-actions">
@@ -1655,222 +2884,239 @@ const renderReports = (container) => {
                         `).join('')}
                     </div>
                 </div>
-        `;
-    }
-
-    html += `
             </div>
-            <button class="btn btn-secondary" onclick="window.print()">
-                <i class="fas fa-print"></i> Imprimir Reporte
-            </button>
-        </div>
-        
-    <div class="card mt-4 print-area">
-    `;
+            <div class="no-print" style="margin-left: 20px; display: flex; align-items: center;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
+                    <input type="checkbox" id="chk-only-with-payment" ${window.reportOnlyWithPayment ? 'checked' : ''} 
+                        onchange="window.reportOnlyWithPayment = this.checked; renderSection('reports')">
+                    Solo con monto a cobrar
+                </label>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-info" onclick="window.renderMobileDetailedReport()">
+                    <i class="fas fa-list-alt"></i> Detalle Labores Móviles
+                </button>
+                <button class="btn btn-secondary" onclick="window.print()">
+                    <i class="fas fa-print"></i> Imprimir Reporte
+                </button>
+            </div>
+        </div >
+            <div class="card mt-4 print-area">
+                <h2 style="text-align: center">Resumen de Pagos por Departamento</h2>
+                ${(() => {
+            const bounds = getPayrollBounds();
+            if (bounds && state.activePayroll) {
+                return `<p style="text-align: center; font-weight: 500; font-size: 1.1rem; color: var(--gray); margin-top: 5px; margin-bottom: 20px;">
+                        Periodo: ${bounds.min} al ${bounds.max}
+                    </p>`;
+            }
+            return '';
+        })()}
+                <hr class="mt-4 mb-4" style="border: 0.5px solid var(--border-color)">
 
-    if (currentTab === 'departments') {
-        html += `
-        <h2 style="text-align: center">Resumen de Pagos por Departamento</h2>
-        <hr class="mt-4 mb-4" style="border: 0.5px solid var(--border-color)">
-        `;
+                    ${(() => {
+            let reportHtml = '';
+            const renderedEmpIds = new Set();
+            let totalGenBase = 0;
+            let totalGenIncentives = 0;
+            let totalGenOvertime = 0;
+            let totalGenChristmas = 0;
+            let totalGenBrute = 0;
+            let totalGenTSS = 0;
+            let totalGenISR = 0;
+            let totalGenDiscounts = 0;
+            let totalGenNet = 0;
+            const deptSummaries = [];
 
-        let reportHtml = '';
-        const renderedEmpIds = new Set();
-        let totalGenBase = 0;
-        let totalGenIncentives = 0;
-        let totalGenOvertime = 0;
-        let totalGenChristmas = 0;
-        let totalGenBrute = 0;
-        let totalGenTSS = 0;
-        let totalGenISR = 0;
-        let totalGenDiscounts = 0;
-        let totalGenNet = 0;
-        const deptSummaries = [];
+            // 1. Render por Departamento
+            const filteredDepts = state.departments.filter(d => filter.includes(d.name));
 
-        const bounds = getPayrollBounds();
-        const filterByPeriod = (item) => {
-            if (!bounds || !item.date) return true;
-            return item.date >= bounds.min && item.date <= bounds.max;
-        };
+            filteredDepts.forEach(dept => {
+                const deptName = (dept.name || '').trim().toLowerCase();
+                const deptEmps = state.employees.filter(e => {
+                    const eDept = (e.department || '').trim().toLowerCase();
+                    return eDept === deptName && e.active !== false;
+                });
 
-        const filteredDepts = state.departments.filter(d => filter.includes(d.name));
+                if (deptEmps.length === 0) return;
 
-        filteredDepts.forEach(dept => {
-            const deptName = (dept.name || '').trim().toLowerCase();
-            const deptEmps = state.employees.filter(e => (e.department || '').trim().toLowerCase() === deptName);
-            if (deptEmps.length === 0) return;
+                let deptBase = 0;
+                let deptIncentives = 0;
+                let deptOvertime = 0;
+                let deptChristmas = 0;
+                let deptBrute = 0;
+                let deptTSS = 0;
+                let deptISR = 0;
+                let deptDiscounts = 0;
+                let deptNet = 0;
 
-            let deptBase = 0;
-            let deptIncentives = 0;
-            let deptOvertime = 0;
-            let deptChristmas = 0;
-            let deptBrute = 0;
-            let deptTSS = 0;
-            let deptISR = 0;
-            let deptDiscounts = 0;
-            let deptNet = 0;
+                const rows = deptEmps.map(emp => {
+                    const empId = emp.idNumber || `${emp.firstName}-${emp.lastName}`;
+                    renderedEmpIds.add(empId);
 
-            const rows = deptEmps.map(emp => {
-                const empId = emp.idNumber || `${emp.firstName}-${emp.lastName}`;
-                renderedEmpIds.add(empId);
+                    const res = calculateEmployeePayrollData(emp, state.activePayroll);
 
-                const res = calculateEmployeePayrollData(emp, state.activePayroll);
+                    if (window.reportOnlyWithPayment && res.net <= 0.005) return '';
 
-                deptBase += res.base; deptIncentives += res.inc; deptOvertime += res.ot; deptChristmas += res.chr;
-                deptBrute += res.brute; deptTSS += res.tss; deptISR += res.isr; deptDiscounts += res.disc; deptNet += res.net;
+                    deptBase += res.base; deptIncentives += res.inc; deptOvertime += res.ot; deptChristmas += res.chr;
+                    deptBrute += res.brute; deptTSS += res.tss; deptISR += res.isr; deptDiscounts += res.disc; deptNet += res.net;
 
-                totalGenBase += res.base; totalGenIncentives += res.inc; totalGenOvertime += res.ot; totalGenChristmas += res.chr;
-                totalGenBrute += res.brute; totalGenTSS += res.tss; totalGenISR += res.isr; totalGenDiscounts += res.disc; totalGenNet += res.net;
+                    totalGenBase += res.base; totalGenIncentives += res.inc; totalGenOvertime += res.ot; totalGenChristmas += res.chr;
+                    totalGenBrute += res.brute; totalGenTSS += res.tss; totalGenISR += res.isr; totalGenDiscounts += res.disc; totalGenNet += res.net;
 
-                return `
-                    <tr>
-                        <td>${emp.firstName} ${emp.lastName}</td>
-                        <td>${emp.idNumber || '-'}</td>
-                        <td>${emp.type === 'fixed' ? 'Fijo' : 'Móvil'}</td>
-                        <td class="td-numeric">$${res.base.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="td-numeric">$${res.inc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="td-numeric">$${res.ot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="td-numeric">$${res.chr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="td-numeric" style="font-weight: bold">$${res.brute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="td-numeric">$${res.tss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="td-numeric">$${res.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="td-numeric" style="color: var(--danger)">$${res.disc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="td-numeric" style="font-weight: bold; background: rgba(0,255,0,0.05)">$${res.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    </tr>
-                `;
-            }).join('');
+                    return `
+                        <tr>
+                            <td>${emp.firstName} ${emp.lastName}</td>
+                            <td>${emp.idNumber || '-'}</td>
+                            <td>${emp.type === 'fixed' ? 'Fijo' : 'Móvil'}</td>
+                            <td class="td-numeric">$${res.base.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric">$${res.inc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric">$${res.ot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric">$${res.chr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric" style="font-weight: bold">$${res.brute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric">$${res.tss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric">$${res.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric" style="color: var(--danger)">$${res.disc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric" style="font-weight: bold; background: rgba(0,255,0,0.05)">$${res.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        </tr>
+                        `;
+                }).join('');
 
-            deptSummaries.push({
-                name: dept.name,
-                base: deptBase,
-                incentives: deptIncentives,
-                overtime: deptOvertime,
-                christmas: deptChristmas,
-                brute: deptBrute,
-                tss: deptTSS,
-                isr: deptISR,
-                discounts: deptDiscounts,
-                net: deptNet
-            });
+                deptSummaries.push({
+                    name: dept.name,
+                    base: deptBase,
+                    incentives: deptIncentives,
+                    overtime: deptOvertime,
+                    christmas: deptChristmas,
+                    brute: deptBrute,
+                    tss: deptTSS,
+                    isr: deptISR,
+                    discounts: deptDiscounts,
+                    net: deptNet
+                });
 
-            reportHtml += `
-                    <div class="dept-report-section mb-4">
-                        <h3 class="text-accent">${dept.name}</h3>
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Empleado</th>
-                                    <th>Cédula</th>
-                                    <th>Tipo</th>
-                                    <th class="text-right">Sueldo Base</th>
-                                    <th class="text-right">Incentivos</th>
-                                    <th class="text-right">Extras</th>
-                                    <th class="text-right">Navidad</th>
-                                    <th class="text-right">Total Bruto</th>
-                                    <th class="text-right">Ret. TSS</th>
-                                    <th class="text-right">Ret. ISR</th>
-                                    <th class="text-right">Desc.</th>
-                                    <th class="text-right">Total a Pagar</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${rows}
-                            </tbody>
-                            <tfoot style="display: table-row-group; font-weight: bold; border-top: 2px solid #ddd;">
-                                <tr>
-                                    <td colspan="3" class="text-right">SUBTOTAL ${dept.name}:</td>
-                                    <td class="td-numeric">$${deptBase.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${deptIncentives.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${deptOvertime.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${deptChristmas.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${deptBrute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${deptTSS.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${deptISR.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric" style="color: var(--danger)">$${deptDiscounts.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric" style="font-weight: bold">$${deptNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                `;
-        });
-
-        if (filter.length === state.departments.length) {
-            const missingEmps = state.employees.filter(e => {
-                const empId = e.idNumber || `${e.firstName}-${e.lastName}`;
-                return !renderedEmpIds.has(empId);
-            });
-
-            if (missingEmps.length > 0) {
                 reportHtml += `
-                        <div class="dept-report-section mb-4" style="border: 1px dashed var(--warning); padding: 10px;">
-                            <h3 style="color: var(--warning)">Otros Empleados (Sin departamento o desajustado)</h3>
+                        <div class="dept-report-section mb-4">
+                            <h3 class="text-accent">${dept.name}</h3>
                             <table class="data-table">
                                 <thead>
-                                    <tr><th>Nombre</th><th>Departamento Actual</th><th>Nota</th></tr>
+                                    <tr>
+                                        <th>Empleado</th>
+                                        <th>Cédula</th>
+                                        <th>Tipo</th>
+                                        <th class="text-right">Sueldo Base</th>
+                                        <th class="text-right">Incentivos</th>
+                                        <th class="text-right">Extras</th>
+                                        <th class="text-right">Navidad</th>
+                                        <th class="text-right">Total Bruto</th>
+                                        <th class="text-right">Ret. TSS</th>
+                                        <th class="text-right">Ret. ISR</th>
+                                        <th class="text-right">Desc.</th>
+                                        <th class="text-right">Total a Pagar</th>
+                                    </tr>
                                 </thead>
                                 <tbody>
-                                    ${missingEmps.map(emp => `<tr><td>${emp.firstName} ${emp.lastName}</td><td>${emp.department || 'Sin Dept.'}</td><td>Revisar asignación en lista de empleados</td></tr>`).join('')}
+                                    ${rows}
                                 </tbody>
+                                 <tfoot style="display: table-row-group; font-weight: bold; border-top: 2px solid #ddd;">
+                                    <tr>
+                                        <td colspan="3" class="text-right">SUBTOTAL ${dept.name}:</td>
+                                        <td class="td-numeric">$${deptBase.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td class="td-numeric">$${deptIncentives.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td class="td-numeric">$${deptOvertime.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td class="td-numeric">$${deptChristmas.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td class="td-numeric">$${deptBrute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td class="td-numeric">$${deptTSS.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td class="td-numeric">$${deptISR.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td class="td-numeric" style="color: var(--danger)">$${deptDiscounts.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td class="td-numeric" style="background: var(--glass-bg)">$${deptNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    `;
+            });
+
+            // 2. Lost & Found (Only show when viewing all departments)
+            if (filter.length === state.departments.length) {
+                const missingEmps = state.employees.filter(e => {
+                    const empId = e.idNumber || `${e.firstName}-${e.lastName}`;
+                    return !renderedEmpIds.has(empId);
+                });
+
+                if (missingEmps.length > 0) {
+                    reportHtml += `
+                            <div class="dept-report-section mb-4" style="border: 1px dashed var(--warning); padding: 10px;">
+                                <h3 style="color: var(--warning)">Otros Empleados (Sin departamento o desajustado)</h3>
+                                <table class="data-table">
+                                    <thead>
+                                        <tr><th>Nombre</th><th>Departamento Actual</th><th>Nota</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        ${missingEmps.map(emp => `<tr><td>${emp.firstName} ${emp.lastName}</td><td>${emp.department || 'Sin Dept.'}</td><td>Revisar asignación en lista de empleados</td></tr>`).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                }
+            }
+
+            // 3. Resumen por Departamento (Show if more than one dept is selected)
+            if (deptSummaries.length > 0) {
+                reportHtml += `
+                        <div class="dept-report-section mb-4" style="page-break-before: auto;">
+                            <h3 class="text-accent" style="text-align: center; border-bottom: 2px solid var(--accent-color); padding-bottom: 10px;">RESUMEN GENERAL POR DEPARTAMENTO</h3>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Departamento</th>
+                                                <th class="text-right">Sueldo Base</th>
+                                                <th class="text-right">Incentivos</th>
+                                                <th class="text-right">Extras</th>
+                                                <th class="text-right">Navidad</th>
+                                                <th class="text-right">Total Bruto</th>
+                                                <th class="text-right">TSS</th>
+                                                <th class="text-right">ISR</th>
+                                                <th class="text-right">Desc.</th>
+                                                <th class="text-right">Total Neto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${deptSummaries.map(s => `
+                                        <tr>
+                                            <td style="font-weight: bold">${s.name}</td>
+                                                    <td class="td-numeric">$${s.base.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td class="td-numeric">$${s.incentives.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td class="td-numeric">$${s.overtime.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td class="td-numeric">$${s.christmas.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td class="td-numeric" style="font-weight: bold">$${s.brute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td class="td-numeric">$${s.tss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td class="td-numeric">$${s.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td class="td-numeric" style="color: var(--danger)">$${s.discounts.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td class="td-numeric" style="font-weight: bold">$${s.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                                <tfoot style="display: table-row-group; font-weight: bold; border-top: 2px solid #333;">
+                                    <tr>
+                                                                             <td class="text-right">GRAN TOTAL:</td>
+                                                <td class="td-numeric">$${totalGenBase.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td class="td-numeric">$${totalGenIncentives.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td class="td-numeric">$${totalGenOvertime.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td class="td-numeric">$${totalGenChristmas.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td class="td-numeric">$${totalGenBrute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td class="td-numeric">$${totalGenTSS.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td class="td-numeric">$${totalGenISR.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td class="td-numeric" style="color: var(--danger)">$${totalGenDiscounts.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td class="td-numeric" style="font-weight: bold; font-size: 1.1rem">$${totalGenNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </div>
                     `;
             }
-        }
 
-        if (deptSummaries.length > 0) {
-            reportHtml += `
-                    <div class="dept-report-section mb-4" style="page-break-before: auto;">
-                        <h3 class="text-accent" style="text-align: center; border-bottom: 2px solid var(--accent-color); padding-bottom: 10px;">RESUMEN GENERAL POR DEPARTAMENTO</h3>
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Departamento</th>
-                                    <th class="text-right">Sueldo Base</th>
-                                    <th class="text-right">Incentivos</th>
-                                    <th class="text-right">Extras</th>
-                                    <th class="text-right">Navidad</th>
-                                    <th class="text-right">Total Bruto</th>
-                                    <th class="text-right">TSS</th>
-                                    <th class="text-right">ISR</th>
-                                    <th class="text-right">Desc.</th>
-                                    <th class="text-right">Total Neto</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${deptSummaries.map(s => `
-                                    <tr>
-                                        <td style="font-weight: bold">${s.name}</td>
-                                        <td class="td-numeric">$${s.base.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                        <td class="td-numeric">$${s.incentives.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                        <td class="td-numeric">$${s.overtime.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                        <td class="td-numeric">$${s.christmas.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                        <td class="td-numeric" style="font-weight: bold">$${s.brute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                        <td class="td-numeric">$${s.tss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                        <td class="td-numeric">$${s.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                        <td class="td-numeric" style="color: var(--danger)">$${s.discounts.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                        <td class="td-numeric" style="font-weight: bold">$${s.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                            <tfoot style="display: table-row-group; font-weight: bold; border-top: 2px solid #333;">
-                                <tr>
-                                    <td class="text-right">GRAN TOTAL:</td>
-                                    <td class="td-numeric">$${totalGenBase.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${totalGenIncentives.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${totalGenOvertime.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${totalGenChristmas.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${totalGenBrute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${totalGenTSS.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric">$${totalGenISR.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric" style="color: var(--danger)">$${totalGenDiscounts.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                    <td class="td-numeric" style="font-weight: bold; font-size: 1.1rem">$${totalGenNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                `;
-
+            // 4. Totales Generales (Visual Card)
             reportHtml += `
                     <div class="card mt-4" style="background: var(--glass-bg); border: 2px solid var(--accent-color)">
                         <div class="stats-row">
@@ -1889,86 +3135,13 @@ const renderReports = (container) => {
                         </div>
                     </div>
                 `;
-        }
 
-        html += reportHtml;
+            return reportHtml;
+        })()}
 
-        if (state.employees.length === 0) {
-            html += '<p style="text-align: center">No hay datos para mostrar en el reporte.</p>';
-        }
-
-    } else {
-        html += `
-        <h2 style="text-align: center">Comparativa de Operaciones por Actividad (Histórico + Actual)</h2>
-        <hr class="mt-4 mb-4" style="border: 0.5px solid var(--border-color)">
+                    ${state.employees.length === 0 ? '<p style="text-align: center">No hay datos para mostrar en el reporte.</p>' : ''}
+            </div>
         `;
-
-        const opStats = {};
-
-        const processCost = (opName, actName, amount) => {
-            const op = opName || 'Sin Operación';
-            const act = actName || 'Sin Actividad';
-            if (!opStats[op]) opStats[op] = { total: 0, activities: {} };
-            if (!opStats[op].activities[act]) opStats[op].activities[act] = 0;
-
-            opStats[op].total += amount;
-            opStats[op].activities[act] += amount;
-        };
-
-        if (state.activePayroll && state.activePayroll.dailyLogs) {
-            state.activePayroll.dailyLogs.forEach(log => {
-                processCost(log.op, log.act, parseFloat(log.amount) || 0);
-            });
-        }
-        if (state.activePayroll) {
-            state.employees.filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
-                const res = calculateEmployeePayrollData(emp, state.activePayroll);
-                processCost(emp.operation, emp.activity, res.base || 0);
-            });
-        }
-
-        state.payrollHistory.forEach(run => {
-            run.results.forEach(res => {
-                const emp = state.employees.find(e => e.idNumber === res.idNumber || `${e.firstName} ${e.lastName}` === res.fullName);
-                const actName = emp ? emp.activity : 'Sin Actividad';
-                const opName = emp ? emp.operation : 'Sin Operación';
-                processCost(opName, actName, res.brute || 0);
-            });
-        });
-
-        html += '<table class="data-table"><thead><tr><th>Operación</th><th>Actividad</th><th class="text-right">Costo Total (Mano de Obra)</th></tr></thead><tbody>';
-        let grantTotal = 0;
-
-        Object.keys(opStats).sort().forEach(op => {
-            const data = opStats[op];
-            const count = Object.keys(data.activities).length;
-            let first = true;
-
-            grantTotal += data.total;
-
-            Object.keys(data.activities).sort((a, b) => data.activities[b] - data.activities[a]).forEach(act => {
-                html += '<tr>';
-                if (first) {
-                    html += `<td rowspan="${count}" style="vertical-align: middle; font-weight: bold; border-right: 1px solid var(--border-color)">${op}</td>`;
-                    first = false;
-                }
-                html += `<td>${act}</td><td class="text-right td-numeric">$${data.activities[act].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
-            });
-
-            html += `<tr style="background: rgba(255,255,255,0.05); font-weight: bold;">
-                <td class="text-right">SUBTOTAL OPERACIÓN:</td>
-                <td class="text-right td-numeric" style="color: var(--primary)">$${data.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            </tr>`;
-        });
-
-        html += `</tbody><tfoot><tr style="font-size: 1.1rem; border-top: 2px solid var(--primary)">
-            <td colspan="2" class="text-right">TOTAL GENERAL:</td>
-            <td class="text-right td-numeric" style="color: #4ade80">$${grantTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        </tr></tfoot></table>`;
-    }
-
-    html += `</div>`;
-    container.innerHTML = html;
 };
 
 window.toggleReportDept = (deptName) => {
@@ -1991,166 +3164,755 @@ window.selectAllReportDepts = (select) => {
     renderSection('reports');
 };
 
+// --- Module: Employee Record (Historical Earnings) ---
+const renderEmployeeRecord = (container) => {
+    const history = state.payrollHistory || [];
+
+    // Initialization of local state for the view
+    if (!window.empRecordData) {
+        window.empRecordData = {
+            employeeName: '',
+            startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0], // Jan 1st
+            endDate: new Date().toISOString().split('T')[0]
+        };
+    }
+
+    const data = window.empRecordData;
+
+    // Filter results based on current selection
+    let records = [];
+    if (data.employeeName) {
+        history.forEach(run => {
+            const runDate = run.closedAt ? run.closedAt.split('T')[0] : (run.periodEnd || '');
+            if (runDate >= data.startDate && runDate <= data.endDate) {
+                const res = run.results.find(r => (r.fullName || '').trim().toLowerCase() === data.employeeName.trim().toLowerCase());
+                if (res) {
+                    records.push({
+                        payrollName: run.payrollName || run.name,
+                        date: runDate,
+                        base: res.base || 0,
+                        inc: res.inc || res.incentives || 0,
+                        ot: res.ot || res.overtime || 0,
+                        chr: res.chr || res.christmas || 0,
+                        brute: res.brute || 0,
+                        tss: res.tss || 0,
+                        isr: res.isr || 0,
+                        disc: res.disc || res.discounts || 0,
+                        net: res.net || 0
+                    });
+                }
+            }
+        });
+    }
+
+    // Totals
+    const totals = records.reduce((acc, r) => {
+        acc.base += r.base; acc.inc += r.inc; acc.ot += r.ot;
+        acc.chr += r.chr; acc.brute += r.brute; acc.tss += r.tss;
+        acc.isr += r.isr; acc.disc += r.disc; acc.net += r.net;
+        return acc;
+    }, { base: 0, inc: 0, ot: 0, chr: 0, brute: 0, tss: 0, isr: 0, disc: 0, net: 0 });
+
+    container.innerHTML = `
+            < div class="header-action no-print" >
+                    <h1>Récord de Ganancias por Empleado</h1>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-secondary" onclick="window.print()">
+                            <i class="fas fa-print"></i> Imprimir Récord
+                        </button>
+                    </div>
+                </div >
+
+                <div class="card mt-4 no-print">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; align-items: flex-end;">
+                        <div class="form-group mb-0">
+                            <label>Seleccionar Empleado</label>
+                            <select id="rec-emp-select" class="form-control" onchange="window.updateEmpRecord('employeeName', this.value)">
+                                <option value="">Seleccione un empleado...</option>
+                                ${state.employees.map(e => `<option value="${e.firstName} ${e.lastName}" ${data.employeeName === `${e.firstName} ${e.lastName}` ? 'selected' : ''}>${e.firstName} ${e.lastName}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group mb-0">
+                            <label>Desde</label>
+                            <input type="date" class="form-control" value="${data.startDate}" onchange="window.updateEmpRecord('startDate', this.value)">
+                        </div>
+                        <div class="form-group mb-0">
+                            <label>Hasta</label>
+                            <input type="date" class="form-control" value="${data.endDate}" onchange="window.updateEmpRecord('endDate', this.value)">
+                        </div>
+                        <button class="btn btn-primary" style="height: 42px;" onclick="renderSection('employee-record')">
+                            <i class="fas fa-search"></i> Generar Reporte
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card mt-4 print-area">
+                    <div class="record-print-header" style="text-align: center; margin-bottom: 25px;">
+                        <h2 style="margin-bottom: 5px;">DETALLE DE GANANCIAS POR NÓMINA</h2>
+                        <h3 style="color: var(--accent-color);">${data.employeeName || 'Seleccione un empleado'}</h3>
+                        <p style="color: var(--gray);">Rango: ${data.startDate} al ${data.endDate}</p>
+                    </div>
+
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nómina</th>
+                                <th>Cierre</th>
+                                <th class="text-right">Sueldo Base</th>
+                                <th class="text-right">Incentivos</th>
+                                <th class="text-right">Extras</th>
+                                <th class="text-right">Navidad</th>
+                                <th class="text-right">Total Bruto</th>
+                                <th class="text-right">TSS</th>
+                                <th class="text-right">ISR</th>
+                                <th class="text-right">Descuentos</th>
+                                <th class="text-right">Neto Pagado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${records.length > 0 ? records.map(r => `
+                                <tr>
+                                    <td style="font-weight: 500;">${r.payrollName}</td>
+                                    <td>${r.date}</td>
+                                    <td class="td-numeric">$${r.base.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="td-numeric">$${r.inc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="td-numeric">$${r.ot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="td-numeric">$${r.chr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="td-numeric" style="font-weight: 600;">$${r.brute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="td-numeric" style="color: var(--danger); font-size: 0.85rem;">$${r.tss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="td-numeric" style="color: var(--danger); font-size: 0.85rem;">$${r.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="td-numeric" style="color: var(--danger); font-size: 0.85rem;">$${r.disc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="td-numeric" style="font-weight: bold; background: rgba(0,255,0,0.03);">$${r.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                            `).join('') : `<tr><td colspan="11" style="text-align: center; padding: 40px; color: var(--gray);">No se encontraron registros en el rango seleccionado.</td></tr>`}
+                        </tbody>
+                        ${records.length > 0 ? `
+                        <tfoot>
+                            <tr style="font-weight: bold; background: var(--glass-bg); border-top: 2px solid var(--border-color);">
+                                <td colspan="2">TOTALES ACUMULADOS</td>
+                                <td class="td-numeric">$${totals.base.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="td-numeric">$${totals.inc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="td-numeric">$${totals.ot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="td-numeric">$${totals.chr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="td-numeric">$${totals.brute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="td-numeric">$${totals.tss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="td-numeric">$${totals.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="td-numeric">$${totals.disc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td class="td-numeric" style="color: var(--success); font-size: 1.1rem;">$${totals.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                        </tfoot>
+                        ` : ''}
+                    </table>
+                </div>
+        `;
+
+    window.updateEmpRecord = (key, val) => {
+        window.empRecordData[key] = val;
+        if (key === 'employeeName') renderSection('employee-record');
+    };
+};
+
+// --- Module: Payroll Entry (Journal Entry) ---
+const renderPayrollEntry = (container) => {
+    const getRunId = (run) => run.id || (run.closedAt ? new Date(run.closedAt).getTime() : null);
+
+    if (!state.activePayroll && (!state.payrollHistory || state.payrollHistory.length === 0)) {
+        container.innerHTML = `
+            < div class="header-action" >
+                <h1>Entrada de Nómina</h1>
+                    </div >
+            <div class="card mt-4">
+                <div class="status-box warning">
+                    <p>No hay nóminas activas ni históricas para visualizar.</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    // State for selected payroll in this view
+    if (window.selectedEntryRunId === undefined) {
+        window.selectedEntryRunId = state.activePayroll ? state.activePayroll.id : getRunId(state.payrollHistory[0]);
+    }
+
+    const currentRunId = window.selectedEntryRunId;
+    let isHistorical = false;
+    let run = (state.activePayroll && state.activePayroll.id === currentRunId) ? state.activePayroll : null;
+
+    if (!run) {
+        run = (state.payrollHistory || []).find(h => getRunId(h) === currentRunId);
+        if (run) isHistorical = true;
+    }
+
+    if (!run) {
+        // Fallback to active or first historical
+        run = state.activePayroll || state.payrollHistory[0];
+        window.selectedEntryRunId = getRunId(run);
+        isHistorical = !state.activePayroll || getRunId(run) !== state.activePayroll.id;
+    }
+
+    const debits = {}; // key: "Account|Activity", value: amount
+    let totalCredits = {
+        tss: 0,
+        isr: 0,
+        disc: 0,
+        net: 0
+    };
+
+    // Aggregation Logic
+    if (isHistorical && run.results) {
+        // Historical Case: Use saved results for credits
+        run.results.forEach(res => {
+            totalCredits.tss += (res.tss || 0);
+            totalCredits.isr += (res.isr || 0);
+            totalCredits.disc += (res.disc || 0);
+            totalCredits.net += (res.net || 0);
+
+            if (res.type === 'fixed') {
+                // Find employee to get operation/activity (since snapshot might only have names/ids)
+                const emp = state.employees.find(e => e.idNumber === res.idNumber);
+                const key = `${emp?.operation || 'Sin Cuenta'}| ${emp?.activity || '-'} `;
+                debits[key] = (debits[key] || 0) + (res.base || 0);
+            }
+        });
+
+        // For Historical Debits (Mobile and Global accounts)
+        // Mobile: Only if dailyLogs were saved
+        const logs = run.dailyLogs || [];
+        logs.forEach(l => {
+            const key = `${l.op || 'Sin Cuenta'}| ${l.act || '-'} `;
+            debits[key] = (debits[key] || 0) + (parseFloat(l.amount) || 0);
+        });
+
+        // Global accounts (Incentives/OT/Christmas) - usually stored in results
+        run.results.forEach(res => {
+            if (res.incentives > 0) {
+                const incKey = `${state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente'}| -`;
+                debits[incKey] = (debits[incKey] || 0) + res.incentives;
+            }
+            if (res.overtime > 0) {
+                const otKey = `${state.settings.payrollAccounts?.overtime || 'Horas Extras Pendiente'}| -`;
+                debits[otKey] = (debits[otKey] || 0) + res.overtime;
+            }
+            if (res.christmas > 0) {
+                const chrKey = `${state.settings.payrollAccounts?.christmas || 'Navidad Pendiente'}| -`;
+                debits[chrKey] = (debits[chrKey] || 0) + res.christmas;
+            }
+        });
+
+    } else {
+        // Active Case or Fallback: Calculate fresh
+        state.employees.filter(e => e.active !== false).forEach(emp => {
+            const data = calculateEmployeePayrollData(emp, run);
+            const empFullName = `${emp.firstName} ${emp.lastName} `;
+
+            totalCredits.tss += data.tss;
+            totalCredits.isr += data.isr;
+            totalCredits.disc += data.disc;
+            totalCredits.net += data.net;
+
+            if (emp.type === 'fixed') {
+                const key = `${emp.operation || 'Sin Cuenta'}| ${emp.activity || '-'} `;
+                debits[key] = (debits[key] || 0) + data.base;
+            } else {
+                const logs = (run.dailyLogs || []).filter(l => (l.employee || '').trim().toLowerCase() === empFullName.trim().toLowerCase());
+                logs.forEach(l => {
+                    const key = `${l.op || 'Sin Cuenta'}| ${l.act || '-'} `;
+                    debits[key] = (debits[key] || 0) + (parseFloat(l.amount) || 0);
+                });
+            }
+
+            if (data.inc > 0) {
+                const incKey = `${state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente'}| -`;
+                debits[incKey] = (debits[incKey] || 0) + data.inc;
+            }
+            if (data.ot > 0) {
+                const otKey = `${state.settings.payrollAccounts?.overtime || 'Horas Extras Pendiente'}| -`;
+                debits[otKey] = (debits[otKey] || 0) + data.ot;
+            }
+            if (data.chr > 0) {
+                const chrKey = `${state.settings.payrollAccounts?.christmas || 'Navidad Pendiente'}| -`;
+                debits[chrKey] = (debits[chrKey] || 0) + data.chr;
+            }
+        });
+    }
+
+    const totalDebitAmount = Object.values(debits).reduce((a, b) => a + b, 0);
+    const totalCreditAmount = totalCredits.tss + totalCredits.isr + totalCredits.disc + totalCredits.net;
+
+    const getAccNum = (name) => {
+        const op = state.operations.find(o => o.name === name);
+        return op ? op.account : name;
+    };
+
+    const getActVal = (name) => {
+        if (name === '-') return '-';
+        const act = state.activities.find(a => a.name === name);
+        return act ? act.value : name;
+    };
+
+    if (window.payrollEntryViewMode === undefined) {
+        window.payrollEntryViewMode = 'summary';
+    }
+    const viewMode = window.payrollEntryViewMode;
+
+    container.innerHTML = `
+            < div class="header-action" >
+                    <div>
+                        <h1>Entrada de Nómina</h1>
+                        <div class="mt-2 no-print" style="display: flex; gap: 5px;">
+                            <button class="btn ${viewMode === 'summary' ? 'btn-primary' : 'btn-secondary'} btn-sm" onclick="window.payrollEntryViewMode = 'summary'; renderSection('payroll-entry')">
+                                <i class="fas fa-list"></i> Resumen (Diario)
+                            </button>
+                            <button class="btn ${viewMode === 'detail' ? 'btn-primary' : 'btn-secondary'} btn-sm" onclick="window.payrollEntryViewMode = 'detail'; renderSection('payroll-entry')">
+                                <i class="fas fa-user-tag"></i> Detalle por Trabajador
+                            </button>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div class="no-print">
+                            <label style="display: block; font-size: 0.8rem; margin-bottom: 4px;">Seleccionar Nómina:</label>
+                            <select class="form-control" style="width: 250px;" onchange="window.selectedEntryRunId = parseFloat(this.value); renderSection('payroll-entry')">
+                                ${state.activePayroll ? `<option value="${state.activePayroll.id}" ${currentRunId === state.activePayroll.id ? 'selected' : ''}>NÓMINA ACTUAL: ${state.activePayroll.name}</option>` : ''}
+                                ${(state.payrollHistory || []).map(h => {
+        const rid = getRunId(h);
+        return `<option value="${rid}" ${currentRunId === rid ? 'selected' : ''}>CERRADA: ${h.payrollName || h.name} (${h.periodStart})</option>`;
+    }).join('')}
+                            </select>
+                        </div>
+                        <button class="btn btn-secondary no-print" onclick="downloadPayrollEntryExcel()">
+                            <i class="fas fa-file-excel"></i> Exportar Excel
+                        </button>
+                        <button class="btn btn-primary no-print" onclick="window.print()">
+                            <i class="fas fa-print"></i> Imprimir
+                        </button>
+                    </div>
+                </div >
+
+            <div class="card mt-4 print-area" id="journal-entry-container">
+                <div style="text-align: center; margin-bottom: 25px;">
+                    <h2 style="margin: 0; color: var(--primary);">${viewMode === 'summary' ? 'ENTRADA DE DIARIO - NÓMINA' : 'CARGOS POR TRABAJADOR - NÓMINA'}</h2>
+                    <p style="margin: 5px 0; font-weight: 600;">${run.name || run.payrollName}</p>
+                    <p class="text-gray" style="font-size: 0.9rem;">Fecha de Proceso: ${new Date().toLocaleDateString()}</p>
+                </div>
+
+                ${viewMode === 'summary' ? `
+                        <table class="journal-table" id="payroll-journal-table">
+                            <thead>
+                                <tr>
+                                    <th class="description-col">DESCRIPCION</th>
+                                    <th class="account-col">CUENTA CONTABLE</th>
+                                    <th class="activity-col">ACTIVIDAD</th>
+                                    <th class="amount-col">DEBITO</th>
+                                    <th class="amount-col">CREDITO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${Object.entries(debits).map(([key, amount]) => {
+        const [accountName, activity] = key.split('|');
+        return `
+                                        <tr>
+                                            <td>EXPENSE: ${accountName}</td>
+                                            <td>${getAccNum(accountName)}</td>
+                                            <td class="activity-col">${getActVal(activity)}</td>
+                                            <td class="amount-col">$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td class="amount-col"></td>
+                                        </tr>
+                                    `;
+    }).join('')}
+
+                                ${totalCredits.tss > 0 ? `
+                                    <tr>
+                                        <td>RETENCION TSS</td>
+                                        <td>${getAccNum(state.settings.payrollAccounts?.tss) || 'Pendiente Config.'}</td>
+                                        <td class="activity-col"></td>
+                                        <td class="amount-col"></td>
+                                        <td class="amount-col">$${totalCredits.tss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                ` : ''}
+
+                                ${totalCredits.isr > 0 ? `
+                                    <tr>
+                                        <td>RETENCION ISR</td>
+                                        <td>${getAccNum(state.settings.payrollAccounts?.isr) || 'Pendiente Config.'}</td>
+                                        <td class="activity-col"></td>
+                                        <td class="amount-col"></td>
+                                        <td class="amount-col">$${totalCredits.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                ` : ''}
+
+                                ${totalCredits.disc > 0 ? `
+                                    <tr>
+                                        <td>DESCUENTOS / CXC</td>
+                                        <td>${getAccNum(state.settings.payrollAccounts?.discounts) || 'Pendiente Config.'}</td>
+                                        <td class="activity-col"></td>
+                                        <td class="amount-col"></td>
+                                        <td class="amount-col">$${totalCredits.disc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                ` : ''}
+
+                                <tr>
+                                    <td style="font-weight: bold;">NOMINA POR PAGAR</td>
+                                    <td>${getAccNum(state.settings.payrollAccounts?.payable) || 'Pendiente Config.'}</td>
+                                    <td class="activity-col"></td>
+                                    <td class="amount-col"></td>
+                                    <td class="amount-col" style="font-weight: bold;">$${totalCredits.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="3" style="text-align: right; padding-right: 20px;">CUADRE</td>
+                                    <td class="amount-col" style="color: var(--success)">$${totalDebitAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td class="amount-col" style="color: var(--success)">$${totalCreditAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    ` : `
+                        <table class="data-table" id="payroll-journal-table">
+                            <thead>
+                                <tr>
+                                    <th>EMPLEADO</th>
+                                    <th>CUENTA CONTABLE</th>
+                                    <th>ACTIVIDAD</th>
+                                    <th class="text-right">MONTO CARGADO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${(() => {
+            const rows = [];
+            if (isHistorical && run.results) {
+                run.results.forEach(res => {
+                    const emp = state.employees.find(e => e.idNumber === res.idNumber);
+                    if (res.type === 'fixed') {
+                        rows.push({
+                            name: res.fullName,
+                            acc: getAccNum(emp?.operation || 'Sin Cuenta'),
+                            act: getActVal(emp?.activity || '-'),
+                            amt: res.base
+                        });
+                    }
+                });
+                (run.dailyLogs || []).forEach(l => {
+                    rows.push({
+                        name: l.employee,
+                        acc: getAccNum(l.op),
+                        act: getActVal(l.act),
+                        amt: parseFloat(l.amount)
+                    });
+                });
+                // Global amounts (distributed per employee who had them)
+                run.results.forEach(res => {
+                    if (res.incentives > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.incentives || 'Incentivos'), act: '-', amt: res.incentives });
+                    if (res.overtime > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.overtime || 'Horas Extras'), act: '-', amt: res.overtime });
+                    if (res.christmas > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.christmas || 'Navidad'), act: '-', amt: res.christmas });
+                });
+            } else {
+                state.employees.filter(e => e.active !== false).forEach(emp => {
+                    const data = calculateEmployeePayrollData(emp, run);
+                    const empFullName = `${emp.firstName} ${emp.lastName}`;
+                    if (emp.type === 'fixed') {
+                        rows.push({ name: empFullName, acc: getAccNum(emp.operation || 'Sin Cuenta'), act: getActVal(emp.activity || '-'), amt: data.base });
+                    } else {
+                        const logs = (run.dailyLogs || []).filter(l => (l.employee || '').trim().toLowerCase() === empFullName.trim().toLowerCase());
+                        logs.forEach(l => {
+                            rows.push({ name: l.employee, acc: getAccNum(l.op), act: getActVal(l.act), amt: parseFloat(l.amount) });
+                        });
+                    }
+                    if (data.inc > 0) rows.push({ name: empFullName, acc: getAccNum(state.settings.payrollAccounts?.incentives || 'Incentivos'), act: '-', amt: data.inc });
+                    if (data.ot > 0) rows.push({ name: empFullName, acc: getAccNum(state.settings.payrollAccounts?.overtime || 'Horas Extras'), act: '-', amt: data.ot });
+                    if (data.chr > 0) rows.push({ name: empFullName, acc: getAccNum(state.settings.payrollAccounts?.christmas || 'Navidad'), act: '-', amt: data.chr });
+                });
+            }
+            return rows.sort((a, b) => a.name.localeCompare(b.name)).map(r => `
+                                        <tr>
+                                            <td>${r.name}</td>
+                                            <td>${r.acc}</td>
+                                            <td>${r.act}</td>
+                                            <td class="td-numeric">$${r.amt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        </tr>
+                                    `).join('');
+        })()}
+                            </tbody>
+                            <tfoot>
+                                <tr style="font-weight: bold;">
+                                    <td colspan="3" class="text-right">TOTAL CARGOS:</td>
+                                    <td class="td-numeric">$${totalDebitAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    `}
+
+                <div style="margin-top: 50px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; text-align: center;">
+                    <div style="border-top: 1px solid #777; padding-top: 10px;">Hecho Por</div>
+                    <div style="border-top: 1px solid #777; padding-top: 10px;">Revisado Por</div>
+                    <div style="border-top: 1px solid #777; padding-top: 10px;">Autorizado Por</div>
+                </div>
+            </div>
+        `;
+};
+
+window.downloadPayrollEntryExcel = () => {
+    const table = document.getElementById('payroll-journal-table');
+    if (!table) return;
+    const runId = window.selectedEntryRunId;
+    let runName = 'Nomina';
+    if (state.activePayroll && state.activePayroll.id === runId) runName = state.activePayroll.name;
+    else {
+        const h = (state.payrollHistory || []).find(x => x.id === runId);
+        if (h) runName = h.name;
+    }
+    const filename = `Entrada_Diario_${runName.replace(/\s+/g, '_')}.xls`;
+
+    let html = table.outerHTML;
+    const uri = 'data:application/vnd.ms-excel;base64,';
+    const template = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>{worksheet}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body><table>{table}</table></body></html>';
+    const base64 = (s) => window.btoa(unescape(encodeURIComponent(s)));
+    const format = (s, c) => s.replace(/{(\w+)}/g, (m, p) => c[p]);
+    const ctx = { worksheet: 'Entrada de Diario', table: html };
+    const link = document.createElement("a");
+    link.download = filename;
+    link.href = uri + base64(format(template, ctx));
+    link.click();
+};
+
+document.addEventListener('click', (e) => {
+    const container = document.getElementById('dept-multi-select');
+    if (container && !container.contains(e.target)) {
+        container.classList.remove('active');
+    }
+});
+
 // --- Module: Christmas Salary ---
 const renderChristmasSalary = (container) => {
     const currentYear = new Date().getFullYear();
 
     // Calculate data for each employee
-    const christmasData = state.employees.map(emp => {
-        const empId = emp.idNumber;
-        const empName = `${emp.firstName} ${emp.lastName}`;
+    const christmasData = state.employees.filter(e => e.active !== false).map(emp => {
+        try {
+            const empId = emp.idNumber;
+            const empName = `${emp.firstName} ${emp.lastName} `;
 
-        // Sum earnings from history for this year
-        let accumulated = 0;
-        state.payrollHistory.forEach(run => {
-            const runYear = new Date(run.periodStart).getFullYear();
-            if (runYear === currentYear) {
-                const res = run.results.find(r => r.employeeId === empId);
-                if (res) {
-                    accumulated += (res.base + res.incentives + res.overtime);
-                }
+            // Find the latest payment to determine the start date
+            const lastPayments = (state.christmasSalary || []).filter(p => p.employeeName === empName && p.periodEnd);
+            let startDate = `${currentYear}-01-01`;
+            if (lastPayments.length > 0) {
+                lastPayments.sort((a, b) => (b.periodEnd || '').localeCompare(a.periodEnd || ''));
+                const latest = lastPayments[0];
+                const lastDate = new Date(latest.periodEnd);
+                lastDate.setDate(lastDate.getDate() + 1);
+                startDate = lastDate.toISOString().split('T')[0];
+            } else if (emp.hireDate && emp.hireDate > startDate) {
+                startDate = emp.hireDate;
             }
-        });
 
-        const calculated = accumulated / 12;
+            const endDate = new Date().toISOString().split('T')[0];
 
-        return {
-            id: empId,
-            name: empName,
-            accumulated: accumulated,
-            calculated: calculated,
-            agreement: 'si',
-            manualAmount: calculated.toFixed(2)
-        };
+            // Sum earnings from history within this specific range
+            let accumulated = 0;
+            let payrollsCounted = 0;
+            let detailList = [];
+
+            state.payrollHistory.forEach(run => {
+                // Correct logic: Include if the payroll cycle ENDED within the range
+                if (run.periodEnd && run.periodEnd >= startDate && run.periodEnd <= endDate) {
+                    const res = run.results.find(r => (r.idNumber || r.employeeId) == empId);
+                    if (res) {
+                        const amount = (parseFloat(res.base) || 0) + (parseFloat(res.incentives) || 0) + (parseFloat(res.overtime) || 0);
+                        accumulated += amount;
+                        payrollsCounted++;
+                        detailList.push(`${run.payrollName} (${run.periodEnd}): $${amount.toFixed(2)} `);
+                    }
+                }
+            });
+
+            const calculated = accumulated / 12;
+
+            return {
+                id: empId,
+                name: empName,
+                startDate: startDate,
+                endDate: endDate,
+                accumulated: accumulated,
+                calculated: calculated,
+                agreement: 'si',
+                manualAmount: calculated.toFixed(2),
+                payrollsCounted: payrollsCounted,
+                detailList: detailList
+            };
+        } catch (e) {
+            console.error("Error calculation:", e);
+            return { name: emp.firstName + ' (Error)', startDate: '-', endDate: '-', accumulated: 0, calculated: 0, agreement: 'si', manualAmount: '0.00' };
+        }
     });
 
     container.innerHTML = `
-        <div class="header-action">
-            <h1>Salario de Navidad (Regalía Pascual) - Año ${currentYear}</h1>
+            < div class="header-action" >
+            <h1>Salario de Navidad (Regalía Pascual)</h1>
             <div class="action-group" style="gap: 10px">
                 <select id="chr-payment-mode" class="form-control" style="width: 250px">
                     <option value="current">Agregar a Nómina Abierta</option>
-                    <option value="new">Crear Nómina Solo Regalía</option>
+                    <option value="new">Crear Nómina Especial Solo Regalía</option>
                 </select>
                 <button class="btn btn-primary" id="process-christmas-btn">
                     <i class="fas fa-check-circle"></i> Procesar Pagos Seleccionados
                 </button>
             </div>
-        </div>
+        </div >
         
         <div class="card mt-4">
-            <p class="mb-4 text-gray">Este módulo calcula el acumulado del salario bruto (Sueldo + Incentivos + Extras) percibido durante el año actual y lo divide entre 12.</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>Calculadora de Regalía</h3>
+                <p class="text-gray" style="font-size: 0.9rem;">Periodo: 12va parte de lo ganado entre el último pago y hoy.</p>
+            </div>
             <table class="data-table">
                 <thead>
                     <tr>
                         <th style="width: 40px"><input type="checkbox" id="select-all-chr"></th>
                         <th>Empleado</th>
-                        <th style="text-align: right">Acumulado Anual</th>
-                        <th style="text-align: right">Calculado (Acum/12)</th>
-                        <th>¿De Acuerdo?</th>
-                        <th style="text-align: right">Monto a Pagar</th>
+                        <th>Rango de Cálculo</th>
+                        <th style="text-align: right">Historicos</th>
+                        <th style="text-align: right">Acumulado</th>
+                        <th style="text-align: right">Calculado (1/12)</th>
+                        <th>¿OK?</th>
+                        <th style="text-align: right">Monto Pagar</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${christmasData.map((d, i) => `
                         <tr>
                             <td><input type="checkbox" class="chr-select" data-index="${i}"></td>
-                            <td>${d.name}</td>
-                            <td style="text-align: right">$${d.accumulated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            <td style="text-align: right; font-weight: bold">$${d.calculated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td>
-                                <select class="form-control chr-agreement" data-index="${i}" style="width: 80px">
+                                <strong>${d.name}</strong><br>
+                                <small class="text-gray" title="${d.detailList.join('\\n')}">${d.payrollsCounted} nóminas incluidas</small>
+                            </td>
+                            <td>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <small>Desde: <strong>${d.startDate}</strong></small>
+                                    <small>Hasta: <strong>${d.endDate}</strong></small>
+                                </div>
+                            </td>
+                            <td style="text-align: right">
+                                <button class="btn-icon" onclick="alert('Detalle de nóminas:\\n\\n${d.detailList.join('\\n') || 'Ninguna nómina encontrada en este rango'}')" title="Ver detalle">
+                                    <i class="fas fa-search-plus"></i>
+                                </button>
+                            </td>
+                            <td style="text-align: right">$${d.accumulated.toFixed(2)}</td>
+                            <td style="text-align: right; font-weight: bold; color: var(--primary);">$${d.calculated.toFixed(2)}</td>
+                            <td>
+                                <select class="form-control chr-agreement" data-index="${i}" style="width: 65px; padding: 2px 5px; height: 30px;">
                                     <option value="si">SÍ</option>
                                     <option value="no">NO</option>
                                 </select>
                             </td>
                             <td style="text-align: right">
                                 <input type="number" class="form-control chr-manual-amount" data-index="${i}" 
-                                       value="${d.manualAmount}" style="width: 120px; text-align: right" disabled>
+                                       value="${d.manualAmount}" style="width: 100px; text-align: right; height: 30px;" disabled>
                             </td>
                         </tr>
                     `).join('')}
-                    ${christmasData.length === 0 ? '<tr><td colspan="6" style="text-align:center">No hay empleados registrados</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
-    `;
 
-    // Internal logic for the module
-    const agreementSelects = container.querySelectorAll('.chr-agreement');
-    agreementSelects.forEach(select => {
+        <div class="card mt-4">
+            <h3>Historial de Pagos de Regalía</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Fecha Pago</th>
+                        <th>Empleado</th>
+                        <th>Periodo Cubierto</th>
+                        <th style="text-align: right">Monto</th>
+                        <th style="width: 50px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${(state.christmasSalary || []).slice().reverse().map((p, idx, arr) => `
+                        <tr>
+                            <td>${p.date}</td>
+                            <td>${p.employeeName}</td>
+                            <td><small>${p.periodStart} al ${p.periodEnd}</small></td>
+                            <td style="text-align: right; font-weight: bold">$${parseFloat(p.amount).toFixed(2)}</td>
+                            <td>
+                                <button class="btn-icon delete admin-only" onclick="deleteChristmasPayment(${arr.length - 1 - idx})" title="Eliminar registro">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                    ${(!state.christmasSalary || state.christmasSalary.length === 0) ? '<tr><td colspan="5" style="text-align:center">No hay pagos registrados</td></tr>' : ''}
+                </tbody>
+            </table>
+        </div>
+        `;
+
+    // Agreement logic
+    container.querySelectorAll('.chr-agreement').forEach(select => {
         select.onchange = (e) => {
-            const index = e.target.dataset.index;
-            const input = container.querySelector(`.chr-manual-amount[data-index="${index}"]`);
+            const idx = e.target.dataset.index;
+            const input = container.querySelector(`.chr - manual - amount[data - index="${idx}"]`);
             input.disabled = (e.target.value === 'si');
-            if (e.target.value === 'si') {
-                input.value = christmasData[index].calculated.toFixed(2);
-            }
+            if (e.target.value === 'si') input.value = christmasData[idx].calculated.toFixed(2);
         };
     });
 
     document.getElementById('select-all-chr').onclick = (e) => {
-        const checks = container.querySelectorAll('.chr-select');
-        checks.forEach(c => c.checked = e.target.checked);
+        container.querySelectorAll('.chr-select').forEach(c => c.checked = e.target.checked);
     };
 
     document.getElementById('process-christmas-btn').onclick = () => {
-        const selectedIndices = Array.from(container.querySelectorAll('.chr-select:checked')).map(c => parseInt(c.dataset.index));
-        if (selectedIndices.length === 0) {
-            alert('Por favor seleccione al menos un empleado.');
-            return;
-        }
+        const selected = Array.from(container.querySelectorAll('.chr-select:checked')).map(c => parseInt(c.dataset.index));
+        if (selected.length === 0) return alert('Seleccione empleados.');
 
         const mode = document.getElementById('chr-payment-mode').value;
-        if (mode === 'current' && !state.activePayroll) {
-            alert('Debe tener una nómina abierta para usar esta opción.');
-            return;
-        }
+        if (mode === 'current' && !state.activePayroll) return alert('Abra una nómina primero.');
 
-        if (!confirm(`¿Está seguro que desea procesar el pago de navidad para ${selectedIndices.length} empleados?`)) return;
+        if (!confirm(`¿Procesar pagos para ${selected.length} empleados ? `)) return;
 
-        const payments = selectedIndices.map(idx => {
-            const amt = parseFloat(container.querySelector(`.chr-manual-amount[data-index="${idx}"]`).value);
+        const payments = selected.map(idx => {
+            const data = christmasData[idx];
+            const amt = parseFloat(container.querySelector(`.chr - manual - amount[data - index="${idx}"]`).value);
             return {
-                employeeName: christmasData[idx].name,
+                employeeName: data.name,
                 amount: amt,
                 date: new Date().toISOString().split('T')[0],
-                reason: `Regalía Pascual ${currentYear}`,
-                operation: state.settings.payrollAccounts?.christmas || ''
+                periodStart: data.startDate,
+                periodEnd: data.endDate,
+                reason: `Regalía Pascual`
             };
         });
 
         if (mode === 'current') {
             state.christmasSalary.push(...payments);
-            saveState();
-            alert('Pagos agregados a la nómina abierta.');
-            renderSection('christmas-salary');
         } else {
-            // Create a dedicated Christmas Payroll
             const newPayroll = {
                 id: Date.now(),
-                name: `REGALÍA PASCUAL ${currentYear}`,
+                name: `REGALÍA PASCUAL ${new Date().getFullYear()} `,
                 periodType: 'Especial (Navidad)',
-                startDate: new Date().toISOString().split('T')[0],
+                startDate: payments[0].periodStart,
+                endDate: payments[0].periodEnd,
                 status: 'open',
                 dailyLogs: [],
                 isChristmasOnly: true,
-                payments: payments
             };
-            // Note: Currently state.activePayroll only supports one active. 
-            // In a more complex app, we'd handle multiple or replace current.
-            // For now, let's just push to christmasSalary and notify.
+            state.activePayroll = newPayroll;
             state.christmasSalary.push(...payments);
-            saveState();
-            alert('Se han procesado los pagos como regalía pascual.');
-            renderSection('christmas-salary');
         }
+        saveState();
+        alert('Procesado correctamente.');
+        renderSection('christmas-salary');
     };
+};
+
+window.deleteChristmasPayment = (index) => {
+    if (!confirm('¿Seguro que desea eliminar este registro de pago? El cálculo volverá a incluir este periodo.')) return;
+    state.christmasSalary.splice(index, 1);
+    saveState();
+    renderSection('christmas-salary');
 };
 
 window.quickAddChristmasSalary = (empName) => {
     switchSection('christmas-salary');
-    // In a final version, we could auto-filter or highlight the employee
 };
 
 // --- Utilities ---
@@ -2174,47 +3936,47 @@ window.editDailyLog = (index) => {
     const log = state.activePayroll.dailyLogs[index];
     const bounds = getPayrollBounds();
     showModal('Editar Registro Diario', `
-        <div class="form-row">
-            <div class="form-group">
-                <label>Fecha</label>
-                <input type="date" id="edit-reg-date" class="form-control" value="${log.date}"
-                       ${bounds ? `min="${bounds.min}" max="${bounds.max}"` : ''}>
-            </div>
-            <div class="form-group">
-                <label>Empleado</label>
-                <select id="edit-reg-emp" class="form-control">
-                    ${state.employees.filter(e => e.type === 'mobile').map(e => `<option value="${e.firstName} ${e.lastName}" ${log.employee === (e.firstName + ' ' + e.lastName) ? 'selected' : ''}>${e.firstName} ${e.lastName}</option>`).join('')}
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Operación</label>
-                <select id="edit-reg-op" class="form-control">
-                    ${state.operations.map(o => `<option value="${o.name}" ${log.op === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Actividad</label>
-                <select id="edit-reg-act" class="form-control">
-                    ${state.activities.map(a => `<option value="${a.name}" ${log.act === a.name ? 'selected' : ''}>${a.name}</option>`).join('')}
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Monto Real del Día ($)</label>
-                <input type="number" id="edit-reg-amount" class="form-control" value="${log.amount}">
-            </div>
-            <div class="form-group">
-                <label>¿Aplicar Descuento TSS?</label>
-                <select id="edit-reg-tss" class="form-control">
-                    <option value="si" ${log.applyTSS === 'si' ? 'selected' : ''}>Sí — Descontar TSS</option>
-                    <option value="no" ${log.applyTSS === 'no' ? 'selected' : ''}>No — Sin descuento TSS</option>
-                </select>
-            </div>
-        </div>
-`, () => {
+            < div class="form-row" >
+                    <div class="form-group">
+                        <label>Fecha</label>
+                        <input type="date" id="edit-reg-date" class="form-control" value="${log.date}"
+                               ${bounds ? `min="${bounds.min}" max="${bounds.max}"` : ''}>
+                    </div>
+                    <div class="form-group">
+                        <label>Empleado</label>
+                        <select id="edit-reg-emp" class="form-control">
+                            ${state.employees.filter(e => e.type === 'mobile').map(e => `<option value="${e.firstName} ${e.lastName}" ${log.employee === (e.firstName + ' ' + e.lastName) ? 'selected' : ''}>${e.firstName} ${e.lastName}</option>`).join('')}
+                        </select>
+                    </div>
+                </div >
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Operación</label>
+                        <select id="edit-reg-op" class="form-control">
+                            ${state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => `<option value="${o.name}" ${log.op === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Actividad</label>
+                        <select id="edit-reg-act" class="form-control">
+                            ${state.activities.map(a => `<option value="${a.name}" ${log.act === a.name ? 'selected' : ''}>${a.name}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Monto Real del Día ($)</label>
+                        <input type="number" id="edit-reg-amount" class="form-control" value="${log.amount}">
+                    </div>
+                    <div class="form-group">
+                        <label>¿Aplicar Descuento TSS?</label>
+                        <select id="edit-reg-tss" class="form-control">
+                            <option value="si" ${log.applyTSS === 'si' ? 'selected' : ''}>Sí — Descontar TSS</option>
+                            <option value="no" ${log.applyTSS === 'no' ? 'selected' : ''}>No — Sin descuento TSS</option>
+                        </select>
+                    </div>
+                </div>
+        `, () => {
         const updatedLog = {
             date: document.getElementById('edit-reg-date').value,
             employee: document.getElementById('edit-reg-emp').value,
@@ -2245,65 +4007,70 @@ window.deleteDailyLog = (index) => {
 window.editEmployee = (index) => {
     const emp = state.employees[index];
     showModal('Editar Empleado', `
-        <div class="form-row">
-            <div class="form-group">
-                <label>Nombres</label>
-                <input type="text" id="edit-emp-fn" class="form-control" value="${emp.firstName}">
-            </div>
-            <div class="form-group">
-                <label>Apellidos</label>
-                <input type="text" id="edit-emp-ln" class="form-control" value="${emp.lastName}">
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Cédula o Pasaporte</label>
-                <input type="text" id="edit-emp-id" class="form-control" value="${emp.idNumber}">
-            </div>
-            <div class="form-group">
-                <label>Tipo de Empleado</label>
-                <select id="edit-emp-type" class="form-control">
-                    <option value="fixed" ${emp.type === 'fixed' ? 'selected' : ''}>Fijo</option>
-                    <option value="mobile" ${emp.type === 'mobile' ? 'selected' : ''}>Móvil</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Salario a Ganar</label>
-            <input type="number" id="edit-emp-salary" class="form-control" value="${emp.salary}" ${emp.type === 'mobile' ? 'disabled' : ''}>
-        </div>
-        <div class="form-group">
-            <label>Dirección</label>
-            <input type="text" id="edit-emp-address" class="form-control" value="${emp.address || ''}">
-        </div>
-        <div class="form-group">
-            <label>Fecha de Ingreso</label>
-            <input type="date" id="edit-emp-hire-date" class="form-control" value="${emp.hireDate || ''}">
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Departamento</label>
-                <select id="edit-emp-dept" class="form-control">
-                    <option value="">Seleccionar...</option>
-                    ${state.departments.map(d => `<option value="${d.name}" ${emp.department === d.name ? 'selected' : ''}>${d.name}</option>`).join('')}
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Operación Defecto</label>
-                <select id="edit-emp-op" class="form-control">
-                    <option value="">Seleccionar...</option>
-                    ${state.operations.map(o => `<option value="${o.name}" ${emp.operation === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
-                </select>
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Actividad Defecto</label>
-            <select id="edit-emp-act" class="form-control">
-                <option value="">Seleccionar...</option>
-                ${state.activities.map(a => `<option value="${a.name}" ${emp.activity === a.name ? 'selected' : ''}>${a.name}</option>`).join('')}
-            </select>
-        </div>
-`, () => {
+            < div class="form-row" >
+                    <div class="form-group">
+                        <label>Nombres</label>
+                        <input type="text" id="edit-emp-fn" class="form-control" value="${emp.firstName}">
+                    </div>
+                    <div class="form-group">
+                        <label>Apellidos</label>
+                        <input type="text" id="edit-emp-ln" class="form-control" value="${emp.lastName}">
+                    </div>
+                </div >
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Cédula o Pasaporte</label>
+                        <input type="text" id="edit-emp-id" class="form-control" value="${emp.idNumber}">
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo de Empleado</label>
+                        <select id="edit-emp-type" class="form-control">
+                            <option value="fixed" ${emp.type === 'fixed' ? 'selected' : ''}>Fijo</option>
+                            <option value="mobile" ${emp.type === 'mobile' ? 'selected' : ''}>Móvil</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Salario a Ganar</label>
+                    <input type="number" id="edit-emp-salary" class="form-control" value="${emp.salary}" ${emp.type === 'mobile' ? 'disabled' : ''}>
+                </div>
+                <div class="form-group">
+                    <label>Dirección</label>
+                    <input type="text" id="edit-emp-address" class="form-control" value="${emp.address || ''}">
+                </div>
+                <div class="form-group">
+                    <label>Fecha de Ingreso</label>
+                    <input type="date" id="edit-emp-hire-date" class="form-control" value="${emp.hireDate || ''}">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Departamento</label>
+                        <select id="edit-emp-dept" class="form-control">
+                            <option value="">Seleccionar...</option>
+                            ${state.departments.map(d => `<option value="${d.name}" ${emp.department === d.name ? 'selected' : ''}>${d.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Operación Defecto</label>
+                        <select id="edit-emp-op" class="form-control">
+                            <option value="">Seleccionar...</option>
+                            ${state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => `<option value="${o.name}" ${emp.operation === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Actividad Defecto</label>
+                    <select id="edit-emp-act" class="form-control">
+                        <option value="">Seleccionar...</option>
+                        ${state.activities.map(a => `<option value="${a.name}" ${emp.activity === a.name ? 'selected' : ''}>${a.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="edit-emp-active" ${emp.active !== false ? 'checked' : ''}> Empleado Activo (Aparece en Nómina)
+                    </label>
+                </div>
+        `, () => {
         const updatedEmp = {
             firstName: document.getElementById('edit-emp-fn').value,
             lastName: document.getElementById('edit-emp-ln').value,
@@ -2315,6 +4082,7 @@ window.editEmployee = (index) => {
             department: document.getElementById('edit-emp-dept').value,
             operation: document.getElementById('edit-emp-op').value,
             activity: document.getElementById('edit-emp-act').value,
+            active: document.getElementById('edit-emp-active').checked
         };
 
         if (updatedEmp.firstName && updatedEmp.idNumber) {
@@ -2333,22 +4101,42 @@ window.editEmployee = (index) => {
     };
 };
 
+window.toggleEmployeeStatus = (index) => {
+    const emp = state.employees[index];
+    emp.active = (emp.active === false) ? true : false;
+    saveState();
+    renderSection('employees');
+};
+
 window.editOperation = (index) => {
     const op = state.operations[index];
     showModal('Editar Operación', `
-        <div class="form-group">
-            <label>Nombre de la Operación</label>
-            <input type="text" id="edit-op-name" class="form-control" value="${op.name}">
-        </div>
-        <div class="form-group">
-            <label>Número de Cuenta Contable</label>
-            <input type="text" id="edit-op-account" class="form-control" value="${op.account}">
-        </div>
-`, () => {
+            < div class="form-group" >
+                    <label>Nombre de la Operación</label>
+                    <input type="text" id="edit-op-name" class="form-control" value="${op.name}">
+                </div>
+                <div class="form-group">
+                    <label>Número de Cuenta Contable</label>
+                    <input type="text" id="edit-op-account" class="form-control" value="${op.account}">
+                </div>
+                <div class="form-group">
+                    <label>Propósitos de la Operación:</label>
+                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+                            <input type="checkbox" id="edit-op-use-acc" ${(op.useInAccounting === undefined || op.useInAccounting) ? 'checked' : ''}> Utilizar en contabilidad
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+                            <input type="checkbox" id="edit-op-use-labor" ${(op.useInLabor === undefined || op.useInLabor) ? 'checked' : ''}> Utilizar en empleados fijos y móviles
+                        </label>
+                    </div>
+                </div>
+        `, () => {
         const name = document.getElementById('edit-op-name').value;
         const account = document.getElementById('edit-op-account').value;
+        const useInAccounting = document.getElementById('edit-op-use-acc').checked;
+        const useInLabor = document.getElementById('edit-op-use-labor').checked;
         if (name && account) {
-            state.operations[index] = { name, account };
+            state.operations[index] = { name, account, useInAccounting, useInLabor };
             saveState();
             renderSection('operations');
             hideModal();
@@ -2359,19 +4147,24 @@ window.editOperation = (index) => {
 window.editActivity = (index) => {
     const act = state.activities[index];
     showModal('Editar Actividad', `
-        <div class="form-group">
-            <label>Nombre de la Actividad</label>
-            <input type="text" id="edit-act-name" class="form-control" value="${act.name}">
-        </div>
-        <div class="form-group">
-            <label>Valor / Número</label>
-            <input type="number" id="edit-act-value" class="form-control" value="${act.value}">
-        </div>
-`, () => {
+            < div class="form-group" >
+                    <label>Nombre de la Actividad</label>
+                    <input type="text" id="edit-act-name" class="form-control" value="${act.name}">
+                </div>
+                <div class="form-group">
+                    <label>Valor / Número (Otro objetivo)</label>
+                    <input type="number" id="edit-act-value" class="form-control" value="${act.value || 0}">
+                </div>
+                <div class="form-group">
+                    <label>Salario Diario (Para Registro Diario)</label>
+                    <input type="number" id="edit-act-daily-salary" class="form-control" value="${act.dailySalary || 0}">
+                </div>
+        `, () => {
         const name = document.getElementById('edit-act-name').value;
         const value = document.getElementById('edit-act-value').value;
-        if (name && value) {
-            state.activities[index] = { name, value };
+        const dailySalary = document.getElementById('edit-act-daily-salary').value;
+        if (name) {
+            state.activities[index] = { name, value: parseFloat(value) || 0, dailySalary: parseFloat(dailySalary) || 0 };
             saveState();
             renderSection('activities');
             hideModal();
@@ -2387,34 +4180,26 @@ window.deleteItem = (key, index) => {
     }
 };
 
-window.deleteEmployee = (index) => {
-    if (confirm('¿Seguro que desea eliminar este empleado?')) {
-        state.employees.splice(index, 1);
-        saveState();
-        renderSection('employees');
-    }
-};
-
 // --- Quick Action Helpers ---
 window.quickAddIncentive = (employeeName) => {
     showModal('Aplicar Incentivo', `
-        <div class="form-group">
-            <label>Fecha</label>
-            <input type="date" id="inc-date" class="form-control" value="${new Date().toISOString().split('T')[0]}">
-        </div>
-        <div class="form-group">
-            <label>Empleado</label>
-            <input type="text" id="inc-emp" class="form-control" value="${employeeName}" readonly>
-        </div>
-        <div class="form-group">
-            <label>Monto</label>
-            <input type="number" id="inc-amount" class="form-control" placeholder="0.00">
-        </div>
-        <div class="form-group">
-            <label>Motivo</label>
-            <input type="text" id="inc-reason" class="form-control" placeholder="Ej: Bono por meta">
-        </div>
-`, () => {
+            < div class="form-group" >
+                <label>Fecha</label>
+                <input type="date" id="inc-date" class="form-control" value="${new Date().toISOString().split('T')[0]}">
+            </div>
+            <div class="form-group">
+                <label>Empleado</label>
+                <input type="text" id="inc-emp" class="form-control" value="${employeeName}" readonly>
+            </div>
+            <div class="form-group">
+                <label>Monto</label>
+                <input type="number" id="inc-amount" class="form-control" placeholder="0.00">
+            </div>
+            <div class="form-group">
+                <label>Motivo</label>
+                <input type="text" id="inc-reason" class="form-control" placeholder="Ej: Bono por meta">
+            </div>
+        `, () => {
         const inc = {
             date: document.getElementById('inc-date').value,
             employeeName: document.getElementById('inc-emp').value,
@@ -2423,6 +4208,13 @@ window.quickAddIncentive = (employeeName) => {
             operation: state.settings.payrollAccounts?.incentives || ''
         };
         if (inc.employeeName && inc.amount && inc.date) {
+            const bounds = getPayrollBounds();
+            if (bounds && (inc.date < bounds.min || inc.date > bounds.max)) {
+                alert(`La fecha debe estar dentro del rango de la nómina(${bounds.min} a ${bounds.max})`);
+                return;
+            }
+
+            if (!state.incentives) state.incentives = [];
             state.incentives.push(inc);
             saveState();
             renderSection('employees');
@@ -2440,31 +4232,37 @@ window.quickAddOvertime = (employeeName) => {
     }
 
     showModal('Registrar Horas Extras', `
-        <div class="form-group">
-            <label>Fecha</label>
-            <input type="date" id="ot-date" class="form-control" value="${new Date().toISOString().split('T')[0]}">
-        </div>
-        <div class="form-group">
-            <label>Empleado</label>
-            <input type="text" id="ot-emp" class="form-control" value="${employeeName}" readonly data-salary="${employee.salary}">
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Horas</label>
-                <input type="number" id="ot-hours" class="form-control" placeholder="0">
+            < div class="form-group" >
+                <label>Fecha</label>
+                <input type="date" id="ot-date" class="form-control" value="${new Date().toISOString().split('T')[0]}">
             </div>
             <div class="form-group">
-                <label>Factor</label>
-                <input type="number" id="ot-factor" class="form-control" value="1.35" step="0.01">
+                <label>Empleado</label>
+                <input type="text" id="ot-emp" class="form-control" value="${employeeName}" readonly data-salary="${employee.salary}">
             </div>
-        </div>
-`, () => {
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Horas</label>
+                    <input type="number" id="ot-hours" class="form-control" placeholder="0">
+                </div>
+                <div class="form-group">
+                    <label>Factor</label>
+                    <input type="number" id="ot-factor" class="form-control" value="1.35" step="0.01">
+                </div>
+            </div>
+        `, () => {
         const salary = parseFloat(employee.salary);
         const hours = parseFloat(document.getElementById('ot-hours').value);
         const factor = parseFloat(document.getElementById('ot-factor').value);
         const date = document.getElementById('ot-date').value;
 
         if (hours && date) {
+            const bounds = getPayrollBounds();
+            if (bounds && (date < bounds.min || date > bounds.max)) {
+                alert(`La fecha debe estar dentro del rango de la nómina(${bounds.min} a ${bounds.max})`);
+                return;
+            }
+
             const hourlyRate = (salary / 23.83) / 8;
             const extraPay = hourlyRate * hours * factor;
             state.overtime.push({
@@ -2472,12 +4270,9 @@ window.quickAddOvertime = (employeeName) => {
                 employeeName,
                 hours,
                 factor,
-                amount: extraPay,
+                amount: extraPay.toFixed(2),
                 operation: state.settings.payrollAccounts?.overtime || ''
             });
-            saveState();
-            renderSection('overtime');
-            hideModal();
             saveState();
             renderSection('employees');
             hideModal();
@@ -2488,19 +4283,19 @@ window.quickAddOvertime = (employeeName) => {
 
 window.quickAddDiscount = (employeeName) => {
     showModal('Crear Descuento', `
-        <div class="form-group">
-            <label>Empleado</label>
-            <input type="text" id="disc-emp" class="form-control" value="${employeeName}" readonly>
-        </div>
-        <div class="form-group">
-            <label>Monto</label>
-            <input type="number" id="disc-amount" class="form-control" placeholder="0.00">
-        </div>
-        <div class="form-group">
-            <label>Concepto / Motivo</label>
-            <input type="text" id="disc-reason" class="form-control">
-        </div>
-`, () => {
+            < div class="form-group" >
+                <label>Empleado</label>
+                <input type="text" id="disc-emp" class="form-control" value="${employeeName}" readonly>
+            </div>
+            <div class="form-group">
+                <label>Monto</label>
+                <input type="number" id="disc-amount" class="form-control" placeholder="0.00">
+            </div>
+            <div class="form-group">
+                <label>Concepto / Motivo</label>
+                <input type="text" id="disc-reason" class="form-control">
+            </div>
+        `, () => {
         const d = {
             employeeName: document.getElementById('disc-emp').value,
             amount: document.getElementById('disc-amount').value,
@@ -2519,19 +4314,19 @@ window.quickAddDiscount = (employeeName) => {
 
 window.quickAddChristmasSalary = (employeeName) => {
     showModal('Salario de Navidad', `
-        <div class="form-group">
-            <label>Empleado</label>
-            <input type="text" id="chr-emp" class="form-control" value="${employeeName}" readonly>
-        </div>
-        <div class="form-group">
-            <label>Monto (Monto Total a Pagar)</label>
-            <input type="number" id="chr-amount" class="form-control" placeholder="0.00">
-        </div>
-        <div class="form-group">
-            <label>Fecha de Pago Estimada</label>
-            <input type="date" id="chr-date" class="form-control" value="${new Date().getFullYear()}-12-20">
-        </div>
-`, () => {
+            < div class="form-group" >
+                <label>Empleado</label>
+                <input type="text" id="chr-emp" class="form-control" value="${employeeName}" readonly>
+            </div>
+            <div class="form-group">
+                <label>Monto (Monto Total a Pagar)</label>
+                <input type="number" id="chr-amount" class="form-control" placeholder="0.00">
+            </div>
+            <div class="form-group">
+                <label>Fecha de Pago Estimada</label>
+                <input type="date" id="chr-date" class="form-control" value="${new Date().getFullYear()}-12-20">
+            </div>
+        `, () => {
         const amount = document.getElementById('chr-amount').value;
         const date = document.getElementById('chr-date').value;
         if (amount && date) {

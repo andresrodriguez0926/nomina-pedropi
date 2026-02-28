@@ -109,6 +109,10 @@ if (typeof firebase !== 'undefined') {
         const savedSession = localStorage.getItem('activeSession');
         if (savedSession) {
             initApp(JSON.parse(savedSession));
+        } else {
+            // Auto login as admin immediately
+            console.log("Auto-login bypassed login screen.");
+            initApp({ uid: 'local-admin-override', email: 'admin', role: 'admin', name: 'Administrador Principal' });
         }
 
         if (loginForm) {
