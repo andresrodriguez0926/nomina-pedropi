@@ -163,18 +163,18 @@
         // --- State Management ---
         const state = {
             currentSection: 'dashboard',
-            departments: [],
-            operations: [],
-            activities: [],
-            employees: [],
-            periods: [],
-            activePayroll: null,
-            overtime: [],
-            discounts: [],
-            incentives: [],
-            christmasSalary: [],
-            payrollHistory: [],
-            settings: {
+            departments: JSON.parse(localStorage.getItem('payroll_departments') || '[]'),
+            operations: JSON.parse(localStorage.getItem('payroll_operations') || '[]'),
+            activities: JSON.parse(localStorage.getItem('payroll_activities') || '[]'),
+            employees: JSON.parse(localStorage.getItem('payroll_employees') || '[]'),
+            periods: JSON.parse(localStorage.getItem('payroll_periods') || '[]'),
+            activePayroll: JSON.parse(localStorage.getItem('payroll_active') || 'null'),
+            overtime: JSON.parse(localStorage.getItem('payroll_overtime') || '[]'),
+            discounts: JSON.parse(localStorage.getItem('payroll_discounts') || '[]'),
+            incentives: JSON.parse(localStorage.getItem('payroll_incentives') || '[]'),
+            christmasSalary: JSON.parse(localStorage.getItem('payroll_christmas') || '[]'),
+            payrollHistory: JSON.parse(localStorage.getItem('payroll_history') || '[]'),
+            settings: JSON.parse(localStorage.getItem('payroll_settings') || JSON.stringify({
                 tss_rate: 0.05,
                 payrollAccounts: {},
                 isrThresholds: {
@@ -184,16 +184,30 @@
                     base1: 31216.00,
                     base2: 79776.00
                 }
-            }
+            }))
         };
 
         window.globalState = state; // Allow firebase-backend to write directly to it
         window.state = state; // Backup explicit reference
 
         const saveState = () => {
+            // Local Storage Persistence (Always execute for safety and offline support)
+            localStorage.setItem('payroll_departments', JSON.stringify(state.departments || []));
+            localStorage.setItem('payroll_operations', JSON.stringify(state.operations || []));
+            localStorage.setItem('payroll_activities', JSON.stringify(state.activities || []));
+            localStorage.setItem('payroll_employees', JSON.stringify(state.employees || []));
+            localStorage.setItem('payroll_periods', JSON.stringify(state.periods || []));
+            localStorage.setItem('payroll_active', JSON.stringify(state.activePayroll || null));
+            localStorage.setItem('payroll_discounts', JSON.stringify(state.discounts || []));
+            localStorage.setItem('payroll_incentives', JSON.stringify(state.incentives || []));
+            localStorage.setItem('payroll_overtime', JSON.stringify(state.overtime || []));
+            localStorage.setItem('payroll_christmas', JSON.stringify(state.christmasSalary || []));
+            localStorage.setItem('payroll_history', JSON.stringify(state.payrollHistory || []));
+            localStorage.setItem('payroll_settings', JSON.stringify(state.settings || {}));
+
             // Prevent attempting to save state before Firebase has loaded the actual production data
             if (window.isFirebaseStateLoaded === false) {
-                console.warn("Carga inicial en proceso. Guardado prevenido para no borrar datos.");
+                console.warn("Carga inicial de la nube en proceso. Guardado prevenido para no borrar datos en Firebase, aunque se guardaron localmente.");
                 return;
             }
 
