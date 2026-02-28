@@ -19,7 +19,33 @@
 </head>
 
 <body class="dark-theme">
-    <div class="app-container" id="main-app" style="display: flex;">
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay">
+        <div class="login-box">
+            <div class="login-logo">
+                <i class="fas fa-file-invoice-dollar"></i>
+                <h2>NóminaApp</h2>
+                <p>Sistema de Gestión</p>
+            </div>
+            <div id="login-error" class="login-error hidden"
+                style="color: #ef4444; margin-bottom: 15px; font-size: 0.9rem; text-align: center;">Credenciales
+                incorrectas</div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label>Usuario</label>
+                    <input type="text" id="login-email" class="form-control" required placeholder="Ej. administrador">
+                </div>
+                <div class="form-group">
+                    <label>Contraseña</label>
+                    <input type="password" id="login-password" class="form-control" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block"
+                    style="width: 100%; margin-top: 10px;">Ingresar</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="app-container" id="main-app" style="display: none;">
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
@@ -616,7 +642,7 @@
                         <thead>
                             <tr>
                                 <th>Nombre</th>
-                                <th>Correo Electrónico</th>
+                                <th>Usuario</th>
                                 <th>Rol / Permisos</th>
                                 <th style="width: 100px;">Acciones</th>
                             </tr>
@@ -655,8 +681,8 @@
                     <input type="text" id="new-user-name" class="form-control" placeholder="Ej. Juan Pérez">
                 </div>
                 <div class="form-group">
-                    <label>Correo Electrónico</label>
-                    <input type="email" id="new-user-email" class="form-control" placeholder="juan@empresa.com">
+                    <label>Nombre de Usuario</label>
+                    <input type="text" id="new-user-email" class="form-control" placeholder="Ej. jperez">
                 </div>
                 <div class="form-group">
                     <label>Contraseña Provisional</label>

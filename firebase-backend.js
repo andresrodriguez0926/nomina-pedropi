@@ -14,34 +14,30 @@ const firebaseConfig = {
 // Initialize Firebase
 if (typeof firebase !== 'undefined') {
     firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
     const db = firebase.firestore();
-
-    // 2. Initialize Secondary App for User Creation without logging out Admin
-    const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
-    const secondaryAuth = secondaryApp.auth();
-
-    // Add User Management Logic
+    // 2. Add User Management Logic (No Firebase Auth)
     window.registerSecondaryUser = async (email, password, name, role) => {
         try {
-            // 1. Create the user in Auth (this won't log out the main app user)
-            const userCredential = await secondaryAuth.createUserWithEmailAndPassword(email, password);
-            const newUser = userCredential.user;
+            // Generar un UID simple localmente
+            const uid = 'usr_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-            // 2. Save the user data and role in Firestore
-            await db.collection('users').doc(newUser.uid).set({
-                uid: newUser.uid,
+            // Save the user data locally and in Firestore (incluyendo contraseña para validación interna)
+            const newUser = {
+                uid: uid,
                 email: email,
+                password: password, // Almacenamiento interno simple
                 name: name,
                 role: role,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
+                createdAt: new Date().toISOString()
+            };
+
+            await db.collection('users').doc(uid).set(newUser);
+
+            // Actualizar estado global inmediatamente
+            if (!window.globalState.users) window.globalState.users = [];
+            window.globalState.users.push(newUser);
 
             alert(`Usuario ${name} creado exitosamente como ${role}.`);
-
-            // 3. Immediately log out the secondary app to prevent background issues
-            await secondaryAuth.signOut();
-
         } catch (error) {
             console.error("Error creating user:", error);
             alert("Error al crear usuario: " + error.message);
@@ -50,9 +46,6 @@ if (typeof firebase !== 'undefined') {
 
     window.removeUserAccess = async (uid) => {
         try {
-            // We cannot physically delete the Auth user from the client SDK (needs Admin SDK),
-            // So we soft-delete them by changing their role to 'disabled' or deleting their Firestore record.
-            // A Cloud Function is best, but for client-side, we drop their permissions.
             await db.collection('users').doc(uid).update({ role: 'disabled' });
             alert("Acceso revocado. El usuario ya no podrá realizar acciones.");
         } catch (error) {
@@ -64,17 +57,13 @@ if (typeof firebase !== 'undefined') {
     // DOM Elements (Login overlay removed by user request)
     const mainApp = document.getElementById('main-app');
 
-    // Handle Auth State Changes (BYPASSED)
-    // The user requested to remove the Firebase app access block. 
-    // We will simulate an automatic "admin" login to maintain RBAC functionality.
+    // Handle Internal Login State
+    const initApp = (user) => {
+        document.getElementById('login-overlay').style.display = 'none';
+        document.getElementById('main-app').style.display = 'flex';
 
-    document.addEventListener('DOMContentLoaded', () => {
-        // Save current user metadata to global state for UI routing
-        window.globalState.currentUser = {
-            uid: 'local-admin-override',
-            email: 'admin@local.host',
-            role: 'admin'
-        };
+        window.globalState.currentUser = user;
+        localStorage.setItem('activeSession', JSON.stringify(user));
 
         // Apply UI permissions based on Role
         const applyRolePermissions = (role) => {
@@ -88,15 +77,68 @@ if (typeof firebase !== 'undefined') {
             document.body.classList.remove('role-admin', 'role-editor', 'role-viewer');
             document.body.classList.add(`role-${role}`);
         };
-        applyRolePermissions('admin');
+        applyRolePermissions(user.role);
 
-        // Trigger remote state loading instead of localStorage
+        // Trigger remote state loading
         window.loadStateFromFirebase();
-    });
+    };
 
-
-    // Add logout button to the sidebar
     document.addEventListener('DOMContentLoaded', () => {
+        const loginForm = document.getElementById('login-form');
+        const loginError = document.getElementById('login-error');
+
+        // Verificar sesión activa
+        const savedSession = localStorage.getItem('activeSession');
+        if (savedSession) {
+            initApp(JSON.parse(savedSession));
+        }
+
+        if (loginForm) {
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('login-email').value.trim();
+                const password = document.getElementById('login-password').value;
+                loginError.classList.add('hidden');
+
+                // Validar Credenciales Internamente
+                if (email === 'admin' && password === 'admin') {
+                    // Superadmin por defecto
+                    initApp({ uid: 'local-admin-override', email: email, role: 'admin', name: 'Administrador Principal' });
+                    return;
+                }
+
+                try {
+                    // Validar contra Firebase Firestore usuarios
+                    const usersRef = await db.collection('users').where('email', '==', email).get();
+                    if (usersRef.empty) {
+                        loginError.textContent = 'Usuario no encontrado';
+                        loginError.classList.remove('hidden');
+                        return;
+                    }
+
+                    let validUser = null;
+                    usersRef.forEach(doc => {
+                        const userData = doc.data();
+                        if (userData.password === password && userData.role !== 'disabled') {
+                            validUser = userData;
+                        }
+                    });
+
+                    if (validUser) {
+                        initApp(validUser);
+                    } else {
+                        loginError.textContent = 'Contraseña incorrecta o usuario deshabilitado';
+                        loginError.classList.remove('hidden');
+                    }
+                } catch (err) {
+                    console.error("Error validating login:", err);
+                    loginError.textContent = 'Error de conexión a la base de datos';
+                    loginError.classList.remove('hidden');
+                }
+            });
+        }
+
+        // Add logout button to the sidebar
         const sidebarNav = document.querySelector('.sidebar-nav ul');
         if (sidebarNav) {
             const logoutLi = document.createElement('li');
@@ -104,7 +146,10 @@ if (typeof firebase !== 'undefined') {
             logoutLi.innerHTML = '<i class="fas fa-sign-out-alt"></i> <span>Cerrar Sesión</span>';
             logoutLi.style.marginTop = 'auto';
             logoutLi.style.color = '#ff6b6b';
-            logoutLi.onclick = () => auth.signOut();
+            logoutLi.onclick = () => {
+                localStorage.removeItem('activeSession');
+                window.location.reload();
+            };
             sidebarNav.appendChild(logoutLi);
         }
     });
