@@ -101,28 +101,34 @@ if (typeof firebase !== 'undefined') {
                 loginError.classList.add('hidden');
 
                 // Validar Credenciales Internamente
-                if (email === 'admin' && password === 'admin') {
+                if (email.toLowerCase() === 'admin' && password === 'admin') {
                     // Superadmin por defecto
                     initApp({ uid: 'local-admin-override', email: email, role: 'admin', name: 'Administrador Principal' });
                     return;
                 }
 
                 try {
-                    // Validar contra Firebase Firestore usuarios
-                    const usersRef = await db.collection('users').where('email', '==', email).get();
-                    if (usersRef.empty) {
+                    // Validar contra Firebase Firestore usuarios (ignorando mayúsculas/minúsculas)
+                    const usersRef = await db.collection('users').get();
+
+                    let validUser = null;
+                    let userFound = false;
+
+                    usersRef.forEach(doc => {
+                        const userData = doc.data();
+                        if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
+                            userFound = true;
+                            if (userData.password === password && userData.role !== 'disabled') {
+                                validUser = userData;
+                            }
+                        }
+                    });
+
+                    if (!userFound) {
                         loginError.textContent = 'Usuario no encontrado';
                         loginError.classList.remove('hidden');
                         return;
                     }
-
-                    let validUser = null;
-                    usersRef.forEach(doc => {
-                        const userData = doc.data();
-                        if (userData.password === password && userData.role !== 'disabled') {
-                            validUser = userData;
-                        }
-                    });
 
                     if (validUser) {
                         initApp(validUser);
