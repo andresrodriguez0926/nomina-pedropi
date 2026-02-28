@@ -118,6 +118,35 @@
                     </li>
                 </ul>
             </nav>
+            <div style="padding: 20px;">
+                <button id="temp-wipe-btn" class="btn btn-primary" style="background: red; width: 100%;">
+                    <i class="fas fa-trash"></i> Resetear Datos
+                </button>
+            </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', () => {
+                    const btn = document.getElementById('temp-wipe-btn');
+                    if (btn) {
+                        btn.addEventListener('click', () => {
+                            if (confirm("⚠️ ¿Estás COMPLETAMENTE SEGURO de querer borrar todos los Empleados, Préstamos, y Nóminas de forma permanente en la nube? Esto conservará los departamentos y operaciones.")) {
+                                window.state.employees = [];
+                                window.state.periods = [];
+                                window.state.activePayroll = null;
+                                window.state.overtime = [];
+                                window.state.discounts = [];
+                                window.state.incentives = [];
+                                window.state.christmasSalary = [];
+                                window.state.payrollHistory = [];
+
+                                // Save to local and firebase
+                                window.saveState();
+                                alert("✅ Base de datos limpiada con éxito. La página se recargará.");
+                                window.location.reload();
+                            }
+                        });
+                    }
+                });
+            </script>
         </aside>
 
         <main class="main-content">
