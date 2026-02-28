@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nómina por Pagar - Sistema de Gestión</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+
+<body class="dark-theme">
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay">
+        <div class="login-box">
+            <div class="login-logo">
+                <i class="fas fa-file-invoice-dollar"></i>
+                <h2>NóminaApp</h2>
+                <p>Sistema de Gestión</p>
+            </div>
+            <div id="login-error" class="login-error hidden"
+                style="color: #ef4444; margin-bottom: 15px; font-size: 0.9rem; text-align: center;">Credenciales
+                incorrectas</div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label>Usuario</label>
+                    <input type="text" id="login-email" class="form-control" required placeholder="Ej. administrador">
+                </div>
+                <div class="form-group">
+                    <label>Contraseña</label>
+                    <input type="password" id="login-password" class="form-control" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block"
+                    style="width: 100%; margin-top: 10px;">Ingresar</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="app-container" id="main-app" style="display: none;">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    <span>NóminaApp</span>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="nav-item active" data-section="dashboard">
+                        <i class="fas fa-chart-line"></i> <span>Dashboard</span>
+                    </li>
+                    <li class="nav-header">Configuración</li>
+                    <li class="nav-item" data-section="users">
+                        <i class="fas fa-user-shield"></i> <span>Usuarios</span>
+                    </li>
+                    <li class="nav-item" data-section="departments">
+                        <i class="fas fa-sitemap"></i> <span>Departamentos</span>
+                    </li>
+                    <li class="nav-item" data-section="operations">
+                        <i class="fas fa-cogs"></i> <span>Operaciones</span>
+                    </li>
+                    <li class="nav-item" data-section="activities">
+                        <i class="fas fa-tasks"></i> <span>Actividades</span>
+                    </li>
+                    <li class="nav-item" data-section="tss">
+                        <i class="fas fa-shield-alt"></i> <span>TSS / Seguros</span>
+                    </li>
+                    <li class="nav-header">Personal</li>
+                    <li class="nav-item" data-section="employees">
+                        <i class="fas fa-users"></i> <span>Empleados</span>
+                    </li>
+                    <li class="nav-item" data-section="employee-record">
+                        <i class="fas fa-clipboard-list"></i> <span>Récord de Empleado</span>
+                    </li>
+                    <li class="nav-item" data-section="discounts">
+                        <i class="fas fa-user-minus"></i> <span>Descuentos</span>
+                    </li>
+                    <li class="nav-item" data-section="overtime">
+                        <i class="fas fa-clock"></i> <span>Horas Extras</span>
+                    </li>
+                    <li class="nav-item" data-section="incentives">
+                        <i class="fas fa-gift"></i> <span>Incentivos</span>
+                    </li>
+                    <li class="nav-item" data-section="christmas-salary">
+                        <i class="fas fa-tree"></i> <span>Salario Navidad</span>
+                    </li>
+                    <li class="nav-header">Gestión Nómina</li>
+                    <li class="nav-item" data-section="periods">
+                        <i class="fas fa-calendar-alt"></i> <span>Periodos</span>
+                    </li>
+                    <li class="nav-item" data-section="payroll-runs">
+                        <i class="fas fa-money-check-alt"></i> <span>Abrir Nómina</span>
+                    </li>
+                    <li class="nav-item" data-section="daily-registration">
+                        <i class="fas fa-calendar-day"></i> <span>Registro Diario</span>
+                    </li>
+                    <li class="nav-item" data-section="closing">
+                        <i class="fas fa-lock"></i> <span>Cierre Nómina</span>
+                    </li>
+                    <li class="nav-item" data-section="reports">
+                        <i class="fas fa-print"></i> <span>Reportes</span>
+                    </li>
+                    <li class="nav-item" data-section="payroll-entry">
+                        <i class="fas fa-file-invoice"></i> <span>Entrada de Nómina</span>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="main-header">
+                <div class="search-container">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Buscar...">
+                </div>
+                <div class="user-profile">
+                    <span id="current-date">--/--/----</span>
+                    <div class="avatar">A</div>
+                </div>
+            </header>
+
+            <section id="content-area" class="content-fade">
+                <!-- Content will be dynamically loaded here -->
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-container" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Título</h3>
+                <button class="close-modal"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="modal-body" class="modal-body">
+                <!-- Modal content goes here -->
+            </div>
+            <div class="modal-footer">
+                <button id="modal-cancel-btn" class="btn btn-secondary">Cancelar</button>
+                <button id="modal-confirm-btn" class="btn btn-primary">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script src="firebase-backend.js"></script>
+</body>
+
+</html>
