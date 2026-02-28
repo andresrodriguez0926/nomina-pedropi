@@ -190,8 +190,7 @@
         window.globalState = state; // Allow firebase-backend to write directly to it
         window.state = state; // Backup explicit reference
 
-        const saveState = () => {
-            // Local Storage Persistence (Always execute for safety and offline support)
+        window.syncToLocalStorage = () => {
             localStorage.setItem('payroll_departments', JSON.stringify(state.departments || []));
             localStorage.setItem('payroll_operations', JSON.stringify(state.operations || []));
             localStorage.setItem('payroll_activities', JSON.stringify(state.activities || []));
@@ -204,6 +203,11 @@
             localStorage.setItem('payroll_christmas', JSON.stringify(state.christmasSalary || []));
             localStorage.setItem('payroll_history', JSON.stringify(state.payrollHistory || []));
             localStorage.setItem('payroll_settings', JSON.stringify(state.settings || {}));
+        };
+
+        const saveState = () => {
+            // Local Storage Persistence (Always execute for safety and offline support)
+            window.syncToLocalStorage();
 
             // Prevent attempting to save state before Firebase has loaded the actual production data
             if (window.isFirebaseStateLoaded === false) {

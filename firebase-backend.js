@@ -211,6 +211,12 @@ if (typeof firebase !== 'undefined') {
 
                 window.isFirebaseStateLoaded = true;
 
+                // Immediately burn the fresh cloud data into the offline local storage cache
+                if (typeof window.syncToLocalStorage === 'function') {
+                    console.log("[SYNC] Burning cloud data into local offline storage");
+                    window.syncToLocalStorage();
+                }
+
                 // If this is the initial login load, render the full dashboard
                 if (isInitialLoad) {
                     window.renderSection(window.globalState.currentSection || 'dashboard');
