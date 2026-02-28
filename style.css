@@ -276,6 +276,10 @@ h3,
     border-radius: var(--radius-lg);
     width: 90%;
     max-width: 600px;
+    max-height: 90vh;
+    /* Prevent modal from exceeding screen height */
+    overflow-y: auto;
+    /* Allow scrolling inside the modal */
     animation: modalSlideUp 0.3s ease-out;
 }
 
@@ -810,7 +814,9 @@ body.role-editor .admin-only {
 .login-logo p {
     color: var(--text-secondary);
     font-size: 0.9rem;
-}/* Responsive Media Queries */
+}
+
+/* Responsive Media Queries */
 @media (max-width: 768px) {
     .app-container {
         flex-direction: column;
