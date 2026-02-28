@@ -170,6 +170,7 @@ if (typeof firebase !== 'undefined') {
 
     // Cloud Database Methods
     let isInitialLoad = true;
+    window.isFirebaseStateLoaded = false;
 
     window.loadStateFromFirebase = () => {
         console.log("Listening for real-time changes from Firebase...");
@@ -185,6 +186,8 @@ if (typeof firebase !== 'undefined') {
                         window.globalState[key] = data[key];
                     }
                 });
+
+                window.isFirebaseStateLoaded = true;
 
                 // If this is the initial login load, render the full dashboard
                 if (isInitialLoad) {
@@ -242,6 +245,11 @@ if (typeof firebase !== 'undefined') {
     };
 
     window.saveStateToFirebase = async () => {
+        if (!window.isFirebaseStateLoaded && isInitialLoad) {
+            console.warn("Ignorando guardado: El estado de Firebase aún no ha cargado.");
+            return;
+        }
+
         console.log("Saving data to Firebase...");
         try {
             const stateToSave = { ...window.globalState };

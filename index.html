@@ -190,6 +190,12 @@
         window.globalState = state; // Allow firebase-backend to write directly to it
 
         const saveState = () => {
+            // Prevent attempting to save state before Firebase has loaded the actual production data
+            if (window.isFirebaseStateLoaded === false) {
+                console.warn("Carga inicial en proceso. Guardado prevenido para no borrar datos.");
+                return;
+            }
+
             if (window.saveStateToFirebase) {
                 window.saveStateToFirebase();
             } else {
