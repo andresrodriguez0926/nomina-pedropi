@@ -361,6 +361,56 @@
             }, 150);
         };
 
+        // --- Data Migration (Export / Import) ---
+        window.exportLocalData = () => {
+            const dump = {
+                departments: state.departments,
+                operations: state.operations,
+                activities: state.activities,
+                employees: state.employees,
+                periods: state.periods,
+                activePayroll: state.activePayroll,
+                discounts: state.discounts,
+                incentives: state.incentives,
+                overtime: state.overtime,
+                christmasSalary: state.christmasSalary,
+                payrollHistory: state.payrollHistory,
+                settings: state.settings
+            };
+            const json = JSON.stringify(dump);
+            navigator.clipboard.writeText(json).then(() => {
+                alert("¡Tus datos locales han sido copiados! Ve a la versión de la nube (Netlify), dale a 'Importar' y pégalos.");
+            }).catch(err => {
+                prompt("Hubo un error al copiar automáticamente. Copia el siguiente texto manualmente:", json);
+            });
+        };
+
+        window.importLocalData = () => {
+            const json = prompt("Pega aquí los datos que exportaste de tu PC:");
+            if (!json) return;
+            try {
+                const dump = JSON.parse(json);
+                state.departments = dump.departments || [];
+                state.operations = dump.operations || [];
+                state.activities = dump.activities || [];
+                state.employees = dump.employees || [];
+                state.periods = dump.periods || [];
+                state.activePayroll = dump.activePayroll || null;
+                state.discounts = dump.discounts || [];
+                state.incentives = dump.incentives || [];
+                state.overtime = dump.overtime || [];
+                state.christmasSalary = dump.christmasSalary || [];
+                state.payrollHistory = dump.payrollHistory || [];
+                state.settings = dump.settings || {};
+
+                saveState(); // Trigger a Firebase save
+                alert("¡Datos importados y subidos a la nube exitosamente! La página se recargará.");
+                setTimeout(() => window.location.reload(), 1000);
+            } catch (e) {
+                alert("Código inválido. Asegúrate de pegar el texto exacto.");
+            }
+        };
+
         // --- Module: Dashboard ---
         const renderDashboard = (container) => {
             // --- Data Extraction for Charts ---
@@ -462,13 +512,18 @@
                 </div>
                 <div class="card stat-card">
                     <div class="stat-label">Nómina Activa</div>
-                    <div class="stat-value">${state.activePayroll ? 'SÍ' : 'NO'}</div>
+                    <div class="stat-value text-danger" id="dash-active-payroll">NO</div>
                 </div>
-                <div class="card stat-card admin-only" style="display: flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.1);">
-                    <button class="btn btn-primary" style="background: var(--danger);" onclick="if(window.wipeProductionDatabase) window.wipeProductionDatabase()">
-                        <i class="fas fa-trash-alt"></i> Limpiar Sistema
+                <div class="card stat-card" style="display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 8px;">
+                    <button class="btn btn-secondary w-100" onclick="exportLocalData()" title="Copiar datos de esta PC" style="font-size: 0.85rem; padding: 6px;">
+                        <i class="fas fa-file-export"></i> Exportar Datos (Local)
                     </button>
-                    <div style="font-size: 0.7rem; color: var(--danger); text-align: center; margin-top: 5px;">Borrar Todos los Datos</div>
+                    <button class="btn btn-secondary w-100" onclick="importLocalData()" title="Pegar datos de otra PC aquí" style="font-size: 0.85rem; padding: 6px;">
+                        <i class="fas fa-file-import"></i> Importar Datos
+                    </button>
+                    <button class="btn btn-danger admin-only w-100" onclick="wipeProductionDatabase()" title="Borrar Todos los Datos" style="font-size: 0.85rem; padding: 6px;">
+                        <i class="fas fa-trash"></i> Limpiar Sistema
+                    </button>
                 </div>
             </div>
             
