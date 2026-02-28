@@ -81,7 +81,7 @@ if (typeof firebase !== 'undefined') {
         document.getElementById('main-app').style.display = 'flex';
 
         window.globalState.currentUser = user;
-        localStorage.setItem('activeSession', JSON.stringify(user));
+        sessionStorage.setItem('activeSession', JSON.stringify(user));
 
         // Apply UI permissions based on Role
         const applyRolePermissions = (role) => {
@@ -105,8 +105,8 @@ if (typeof firebase !== 'undefined') {
         const loginForm = document.getElementById('login-form');
         const loginError = document.getElementById('login-error');
 
-        // Verificar sesión activa
-        const savedSession = localStorage.getItem('activeSession');
+        // Verificar sesión activa (Solo en esta pestaña/ventana)
+        const savedSession = sessionStorage.getItem('activeSession');
         if (savedSession) {
             initApp(JSON.parse(savedSession));
         }
@@ -179,7 +179,7 @@ if (typeof firebase !== 'undefined') {
             logoutLi.style.marginTop = 'auto';
             logoutLi.style.color = '#ff6b6b';
             logoutLi.onclick = () => {
-                localStorage.removeItem('activeSession');
+                sessionStorage.removeItem('activeSession');
                 window.location.reload();
             };
             sidebarNav.appendChild(logoutLi);
