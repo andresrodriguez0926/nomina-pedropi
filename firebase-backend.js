@@ -101,14 +101,17 @@ if (typeof firebase !== 'undefined') {
                 loginError.classList.add('hidden');
 
                 // Validar Credenciales Internamente
-                if (email.toLowerCase() === 'admin' && password === 'admin') {
+                const safeEmail = email.toLowerCase();
+                if (safeEmail === 'admin' && password === 'admin') {
                     // Superadmin por defecto
+                    console.log("Acceso admin por defecto concedido");
                     initApp({ uid: 'local-admin-override', email: email, role: 'admin', name: 'Administrador Principal' });
                     return;
                 }
 
                 try {
                     // Validar contra Firebase Firestore usuarios (ignorando mayúsculas/minúsculas)
+                    console.log("Intentando ingresar con el usuario:", safeEmail);
                     const usersRef = await db.collection('users').get();
 
                     let validUser = null;
@@ -116,7 +119,9 @@ if (typeof firebase !== 'undefined') {
 
                     usersRef.forEach(doc => {
                         const userData = doc.data();
-                        if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
+                        const docEmail = userData.email || userData.username || ''; // Fallback for safety
+
+                        if (docEmail.toLowerCase() === safeEmail) {
                             userFound = true;
                             if (userData.password === password && userData.role !== 'disabled') {
                                 validUser = userData;
@@ -125,20 +130,23 @@ if (typeof firebase !== 'undefined') {
                     });
 
                     if (!userFound) {
+                        console.warn("Usuario no encontrado en la base de datos.");
                         loginError.textContent = 'Usuario no encontrado';
                         loginError.classList.remove('hidden');
                         return;
                     }
 
                     if (validUser) {
+                        console.log("Login exitoso. Iniciando App...");
                         initApp(validUser);
                     } else {
-                        loginError.textContent = 'Contraseña incorrecta o usuario deshabilitado';
+                        console.warn("Contraseña incorrecta o rol deshabilitado.");
+                        loginError.textContent = 'Contraseña incorrecta o usuario inactivo';
                         loginError.classList.remove('hidden');
                     }
                 } catch (err) {
-                    console.error("Error validating login:", err);
-                    loginError.textContent = 'Error de conexión a la base de datos';
+                    console.error("Error validando el login contra Firebase:", err);
+                    loginError.textContent = 'Error de conexión a la base de datos: ' + err.message;
                     loginError.classList.remove('hidden');
                 }
             });
