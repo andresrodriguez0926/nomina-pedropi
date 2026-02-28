@@ -172,7 +172,8 @@ if (typeof firebase !== 'undefined') {
             if (doc.exists) {
                 const data = doc.data();
                 Object.keys(data).forEach(key => {
-                    if (window.globalState.hasOwnProperty(key)) {
+                    // Do not overwrite users array from globalState doc, it comes from users collection
+                    if (key !== 'users' && window.globalState.hasOwnProperty(key)) {
                         window.globalState[key] = data[key];
                     }
                 });
@@ -237,6 +238,8 @@ if (typeof firebase !== 'undefined') {
         try {
             const stateToSave = { ...window.globalState };
             delete stateToSave.currentSection; // Do not sync UI state
+            delete stateToSave.currentUser;    // Do not sync current session
+            delete stateToSave.users;          // Users are managed in their own collection
 
             // To prevent massive overwrite locks, we use merge: true
             await db.collection('payroll').doc('globalState').set(stateToSave, { merge: true });
