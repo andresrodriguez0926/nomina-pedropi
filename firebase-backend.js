@@ -187,7 +187,16 @@ if (typeof firebase !== 'undefined') {
                     if (key !== 'users' && window.globalState.hasOwnProperty(key)) {
                         // Protect against null/undefined cloud fields overwriting valid local arrays
                         if (data[key] !== undefined && data[key] !== null) {
-                            window.globalState[key] = data[key];
+                            if (Array.isArray(window.globalState[key]) && Array.isArray(data[key])) {
+                                // Important: Empty and push to preserve memory references (pointers)
+                                window.globalState[key].length = 0;
+                                data[key].forEach(item => window.globalState[key].push(item));
+                            } else {
+                                window.globalState[key] = data[key];
+                                if (window.state && window.state !== window.globalState) {
+                                    window.state[key] = data[key];
+                                }
+                            }
                         }
                     }
                 });

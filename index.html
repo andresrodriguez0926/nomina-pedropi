@@ -188,6 +188,7 @@
         };
 
         window.globalState = state; // Allow firebase-backend to write directly to it
+        window.state = state; // Backup explicit reference
 
         const saveState = () => {
             // Prevent attempting to save state before Firebase has loaded the actual production data
