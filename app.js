@@ -2242,7 +2242,7 @@ const renderClosing = (container) => {
     if (state.activePayroll) {
         const closeBtn = document.getElementById('close-payroll-btn');
         if (closeBtn) {
-            closeBtn.onclick = () => {
+            closeBtn.onclick = async () => {
                 if (confirm('¿Está seguro que desea cerrar esta nómina? Los montos calculados se guardarán en el historial para fines de Regalía Pascual.')) {
                     try {
                         const bounds = getPayrollBounds();
@@ -2311,7 +2311,12 @@ const renderClosing = (container) => {
                             }
                         });
 
-                        state.payrollHistory.push(snapshot);
+                        if (window.savePayrollToHistory) {
+                            await window.savePayrollToHistory(snapshot);
+                        } else {
+                            state.payrollHistory.push(snapshot);
+                        }
+
                         state.activePayroll = null;
                         saveState();
                         renderSection('closing');

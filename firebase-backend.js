@@ -202,7 +202,8 @@ if (typeof firebase !== 'undefined') {
                 console.log("[FIREBASE SNAPSHOT DATA LENGTHS:", Object.keys(data).map(k => `${k}: ${data[k]?.length || typeof data[k]}`).join(', '));
                 Object.keys(data).forEach(key => {
                     // Do not overwrite users array from globalState doc, it comes from users collection
-                    if (key !== 'users' && window.globalState.hasOwnProperty(key)) {
+                    // ALSO: Ignore payrollHistory from globalState if we are using the new collection
+                    if (key !== 'users' && key !== 'payrollHistory' && window.globalState.hasOwnProperty(key)) {
                         // Protect against null/undefined cloud fields overwriting valid local arrays
                         if (data[key] !== undefined && data[key] !== null) {
                             if (Array.isArray(window.globalState[key]) && Array.isArray(data[key])) {
@@ -226,6 +227,18 @@ if (typeof firebase !== 'undefined') {
                         }
                     }
                 });
+
+                // --- NEW: History Collection Migration & Sync ---
+                if (data.payrollHistory && data.payrollHistory.length > 0) {
+                    console.log(`[MIGRATION] Found ${data.payrollHistory.length} items in globalState. Moving to history collection...`);
+                    data.payrollHistory.forEach(async (run) => {
+                        await window.savePayrollToHistory(run);
+                    });
+                    // After migrating, we should remove it from globalState to save space
+                    db.collection('payroll').doc('globalState').update({
+                        payrollHistory: firebase.firestore.FieldValue.delete()
+                    });
+                }
 
                 window.isFirebaseStateLoaded = true;
 
@@ -289,6 +302,34 @@ if (typeof firebase !== 'undefined') {
                 window.renderSection('users');
             }
         });
+
+        // 3. Listen for History Collection (New scalable way)
+        db.collection('history').orderBy('closedAt', 'asc').onSnapshot((snapshot) => {
+            console.log("[HISTORY SNAPSHOT] Syncing history from dedicated collection");
+            const upToDateHistory = [];
+            snapshot.forEach(doc => {
+                upToDateHistory.push(doc.data());
+            });
+            window.globalState.payrollHistory = upToDateHistory;
+
+            // If we are in specific sections that depend on history, re-render
+            if (window.globalState.currentSection === 'closing' || window.globalState.currentSection === 'dashboard') {
+                window.renderSection(window.globalState.currentSection);
+            }
+        });
+    };
+
+    window.savePayrollToHistory = async (snapshot) => {
+        try {
+            // Generate a unique ID based on timestamp if it doesn't have one
+            const historyId = snapshot.id ? snapshot.id.toString() : Date.now().toString();
+            console.log(`[FIREBASE] Saving payroll run ${historyId} to history collection`);
+            await db.collection('history').doc(historyId).set(snapshot);
+            return true;
+        } catch (e) {
+            console.error("Error saving to history collection:", e);
+            return false;
+        }
     };
 
     window.saveStateToFirebase = async () => {
@@ -307,6 +348,7 @@ if (typeof firebase !== 'undefined') {
             delete stateToSave.currentSection; // Do not sync UI state
             delete stateToSave.currentUser;    // Do not sync current session
             delete stateToSave.users;          // Users are managed in their own collection
+            delete stateToSave.payrollHistory; // History is managed in history collection
 
             // To prevent massive overwrite locks, we use merge: true
             await db.collection('payroll').doc('globalState').set(stateToSave, { merge: true });
