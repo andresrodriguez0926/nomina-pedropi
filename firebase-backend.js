@@ -375,6 +375,7 @@ if (typeof firebase !== 'undefined') {
             overtime: JSON.parse(localStorage.getItem('payroll_overtime') || '[]'),
             christmasSalary: JSON.parse(localStorage.getItem('payroll_christmas') || '[]'),
             payrollHistory: JSON.parse(localStorage.getItem('payroll_history') || '[]'),
+            vacations: JSON.parse(localStorage.getItem('payroll_vacations') || '[]'),
             settings: JSON.parse(localStorage.getItem('payroll_settings') || '{}')
         };
 
@@ -411,6 +412,7 @@ if (typeof firebase !== 'undefined') {
             window.globalState.overtime = [];
             window.globalState.christmasSalary = [];
             window.globalState.payrollHistory = [];
+            window.globalState.vacations = [];
 
             // Mantener solo los usuarios para no perder acceso
             const stateToSave = { ...window.globalState };
@@ -431,6 +433,7 @@ if (typeof firebase !== 'undefined') {
             localStorage.removeItem('payroll_overtime');
             localStorage.removeItem('payroll_christmas');
             localStorage.removeItem('payroll_history');
+            localStorage.removeItem('payroll_vacations');
 
             alert("✅ Sistema formateado con éxito. Ahora tienes una instalación limpia.");
             window.location.reload();

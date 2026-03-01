@@ -30,6 +30,7 @@ const state = {
     incentives: JSON.parse(localStorage.getItem('payroll_incentives') || '[]'),
     christmasSalary: JSON.parse(localStorage.getItem('payroll_christmas') || '[]'),
     payrollHistory: JSON.parse(localStorage.getItem('payroll_history') || '[]'),
+    vacations: JSON.parse(localStorage.getItem('payroll_vacations') || '[]'),
     settings: JSON.parse(localStorage.getItem('payroll_settings') || JSON.stringify({
         tss_rate: 0.05,
         payrollAccounts: {},
@@ -58,6 +59,7 @@ window.syncToLocalStorage = () => {
     localStorage.setItem('payroll_overtime', JSON.stringify(state.overtime || []));
     localStorage.setItem('payroll_christmas', JSON.stringify(state.christmasSalary || []));
     localStorage.setItem('payroll_history', JSON.stringify(state.payrollHistory || []));
+    localStorage.setItem('payroll_vacations', JSON.stringify(state.vacations || []));
     localStorage.setItem('payroll_settings', JSON.stringify(state.settings || {}));
 };
 
@@ -211,6 +213,8 @@ window.renderSection = (sectionId) => {
             case 'reports': renderReports(contentArea); break;
             case 'employee-record': renderEmployeeRecord(contentArea); break;
             case 'payroll-entry': renderPayrollEntry(contentArea); break;
+            case 'benefits': renderBenefits(contentArea); break;
+            case 'vacations': renderVacations(contentArea); break;
             default:
                 contentArea.innerHTML = `<h2>Módulo ${sectionId} en construcción</h2>`;
         }
@@ -1089,8 +1093,12 @@ const renderTSS = (container) => {
                 <div class="card mt-4">
                     <div style="max-width: 500px">
                         <div class="form-group">
+                            <label>Nombre de la Empresa</label>
+                            <input type="text" id="company-name" class="form-control" value="${state.settings.companyName || 'NóminaApp'}">
+                        </div>
+                        <div class="form-group">
                             <label>Tasa de Retención Seguro (%)</label>
-                            <input type="number" id="tss-rate" class="form-control" value="${state.settings.tss_rate * 100}">
+                            <input type="number" id="tss-rate" class="form-control" value="${(state.settings.tss_rate || 0.0591) * 100}">
                         </div>
                         
                         <h3 class="mt-4 mb-2">Cuentas Contables por Defecto</h3>
@@ -1178,6 +1186,7 @@ const renderTSS = (container) => {
             `;
 
     document.getElementById('save-settings').onclick = () => {
+        state.settings.companyName = document.getElementById('company-name').value;
         state.settings.tss_rate = parseFloat(document.getElementById('tss-rate').value) / 100;
         state.settings.payrollAccounts = {
             incentives: document.getElementById('acc-inc').value,
@@ -1622,7 +1631,7 @@ const renderOvertime = (container) => {
 // --- Module: Incentives ---
 const renderIncentives = (container) => {
     container.innerHTML = `
-            < div class="header-action" >
+            <div class="header-action">
             <h1>Incentivos</h1>
             <button class="btn btn-primary" id="add-inc-btn">
                 <i class="fas fa-plus"></i> Aplicar Incentivo
@@ -1737,7 +1746,7 @@ const getNextDateSuggestion = (periodName) => {
 // --- Module: Payroll Runs (Abrir Nómina) ---
 const renderPayrollRuns = (container) => {
     container.innerHTML = `
-            < div class="header-action" >
+            <div class="header-action">
             <h1>Gestión de Pagos (Nóminas)</h1>
             <button class="btn btn-primary" id="open-payroll-btn">
                 <i class="fas fa-play"></i> Abrir Nueva Nómina
@@ -1802,7 +1811,7 @@ const renderDailyRegistration = (container) => {
     const defaultDate = bounds ? bounds.min : new Date().toISOString().split('T')[0];
 
     container.innerHTML = `
-            < div class="header-action" >
+            <div class="header-action">
             <h1>Registro Diario - Empleados Móviles</h1>
             <div class="tabs no-print">
                 <button class="tab-btn ${tab === 'individual' ? 'active' : ''}" onclick="window.dailyRegTab = 'individual'; renderSection('daily-registration')">Individual</button>
@@ -2761,28 +2770,67 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
         else if (frequency.includes('semanal')) divisor = 4;
         else if (frequency.includes('mensual')) divisor = 1;
 
-        if (bounds && bounds.max && emp.hireDate) {
+        if (bounds && bounds.max && bounds.min) {
             const periodStart = new Date(bounds.min + 'T00:00:00');
             const periodEnd = new Date(bounds.max + 'T00:00:00');
-            const hireDate = new Date(emp.hireDate + 'T00:00:00');
+            periodStart.setHours(0, 0, 0, 0);
+            periodEnd.setHours(0, 0, 0, 0);
 
-            const isPartial = hireDate > periodStart;
+            const hireDate = emp.hireDate ? new Date(emp.hireDate + 'T00:00:00') : new Date('2000-01-01T00:00:00');
+            hireDate.setHours(0, 0, 0, 0);
 
-            if (isPartial) {
-                const effectiveStart = hireDate > periodEnd ? null : (hireDate > periodStart ? hireDate : periodStart);
-                if (!effectiveStart) {
-                    base = 0;
-                } else {
-                    const dailyRate = monthlySalary / 23.83;
-                    const workedDays = calculateLegislativeDays(effectiveStart, periodEnd);
-                    base = dailyRate * workedDays;
-                }
+            let effectiveStart = periodStart;
+            let isPartialNewHire = hireDate > periodStart;
+
+            if (isPartialNewHire) {
+                effectiveStart = hireDate > periodEnd ? null : hireDate;
+            }
+
+            if (!effectiveStart) {
+                base = 0; // Contratado después del periodo
             } else {
-                // Full period logic
-                base = monthlySalary / divisor;
+                // Verificar si tiene alguna vacación "Tomada" activa en este periodo
+                const vac = state.vacations.find(v => v.employeeId === emp.idNumber && v.type === 'Tomada');
+                let vacStart = null;
+                let vacEnd = null;
+
+                if (vac && vac.outDate && vac.returnDate) {
+                    vacStart = new Date(vac.outDate + 'T00:00:00');
+                    vacEnd = new Date(vac.returnDate + 'T00:00:00');
+                    vacStart.setHours(0, 0, 0, 0);
+                    vacEnd.setHours(0, 0, 0, 0);
+                }
+
+                if (!vacStart || vacStart > periodEnd || vacEnd <= effectiveStart) {
+                    // Sin vacaciones en este periodo o no chocan
+                    if (isPartialNewHire) {
+                        const dailyRate = monthlySalary / 23.83;
+                        const workedDays = calculateLegislativeDays(effectiveStart, periodEnd);
+                        base = dailyRate * workedDays;
+                    } else {
+                        base = monthlySalary / divisor; // Completo normal
+                    }
+                } else {
+                    // Hay colisión con vacaciones, calcular día a día
+                    let daysWorked = 0;
+                    let current = new Date(effectiveStart.getTime());
+
+                    while (current <= periodEnd) {
+                        // Si "current" NO cae dentro del rango de vacaciones [vacStart, vacEnd)
+                        if (current < vacStart || current >= vacEnd) {
+                            const day = current.getDay();
+                            if (day >= 1 && day <= 5) daysWorked += 1; // L-V
+                            else if (day === 6) daysWorked += 0.5; // S
+                        }
+                        current.setDate(current.getDate() + 1);
+                    }
+
+                    const dailyRate = monthlySalary / 23.83;
+                    base = dailyRate * daysWorked;
+                }
             }
         } else {
-            // Fallback to divisor logic if hireDate is missing
+            // Fallback to divisor logic if bounds missing
             base = monthlySalary / divisor;
         }
         tss = base * (state.settings.tss_rate || 0);
@@ -2868,7 +2916,7 @@ const renderReports = (container) => {
     const filter = window.currentReportFilter;
 
     container.innerHTML = `
-            < div class="header-action" >
+            <div class="header-action">
             <div style="display: flex; align-items: center; gap: 20px;">
                 <h1>Reporte de Nómina</h1>
                 <div class="multi-select-container no-print" id="dept-multi-select">
@@ -3042,29 +3090,6 @@ const renderReports = (container) => {
                     `;
             });
 
-            // 2. Lost & Found (Only show when viewing all departments)
-            if (filter.length === state.departments.length) {
-                const missingEmps = state.employees.filter(e => {
-                    const empId = e.idNumber || `${e.firstName}-${e.lastName}`;
-                    return !renderedEmpIds.has(empId);
-                });
-
-                if (missingEmps.length > 0) {
-                    reportHtml += `
-                            <div class="dept-report-section mb-4" style="border: 1px dashed var(--warning); padding: 10px;">
-                                <h3 style="color: var(--warning)">Otros Empleados (Sin departamento o desajustado)</h3>
-                                <table class="data-table">
-                                    <thead>
-                                        <tr><th>Nombre</th><th>Departamento Actual</th><th>Nota</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        ${missingEmps.map(emp => `<tr><td>${emp.firstName} ${emp.lastName}</td><td>${emp.department || 'Sin Dept.'}</td><td>Revisar asignación en lista de empleados</td></tr>`).join('')}
-                                    </tbody>
-                                </table>
-                            </div>
-                        `;
-                }
-            }
 
             // 3. Resumen por Departamento (Show if more than one dept is selected)
             if (deptSummaries.length > 0) {
@@ -3323,7 +3348,7 @@ const renderPayrollEntry = (container) => {
 
     if (!state.activePayroll && (!state.payrollHistory || state.payrollHistory.length === 0)) {
         container.innerHTML = `
-            < div class="header-action" >
+            <div class="header-action">
                 <h1>Entrada de Nómina</h1>
                     </div >
             <div class="card mt-4">
@@ -3462,7 +3487,7 @@ const renderPayrollEntry = (container) => {
     const viewMode = window.payrollEntryViewMode;
 
     container.innerHTML = `
-            < div class="header-action" >
+            <div class="header-action">
                     <div>
                         <h1>Entrada de Nómina</h1>
                         <div class="mt-2 no-print" style="display: flex; gap: 5px;">
@@ -3751,7 +3776,7 @@ const renderChristmasSalary = (container) => {
     });
 
     container.innerHTML = `
-            < div class="header-action" >
+            <div class="header-action">
             <h1>Salario de Navidad (Regalía Pascual)</h1>
             <div class="action-group" style="gap: 10px">
                 <select id="chr-payment-mode" class="form-control" style="width: 250px">
@@ -4347,6 +4372,795 @@ window.quickAddChristmasSalary = (employeeName) => {
             alert('Salario de Navidad registrado');
         }
     });
+};
+
+// --- Module: Benefits (Prestaciones Laborales) ---
+const renderBenefits = (container) => {
+    container.innerHTML = `
+        <div class="header-action hidden-print">
+            <h1>Cálculo de Prestaciones Laborales</h1>
+            <div>
+                <button class="btn btn-primary" id="btn-register-benefits" style="display:none; margin-right: 10px; background-color: var(--success);">
+                    <i class="fas fa-save"></i> Registrar Prestaciones
+                </button>
+                <button class="btn btn-primary" onclick="window.printBenefitsReport()" id="btn-print-benefits" style="display:none;">
+                    <i class="fas fa-print"></i> Imprimir Liquidación
+                </button>
+            </div>
+        </div>
+        
+        <div class="card mt-4 hidden-print" id="benefits-form-card">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Escriba el Empleado a Buscar</label>
+                    <input list="ben-emp-list" id="ben-emp-search" class="form-control" placeholder="Buscar por nombre o cédula...">
+                    <datalist id="ben-emp-list">
+                        ${state.employees.filter(e => e.active !== false).map(e => `<option value="${e.idNumber}">[${e.idNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
+                    </datalist>
+                </div>
+            </div>
+            
+            <div id="ben-details-section" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Fecha de Ingreso</label>
+                        <input type="date" id="ben-hire-date" class="form-control" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Fecha de Salida</label>
+                        <input type="date" id="ben-exit-date" class="form-control" value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Salario Promedio Mensual Registrado (RD$)</label>
+                        <input type="number" id="ben-salary" class="form-control">
+                    </div>
+                    <div class="form-group" style="display: flex; flex-direction: column; justify-content: center;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 10px;">
+                            <input type="checkbox" id="ben-preaviso"> El empleador ya dio el Preaviso (No pagar)
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 10px;">
+                            <input type="checkbox" id="ben-cesantia-omitir"> Omitir Cesantía (Desahucio no aplica u otra causa)
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 10px;">
+                            <input type="checkbox" id="ben-vacaciones-tomadas"> El empleado ya tomó sus vacaciones este año (No pagar)
+                        </label>
+                    </div>
+                </div>
+                
+                <button class="btn btn-primary mt-4" id="btn-calculate-benefits" style="width: 100%;">
+                    <i class="fas fa-calculator"></i> Calcular Prestaciones
+                </button>
+            </div>
+        </div>
+
+        <div id="benefits-report-area" style="display: none;" class="mt-4 card printable-page">
+            <div class="report-header" style="text-align: center; margin-bottom: 20px;">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Coat_of_arms_of_the_Dominican_Republic.svg/150px-Coat_of_arms_of_the_Dominican_Republic.svg.png" alt="Escudo RD" style="height: 80px; margin-bottom: 10px;">
+                <h1 style="font-size: 24px; margin: 0; font-family: 'Times New Roman', Times, serif;">República Dominicana</h1>
+                <h2 style="font-size: 18px; margin: 0; font-family: 'Times New Roman', Times, serif; font-weight: normal;">Ministerio de Trabajo</h2>
+            </div>
+            
+            <hr style="border: 0; border-top: 1px solid #ccc; margin: 15px 0;">
+            <p style="text-align: center; font-size: 12px; font-family: 'Times New Roman', Times, serif;">Cálculo Prestaciones Laborales y Derechos Adquiridos</p>
+            <hr style="border: 0; border-top: 1px solid #ccc; margin: 15px 0 25px 0;">
+            
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-family: 'Arial', sans-serif; font-size: 13px;">
+                <tr>
+                    <td style="padding: 5px; font-weight: bold; width: 30%;">Cédula:</td>
+                    <td id="rep-cedula" style="padding: 5px;">-</td>
+                    <td style="padding: 5px;"></td>
+                    <td style="padding: 5px;"></td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; font-weight: bold;">Nombre del Solicitante:</td>
+                    <td id="rep-nombre" style="padding: 5px;" colspan="3">-</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; font-weight: bold;">Lugar de Trabajo o Empleador:</td>
+                    <td id="rep-empleador" style="padding: 5px; text-transform: uppercase;" colspan="3">${state.settings.companyName || 'NÓMINAAPP'}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; font-weight: bold;">Fecha de Ingreso:</td>
+                    <td id="rep-ingreso" style="padding: 5px;">-</td>
+                    <td style="padding: 5px; font-weight: bold;">Fecha de Salida:</td>
+                    <td id="rep-salida" style="padding: 5px;">-</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; font-weight: bold;">Tiempo Laborado:</td>
+                    <td id="rep-tiempo" style="padding: 5px;">-</td>
+                    <td style="padding: 5px; font-weight: bold;">Salario Promedio Diario:</td>
+                    <td id="rep-spd" style="padding: 5px;">-</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; font-weight: bold;">Salario Actual:</td>
+                    <td id="rep-salario" style="padding: 5px;">- Mensual</td>
+                    <td colspan="2"></td>
+                </tr>
+            </table>
+
+            <hr style="border: 0; border-top: 1px solid #ccc; margin: 25px 0;">
+            <h2 style="text-align: center; font-size: 22px; font-family: 'Times New Roman', Times, serif; font-weight: normal; margin-bottom: 25px;">Prestaciones Laborales y Derechos Adquiridos</h2>
+            <hr style="border: 0; border-top: 1px solid #ccc; margin: 0 0 25px 0;">
+
+            <table style="width: 100%; border-collapse: collapse; font-family: 'Arial', sans-serif; font-size: 13px;">
+                <tr>
+                    <td style="padding: 5px; text-align: right; font-weight: bold; width: 50%;">Salario Preaviso (art. 76 C.T.):</td>
+                    <td id="rep-preaviso" style="padding: 5px; text-align: left;">-</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; text-align: right; font-weight: bold;">Cesantía (Art. 80 C.T. antes 29/05/1992):</td>
+                    <td style="padding: 5px; text-align: left;">RD$0.00</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; text-align: right; font-weight: bold;">Cesantía (Art.80 C.T. después 29/05/1992):</td>
+                    <td id="rep-cesantia" style="padding: 5px; text-align: left;">-</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; text-align: right; font-weight: bold;">Salario Vacaciones (art.177 C.T.):</td>
+                    <td id="rep-vacaciones" style="padding: 5px; text-align: left;">-</td>
+                </tr>
+                <tr><td colspan="2" style="height: 20px;"></td></tr>
+                <tr>
+                    <td style="padding: 5px; text-align: right; font-weight: bold; font-size: 15px;">SubTotal a Recibir:</td>
+                    <td id="rep-subtotal" style="padding: 5px; text-align: left; font-size: 16px;">-</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; text-align: right; font-weight: bold;">Salario Navidad (art.219 C.T.):</td>
+                    <td id="rep-regalia" style="padding: 5px; text-align: left;">-</td>
+                </tr>
+                <tr><td colspan="2" style="height: 30px;"></td></tr>
+                <tr>
+                    <td style="padding: 5px; text-align: right; font-weight: bold; font-size: 20px;">Total a Recibir:</td>
+                    <td id="rep-total" style="padding: 5px; text-align: left; font-size: 20px; font-weight: bold;">-</td>
+                </tr>
+            </table>
+
+            <div style="margin-top: 50px; font-family: 'Arial', sans-serif; font-size: 10px; text-align: justify; line-height: 1.4;">
+                <strong>NOTA:</strong> ESTOS CÁLCULOS HAN SIDO REALIZADOS EN BASE A LAS INFORMACIONES SUMINISTRADAS POR LA PARTE INTERESADA. POR TANTO, LOS MISMOS NO SE IMPONEN A LA PARTE CONTRARIA NI AL JUEZ DE TRABAJO Y NO APLICAN EN LOS CASOS DE TRABAJADORAS PROTEGIDAS POR LA MATERNIDAD, TRABAJADORES PROTEGIDOS POR EL FUERO SINDICAL, TRABAJADORES CON VIH, NI PARA LOS DEMÁS CASOS EN LOS QUE LAS NORMAS LABORALES PROHIBEN LA TERMINACIÓN DEL CONTRATO DE TRABAJO.
+                <div style="text-align: center; margin-top: 15px; font-weight: bold; font-size: 11px;" id="rep-fecha-doc"></div>
+            </div>
+
+            <div style="margin-top: 60px; display: flex; justify-content: space-between; font-family: 'Arial', sans-serif; font-size: 12px;">
+                <div style="width: 40%; border-top: 1px solid black; text-align: center; padding-top: 5px;">
+                    Inspector(a) de Trabajo
+                </div>
+                <div style="width: 40%; border-top: 1px solid black; text-align: center; padding-top: 5px;">
+                    Representante Local de Trabajo o Supervisor(a)
+                </div>
+            </div>
+        </div>
+    `;
+
+    const empSearch = document.getElementById('ben-emp-search');
+    const detailsSection = document.getElementById('ben-details-section');
+    const btnCalculate = document.getElementById('btn-calculate-benefits');
+    const btnPrint = document.getElementById('btn-print-benefits');
+    const reportArea = document.getElementById('benefits-report-area');
+
+    let currentSelectedEmployee = null;
+
+    empSearch.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+
+        // Buscar coincidencia exacta por ID (si selecciona de la lista)
+        let emp = state.employees.find(emp => emp.idNumber === query && emp.active !== false);
+
+        // Si no hay por ID, buscar por nombre o apellido
+        if (!emp) {
+            emp = state.employees.find(emp =>
+                emp.active !== false &&
+                (emp.firstName.toLowerCase().includes(query) ||
+                    emp.lastName.toLowerCase().includes(query) ||
+                    `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(query))
+            );
+        }
+
+        if (!emp || query.length === 0) {
+            detailsSection.style.display = 'none';
+            reportArea.style.display = 'none';
+            btnPrint.style.display = 'none';
+            currentSelectedEmployee = null;
+            return;
+        }
+        currentSelectedEmployee = emp;
+        document.getElementById('ben-hire-date').value = emp.hireDate;
+        document.getElementById('ben-salary').value = emp.salary || 0;
+
+        // Si es movil destajero que no tiene sueldo, sugerir poner sueldo prop.
+        if (emp.type === 'mobile' && (!emp.salary || emp.salary == 0)) {
+            alert("Atención: El empleado seleccionado es Móvil y no tiene salario base. Por favor inserte manualmente el Promedio Mensual devengado en los últimos 12 meses.");
+        }
+
+        detailsSection.style.display = 'block';
+        reportArea.style.display = 'none';
+        btnPrint.style.display = 'none';
+    });
+
+    btnCalculate.addEventListener('click', () => {
+        if (!currentSelectedEmployee) return;
+
+        const dateStartStr = document.getElementById('ben-hire-date').value;
+        const dateEndStr = document.getElementById('ben-exit-date').value;
+        const salaryMonthly = parseFloat(document.getElementById('ben-salary').value) || 0;
+        const omitPreaviso = document.getElementById('ben-preaviso').checked;
+        const omitCesantia = document.getElementById('ben-cesantia-omitir').checked;
+        const omitVacaciones = document.getElementById('ben-vacaciones-tomadas').checked;
+
+        if (!dateStartStr || !dateEndStr || salaryMonthly <= 0) {
+            alert('Asegúrese de proveer fecha de salida válida y un salario mayor a 0.');
+            return;
+        }
+
+        const [sY, sM, sD] = dateStartStr.split('-');
+        const start = new Date(sY, sM - 1, sD);
+
+        const [eY, eM, eD] = dateEndStr.split('-');
+        const end = new Date(eY, eM - 1, eD);
+
+        if (end < start) {
+            alert('La fecha de salida no puede ser menor a la de ingreso');
+            return;
+        }
+
+        // --- CÁLCULOS LÓGICA MIN. TRABAJO ---
+        function calculateDRLaborTime(dStart, dEnd) {
+            if (dEnd < dStart) return { years: 0, months: 0, days: 0 };
+            if (dStart.getFullYear() === dEnd.getFullYear() && dStart.getMonth() === dEnd.getMonth()) {
+                let d = dEnd.getDate() - dStart.getDate() + 1;
+                let daysInM = new Date(dStart.getFullYear(), dStart.getMonth() + 1, 0).getDate();
+                if (dStart.getDate() === 1 && dEnd.getDate() === daysInM) return { years: 0, months: 1, days: 0 };
+                return { years: 0, months: 0, days: d };
+            }
+            let yFull = 0, mFull = 0;
+            for (let y = dStart.getFullYear() + 1; y < dEnd.getFullYear(); y++) yFull++;
+            let stY = dStart.getFullYear(), enY = dEnd.getFullYear();
+            let dInS = new Date(stY, dStart.getMonth() + 1, 0).getDate();
+            let isSFull = (dStart.getDate() === 1);
+            let isEFull = (dEnd.getDate() === new Date(enY, dEnd.getMonth() + 1, 0).getDate());
+            let sLoop = isSFull ? dStart.getMonth() : dStart.getMonth() + 1;
+            let eLoop = isEFull ? dEnd.getMonth() : dEnd.getMonth() - 1;
+            if (stY === enY) {
+                for (let m = sLoop; m <= eLoop; m++) mFull++;
+            } else {
+                for (let m = sLoop; m <= 11; m++) mFull++;
+                for (let m = 0; m <= eLoop; m++) mFull++;
+            }
+            yFull += Math.floor(mFull / 12);
+            mFull = mFull % 12;
+            let dTotal = 0;
+            if (!isSFull) dTotal += dInS - dStart.getDate() + 1;
+            if (!isEFull) dTotal += dEnd.getDate();
+            if (dTotal >= 30) {
+                mFull += Math.floor(dTotal / 30);
+                dTotal = dTotal % 30;
+            }
+            if (mFull >= 12) {
+                yFull += Math.floor(mFull / 12);
+                mFull = mFull % 12;
+            }
+            return { years: yFull, months: mFull, days: dTotal };
+        }
+
+        const laborTime = calculateDRLaborTime(start, end);
+        let diffYears = laborTime.years;
+        let diffMonths = laborTime.months;
+        let diffDays = laborTime.days;
+
+        let totalMonthsWorked = (diffYears * 12) + diffMonths;
+
+        // 2. SPD
+        const SPD = salaryMonthly / 23.83;
+
+        // 3. Preaviso (Art 76)
+        let diasPreaviso = 0;
+        if (!omitPreaviso) {
+            if (totalMonthsWorked >= 3 && totalMonthsWorked < 6) diasPreaviso = 7;
+            else if (totalMonthsWorked >= 6 && totalMonthsWorked < 12) diasPreaviso = 14;
+            else if (totalMonthsWorked >= 12) diasPreaviso = 28;
+        }
+        const montoPreaviso = diasPreaviso * SPD;
+
+        // 4. Cesantía (Art 80)
+        let diasCesantia = 0;
+        if (!omitCesantia) {
+            if (diffYears >= 1 && diffYears < 5) diasCesantia += diffYears * 21;
+            else if (diffYears >= 5) diasCesantia += diffYears * 23;
+
+            if (diffMonths >= 3 && diffMonths < 6) diasCesantia += 6;
+            else if (diffMonths >= 6 && diffMonths < 12) diasCesantia += 13;
+        }
+
+        const montoCesantia = diasCesantia * SPD;
+
+        // 5. Vacaciones (Art 177)
+        let diasVacaciones = 0;
+        if (!omitVacaciones) {
+            if (diffYears === 0) {
+                if (diffMonths >= 5 && diffMonths < 6) diasVacaciones = 6;
+                else if (diffMonths >= 6 && diffMonths < 7) diasVacaciones = 7;
+                else if (diffMonths >= 7 && diffMonths < 8) diasVacaciones = 8;
+                else if (diffMonths >= 8 && diffMonths < 9) diasVacaciones = 9;
+                else if (diffMonths >= 9 && diffMonths < 10) diasVacaciones = 10;
+                else if (diffMonths >= 10 && diffMonths < 11) diasVacaciones = 11;
+                else if (diffMonths >= 11 && diffMonths < 12) diasVacaciones = 12;
+            } else {
+                if (diffYears >= 1 && diffYears < 5) diasVacaciones = 14;
+                else if (diffYears >= 5) diasVacaciones = 18;
+            }
+        }
+        const montoVacaciones = diasVacaciones * SPD;
+
+        // 6. Regalía Pascual (Art 219) - Proporcional al año de salida
+        const inicioAno = new Date(end.getFullYear(), 0, 1);
+        let startDateRegalia = start > inicioAno ? start : inicioAno;
+
+        let montoSumaSalariosEsteAno = 0;
+        let dCursor = new Date(startDateRegalia);
+
+        while (dCursor <= end) {
+            let year = dCursor.getFullYear();
+            let month = dCursor.getMonth();
+            let daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            let startOfMonthWorked = (dCursor.getTime() === new Date(year, month, 1).getTime());
+            let endOfMonthWorked = false;
+            let endMonthDay = daysInMonth;
+
+            if (end.getFullYear() === year && end.getMonth() === month) {
+                endMonthDay = end.getDate();
+                if (end.getDate() === daysInMonth) endOfMonthWorked = true;
+            } else {
+                endOfMonthWorked = true;
+            }
+
+            let daysWorkedInMonth = endMonthDay - dCursor.getDate() + 1;
+
+            if (startOfMonthWorked && endOfMonthWorked) {
+                montoSumaSalariosEsteAno += salaryMonthly;
+            } else {
+                montoSumaSalariosEsteAno += (salaryMonthly / daysInMonth) * daysWorkedInMonth;
+            }
+            dCursor = new Date(year, month + 1, 1);
+        }
+
+        const montoRegalia = montoSumaSalariosEsteAno / 12;
+
+        // Totales
+        const subTotal = montoPreaviso + montoCesantia + montoVacaciones;
+        const total = subTotal + montoRegalia;
+
+        // Formato visual temporal Regalía
+        const regaliaTime = calculateDRLaborTime(startDateRegalia, end);
+        let regDaysStr = `(${regaliaTime.months} meses${regaliaTime.days > 0 ? ' y ' + regaliaTime.days + ' día(s)' : ''})`;
+
+        // --- RENDERIZADO DEL INFORME ---
+        const fmt = (num) => 'RD$' + parseFloat(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const formatDate = (ds) => {
+            const d = new Date(ds);
+            return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+        };
+
+        document.getElementById('rep-cedula').innerText = currentSelectedEmployee.idNumber;
+        document.getElementById('rep-nombre').innerText = `${currentSelectedEmployee.firstName} ${currentSelectedEmployee.lastName}`;
+        document.getElementById('rep-ingreso').innerText = formatDate(start);
+        document.getElementById('rep-salida').innerText = formatDate(end);
+        document.getElementById('rep-tiempo').innerText = `${diffYears} años , ${diffMonths} meses y ${diffDays} días`;
+        document.getElementById('rep-spd').innerText = fmt(SPD);
+        document.getElementById('rep-salario').innerText = fmt(salaryMonthly) + ' Mensual';
+
+        document.getElementById('rep-preaviso').innerHTML = montoPreaviso > 0 ? `${fmt(montoPreaviso)} (${diasPreaviso} días)` : 'RD$0.00';
+        document.getElementById('rep-cesantia').innerHTML = montoCesantia > 0 ? `${fmt(montoCesantia)} (${diasCesantia} días)` : 'RD$0.00';
+        document.getElementById('rep-vacaciones').innerHTML = montoVacaciones > 0 ? `${fmt(montoVacaciones)} (${diasVacaciones} días)` : '0.00';
+
+        document.getElementById('rep-subtotal').innerText = fmt(subTotal);
+
+        document.getElementById('rep-regalia').innerHTML = montoRegalia > 0 ? `${fmt(montoRegalia)} ${regDaysStr}` : 'RD$0.00';
+        document.getElementById('rep-total').innerText = fmt(total);
+
+        // Fecha de doc texto
+        const monthNames = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+        document.getElementById('rep-fecha-doc').innerText = `DADO A LOS ${end.getDate().toString().padStart(2, '0')} DÍAS DEL MES DE ${monthNames[end.getMonth()]} DEL AÑO ${end.getFullYear()}`;
+
+        reportArea.style.display = 'block';
+        btnPrint.style.display = 'inline-block';
+        const btnRegister = document.getElementById('btn-register-benefits');
+        btnRegister.style.display = 'inline-block';
+
+        // Almacenar data globalmente para guardar
+        window.currentCalculatedBenefits = {
+            employeeId: currentSelectedEmployee.id || currentSelectedEmployee.idNumber,
+            idNumber: currentSelectedEmployee.idNumber,
+            employeeName: `${currentSelectedEmployee.firstName} ${currentSelectedEmployee.lastName}`,
+            dateStart: start,
+            dateEnd: end,
+            timeElapsed: `${diffYears} años , ${diffMonths} meses y ${diffDays} días`,
+            SPD: SPD,
+            salaryMonthly: salaryMonthly,
+            montoPreaviso, diasPreaviso,
+            montoCesantia, diasCesantia,
+            montoVacaciones, diasVacaciones,
+            montoRegalia,
+            subTotal,
+            total,
+            fechaRegistro: firebase.firestore.FieldValue.serverTimestamp()
+        };
+    });
+
+    document.getElementById('btn-register-benefits').addEventListener('click', async () => {
+        if (!window.currentCalculatedBenefits || !currentSelectedEmployee) return;
+        if (confirm(`¿Desea registrar las prestaciones de ${currentSelectedEmployee.firstName} por un total de RD$${window.currentCalculatedBenefits.total.toLocaleString('en-US', { minimumFractionDigits: 2 })} y deshabilitar al empleado de futuras nóminas?`)) {
+            try {
+                const registerBtn = document.getElementById('btn-register-benefits');
+                registerBtn.disabled = true;
+                registerBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando...';
+
+                // Registrar historial
+                await firebase.firestore().collection('benefitsHistory').add(window.currentCalculatedBenefits);
+
+                // Actualizar empleado (inactivo) en nuestro state global
+                const empIndex = state.employees.findIndex(e => e.idNumber === currentSelectedEmployee.idNumber);
+                if (empIndex > -1) {
+                    state.employees[empIndex].active = false;
+                    state.employees[empIndex].terminationDate = window.currentCalculatedBenefits.dateEnd;
+                    saveState();
+                }
+
+                alert('Prestaciones registradas exitosamente. El empleado ha sido inactivado.');
+
+                // Limpiar vista
+                document.getElementById('ben-emp-search').value = '';
+                detailsSection.style.display = 'none';
+                reportArea.style.display = 'none';
+                btnPrint.style.display = 'none';
+                registerBtn.style.display = 'none';
+                registerBtn.disabled = false;
+                registerBtn.innerHTML = '<i class="fas fa-save"></i> Registrar Prestaciones';
+                currentSelectedEmployee = null;
+                window.currentCalculatedBenefits = null;
+
+                // Actualizar UI general re-renderizando
+                switchSection('benefits');
+            } catch (e) {
+                console.error("Error al registrar prestaciones:", e);
+                alert("Error al registrar las prestaciones y deshabilitar al empleado.");
+                const registerBtn = document.getElementById('btn-register-benefits');
+                registerBtn.disabled = false;
+                registerBtn.innerHTML = '<i class="fas fa-save"></i> Registrar Prestaciones';
+            }
+        }
+    });
+
+};
+
+// --- Module: Vacations ---
+const renderVacations = (container) => {
+    // 1. Lógica para determinar Vacaciones Pendientes
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const msInDay = 24 * 60 * 60 * 1000;
+    const currentYear = today.getFullYear();
+
+    // Arrays para las tablas
+    const pendingVacations = [];
+    const activeTakenVacations = [];
+
+    state.employees.forEach(emp => {
+        if (emp.active === false) return; // Skip inactivos
+        if (!emp.hireDate) return;
+
+        // Validar Retornos Activos (Vacaciones Tomadas)
+        const pendingReturn = state.vacations.find(v => v.employeeId === emp.idNumber && v.type === 'Tomada' && !v.returned);
+        if (pendingReturn) {
+            const returnDate = new Date(pendingReturn.returnDate);
+            returnDate.setHours(0, 0, 0, 0);
+
+            const diffDays = Math.round((returnDate - today) / msInDay);
+            let statusBadge = '';
+            if (diffDays < 0) {
+                statusBadge = '<span class="status-badge inactive">Atrasado</span>';
+            } else if (diffDays <= 1) {
+                statusBadge = '<span class="status-badge" style="background-color: var(--warning); color: black;">Mañana</span>';
+            } else {
+                statusBadge = `<span class="status-badge" style="background-color: var(--accent-color);">${diffDays} días rest.</span>`;
+            }
+
+            activeTakenVacations.push({
+                ...emp,
+                vacData: pendingReturn,
+                statusBadge,
+                diffDays
+            });
+            return; // Si está de vacaciones, no evaluar "Pendientes"
+        }
+
+        // Evaluar Pendientes (Aniversario)
+        let hireDate = new Date(emp.hireDate);
+        hireDate.setHours(0, 0, 0, 0);
+        let yearsWorked = currentYear - hireDate.getFullYear();
+
+        if (yearsWorked > 0) {
+            let anniversaryThisYear = new Date(currentYear, hireDate.getMonth(), hireDate.getDate());
+            let daysUntilAnniversary = Math.round((anniversaryThisYear - today) / msInDay);
+
+            // Verificar si YÁ se le registró vacaciones este año
+            const yaRegistrado = state.vacations.some(v => v.employeeId === emp.idNumber && v.periodYear === currentYear);
+
+            if (!yaRegistrado) {
+                let alertPending = false;
+                let badge = '';
+
+                if (daysUntilAnniversary < 0) {
+                    alertPending = true;
+                    badge = '<span class="status-badge inactive">Atrasado</span>';
+                } else if (daysUntilAnniversary <= 7) {
+                    alertPending = true;
+                    badge = `<span class="status-badge" style="background-color: var(--warning); color: black;">En ${daysUntilAnniversary} día(s)</span>`;
+                }
+
+                if (alertPending) {
+                    pendingVacations.push({
+                        ...emp,
+                        yearsWorked,
+                        anniversaryThisYear,
+                        badge
+                    });
+                }
+            }
+        }
+    });
+
+    container.innerHTML = `
+        <div class="header-action">
+            <h1>Control de Vacaciones</h1>
+        </div>
+        
+        <!-- Alertas de Pendientes -->
+        <div class="card mt-4" style="border-left: 4px solid var(--warning);">
+            <h3><i class="fas fa-exclamation-triangle" style="color: var(--warning);"></i> Vacaciones Pendientes (Próximas o Atrasadas)</h3>
+            <table class="data-table mt-2">
+                <thead>
+                    <tr>
+                        <th>Cédula</th>
+                        <th>Nombre</th>
+                        <th>Fecha Ingreso</th>
+                        <th>Aniversario</th>
+                        <th>Años Cumplidos</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${pendingVacations.length === 0 ? '<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">No hay vacaciones pendientes o próximas (7 días).</td></tr>' : ''}
+                    ${pendingVacations.map(p => `
+                        <tr>
+                            <td>${p.idNumber}</td>
+                            <td>${p.firstName} ${p.lastName}</td>
+                            <td>${p.hireDate}</td>
+                            <td>${p.anniversaryThisYear.toLocaleDateString()}</td>
+                            <td>${p.yearsWorked}</td>
+                            <td>${p.badge}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Registro de Vacaciones -->
+        <div class="card mt-4">
+            <h3><i class="fas fa-plus"></i> Registrar Nueva Vacación</h3>
+            <div class="form-row mt-3">
+                <div class="form-group" style="flex: 2;">
+                    <label>Buscar Empleado (Sólo Activos)</label>
+                    <input list="vac-emp-list" id="vac-emp-search" class="form-control" placeholder="Escriba nombre o cédula...">
+                    <datalist id="vac-emp-list">
+                        ${state.employees.filter(e => e.active !== false).map(e => `<option value="${e.idNumber}">[${e.idNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
+                    </datalist>
+                </div>
+                <div class="form-group">
+                    <label>Periodo (Año)</label>
+                    <input type="number" id="vac-period" class="form-control" value="${currentYear}">
+                </div>
+            </div>
+
+            <div id="vac-details-section" style="display: none; padding-top: 15px; border-top: 1px solid var(--border-color); margin-top: 15px;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Salario Base (RD$)</label>
+                        <input type="number" id="vac-salary" class="form-control" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Años en la Empresa</label>
+                        <input type="number" id="vac-years" class="form-control" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Días Correspondientes</label>
+                        <input type="number" id="vac-days" class="form-control" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Monto a Pagar (RD$)</label>
+                        <input type="text" id="vac-amount" class="form-control" readonly style="color: var(--success); font-weight: bold;">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Modalidad</label>
+                        <select id="vac-type" class="form-control">
+                            <option value="Tomada">Tomada (Descanso Físico)</option>
+                            <option value="Pagada">Pagada (Sigue Trabajando)</option>
+                        </select>
+                    </div>
+                    <div class="form-group vac-dates-group">
+                        <label>Fecha de Salida</label>
+                        <input type="date" id="vac-out-date" class="form-control">
+                    </div>
+                    <div class="form-group vac-dates-group">
+                        <label>Fecha de Retorno</label>
+                        <input type="date" id="vac-in-date" class="form-control">
+                    </div>
+                </div>
+                
+                <button class="btn btn-primary mt-3" id="btn-save-vacation" style="width: 100%;">
+                    <i class="fas fa-save"></i> Registrar Vacación
+                </button>
+            </div>
+        </div>
+
+        <!-- Alertas de Retorno -->
+        <div class="card mt-4" style="border-left: 4px solid var(--accent-color);">
+            <h3><i class="fas fa-plane-arrival" style="color: var(--accent-color);"></i> Retornos Próximos o Atrasados (Descanso Físico)</h3>
+            <table class="data-table mt-2">
+                <thead>
+                    <tr>
+                        <th>Cédula</th>
+                        <th>Nombre</th>
+                        <th>Fecha Salida</th>
+                        <th>Fecha Retorno</th>
+                        <th>Estado</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${activeTakenVacations.length === 0 ? '<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">No hay empleados actualmente en descanso físico de vacaciones.</td></tr>' : ''}
+                    ${activeTakenVacations.map((p, idx) => `
+                        <tr>
+                            <td>${p.idNumber}</td>
+                            <td>${p.firstName} ${p.lastName}</td>
+                            <td>${p.vacData.outDate}</td>
+                            <td>${p.vacData.returnDate}</td>
+                            <td>${p.statusBadge}</td>
+                            <td>
+                                <button class="btn btn-primary btn-sm" onclick="window.markVacationReturned('${p.vacData.id}')">
+                                    <i class="fas fa-check"></i> Marcar Retorno
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // Interacción del Formulario
+    const vacSearch = document.getElementById('vac-emp-search');
+    const detailsSection = document.getElementById('vac-details-section');
+    const vacType = document.getElementById('vac-type');
+    let currentVacEmp = null;
+    let currentVacCalc = {};
+
+    vacSearch.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        let emp = state.employees.find(emp => emp.idNumber === query && emp.active !== false);
+
+        if (!emp) {
+            emp = state.employees.find(emp =>
+                emp.active !== false &&
+                (emp.firstName.toLowerCase().includes(query) ||
+                    emp.lastName.toLowerCase().includes(query) ||
+                    `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(query))
+            );
+        }
+
+        if (!emp || query.length === 0) {
+            detailsSection.style.display = 'none';
+            currentVacEmp = null;
+            return;
+        }
+
+        currentVacEmp = emp;
+
+        // Cálculos Pre-rellenados
+        let hireDate = new Date(emp.hireDate);
+        hireDate.setHours(0, 0, 0, 0);
+        let yearsWorked = currentYear - hireDate.getFullYear();
+        if (yearsWorked < 1 && (today.getMonth() > hireDate.getMonth() || (today.getMonth() === hireDate.getMonth() && today.getDate() >= hireDate.getDate()))) {
+            yearsWorked = 1; // Si cumplió el primer año ya
+        }
+
+        let days = 0;
+        if (yearsWorked >= 1 && yearsWorked < 5) days = 14;
+        else if (yearsWorked >= 5) days = 18;
+        // Si no ha cumplido el año, no deberia tener pero por defecto 0.
+
+        const salary = parseFloat(emp.salary) || 0;
+        const spd = salary / 23.83;
+        const totalPay = spd * days;
+
+        document.getElementById('vac-salary').value = salary;
+        document.getElementById('vac-years').value = yearsWorked;
+        document.getElementById('vac-days').value = days;
+        document.getElementById('vac-amount').value = totalPay > 0 ? totalPay.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00';
+
+        currentVacCalc = {
+            yearsWorked, days, spd, totalPay, salary
+        };
+
+        detailsSection.style.display = 'block';
+    });
+
+    vacType.addEventListener('change', (e) => {
+        const type = e.target.value;
+        const datesGroups = document.querySelectorAll('.vac-dates-group');
+        datesGroups.forEach(g => {
+            g.style.display = type === 'Tomada' ? 'block' : 'none';
+        });
+    });
+
+    // Guardar
+    document.getElementById('btn-save-vacation').addEventListener('click', () => {
+        if (!currentVacEmp) return;
+
+        const periodYear = parseInt(document.getElementById('vac-period').value);
+        const type = document.getElementById('vac-type').value;
+        const outDate = document.getElementById('vac-out-date').value;
+        const returnDate = document.getElementById('vac-in-date').value;
+
+        if (type === 'Tomada' && (!outDate || !returnDate)) {
+            alert("Debe proveer fechas de salida y retorno para vacaciones tomadas.");
+            return;
+        }
+
+        if (currentVacCalc.days === 0) {
+            if (!confirm("Este empleado aparentemente no ha cumplido el primer año (0 días correspondientes). ¿Desea guardarlo de todas formas?")) return;
+        }
+
+        const newVac = {
+            id: 'vac_' + Date.now().toString(36),
+            employeeId: currentVacEmp.idNumber,
+            employeeName: `${currentVacEmp.firstName} ${currentVacEmp.lastName}`,
+            periodYear,
+            type,
+            days: currentVacCalc.days,
+            spd: currentVacCalc.spd,
+            totalPay: currentVacCalc.totalPay,
+            outDate: type === 'Tomada' ? outDate : null,
+            returnDate: type === 'Tomada' ? returnDate : null,
+            returned: type === 'Tomada' ? false : true, // Pagada es True por defecto
+            createdAt: new Date().toISOString()
+        };
+
+        state.vacations.push(newVac);
+        saveState();
+        alert("Vacación Registrada Exitosamente.");
+        renderSection('vacations'); // Refresh
+    });
+};
+
+window.markVacationReturned = (vacId) => {
+    if (confirm("¿Confirmar que este empleado ya ha retornado a la empresa?")) {
+        const index = state.vacations.findIndex(v => v.id === vacId);
+        if (index > -1) {
+            state.vacations[index].returned = true;
+            saveState();
+            renderSection('vacations');
+        }
+    }
+};
+
+window.printBenefitsReport = () => {
+    window.print();
 };
 
 // --- Initialization ---
