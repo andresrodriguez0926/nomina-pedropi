@@ -203,6 +203,15 @@
                     .then((reg) => console.log('ServiceWorker registration successful', reg))
                     .catch((err) => console.log('ServiceWorker registration failed: ', err));
             });
+
+            // Reload page on new service worker activation
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!refreshing) {
+                    refreshing = true;
+                    window.location.reload();
+                }
+            });
         }
     </script>
 </body>
