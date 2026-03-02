@@ -366,6 +366,13 @@ const renderDashboard = (container) => {
                         <span style="font-size: 0.9rem; opacity: 0.7;">/ ${state.employees.length}</span>
                     </div>
                 </div>
+                <div class="card stat-card" style="display: flex; flex-direction: column; justify-content: center;">
+                    <div class="stat-label" style="margin-bottom: 5px;">Por Género (Activos)</div>
+                    <div class="stat-value" style="font-size: 1.3rem; display: flex; justify-content: space-around; width: 100%;">
+                        <span title="Masculino" style="color: #60a5fa;"><i class="fas fa-mars"></i> ${state.employees.filter(e => e.active !== false && e.gender === 'M').length}</span>
+                        <span title="Femenino" style="color: #f472b6;"><i class="fas fa-venus"></i> ${state.employees.filter(e => e.active !== false && e.gender === 'F').length}</span>
+                    </div>
+                </div>
                 <div class="card stat-card">
                     <div class="stat-label">Departamentos</div>
                     <div class="stat-value">${state.departments.length}</div>
@@ -934,8 +941,10 @@ const renderEmployees = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
+                        <th>Nº Reg.</th>
                         <th>Nombre Completo</th>
                         <th>Cédula/Pasaporte</th>
+                        <th>Género</th>
                         <th>Tipo</th>
                         <th>Estado</th>
                         <th>Departamento</th>
@@ -947,8 +956,10 @@ const renderEmployees = (container) => {
                 <tbody>
                     ${state.employees.map((emp, index) => `
                         <tr>
+                            <td>${emp.regNumber || '-'}</td>
                             <td>${emp.firstName} ${emp.lastName}</td>
                             <td>${emp.idNumber}</td>
+                            <td>${emp.gender === 'M' ? 'Masculino' : (emp.gender === 'F' ? 'Femenino' : '-')}</td>
                             <td><span class="status-badge ${emp.type}">${emp.type === 'fixed' ? 'Fijo' : 'Móvil'}</span></td>
                             <td>
                                 <span class="status-badge ${emp.active !== false ? 'success' : 'gray'}" style="cursor: pointer" onclick="window.toggleEmployeeStatus(${index})">
@@ -982,14 +993,29 @@ const renderEmployees = (container) => {
                             </td>
                         </tr>
                     `).join('')}
-                    ${state.employees.length === 0 ? '<tr><td colspan="6" style="text-align:center">No hay empleados registrados</td></tr>' : ''}
+                    ${state.employees.length === 0 ? '<tr><td colspan="10" style="text-align:center">No hay empleados registrados</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
     `;
 
     document.getElementById('add-emp-btn').onclick = () => {
+        const nextRegNum = state.employees.length > 0 ? Math.max(0, ...state.employees.map(e => parseInt(e.regNumber) || 0)) + 1 : 1;
         showModal('Nuevo Empleado', `
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Nº de Registro</label>
+                    <input type="number" id="emp-reg" class="form-control" value="${nextRegNum}">
+                </div>
+                <div class="form-group">
+                    <label>Género</label>
+                    <select id="emp-gender" class="form-control">
+                        <option value="">Seleccionar...</option>
+                        <option value="M">Masculino</option>
+                        <option value="F">Femenino</option>
+                    </select>
+                </div>
+            </div>
             <div class="form-row">
                 <div class="form-group">
                     <label>Nombres</label>
@@ -1055,6 +1081,8 @@ const renderEmployees = (container) => {
             </div>
         `, () => {
             const emp = {
+                regNumber: document.getElementById('emp-reg').value,
+                gender: document.getElementById('emp-gender').value,
                 firstName: document.getElementById('emp-fn').value,
                 lastName: document.getElementById('emp-ln').value,
                 idNumber: document.getElementById('emp-id').value,
@@ -4037,7 +4065,21 @@ window.deleteDailyLog = (index) => {
 window.editEmployee = (index) => {
     const emp = state.employees[index];
     showModal('Editar Empleado', `
-            < div class="form-row" >
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nº de Registro</label>
+                        <input type="number" id="edit-emp-reg" class="form-control" value="${emp.regNumber || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Género</label>
+                        <select id="edit-emp-gender" class="form-control">
+                            <option value="">Seleccionar...</option>
+                            <option value="M" ${emp.gender === 'M' ? 'selected' : ''}>Masculino</option>
+                            <option value="F" ${emp.gender === 'F' ? 'selected' : ''}>Femenino</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label>Nombres</label>
                         <input type="text" id="edit-emp-fn" class="form-control" value="${emp.firstName}">
@@ -4102,6 +4144,8 @@ window.editEmployee = (index) => {
                 </div>
         `, () => {
         const updatedEmp = {
+            regNumber: document.getElementById('edit-emp-reg').value,
+            gender: document.getElementById('edit-emp-gender').value,
             firstName: document.getElementById('edit-emp-fn').value,
             lastName: document.getElementById('edit-emp-ln').value,
             idNumber: document.getElementById('edit-emp-id').value,
