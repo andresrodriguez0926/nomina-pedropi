@@ -431,7 +431,9 @@ const renderDashboard = (container) => {
                 </div>
                 <div class="card stat-card">
                     <div class="stat-label">Nómina Activa</div>
-                    <div class="stat-value text-danger" id="dash-active-payroll">NO</div>
+                    <div class="stat-value ${state.activePayroll ? 'text-success' : 'text-danger'}" id="dash-active-payroll">
+                        ${state.activePayroll ? state.activePayroll.name : 'NO'}
+                    </div>
                 </div>
                 <div class="card stat-card" style="display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 8px;">
                     <button class="btn btn-secondary w-100" onclick="exportLocalData()" title="Copiar datos de esta PC" style="font-size: 0.85rem; padding: 6px;">
