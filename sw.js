@@ -5,6 +5,8 @@ const urlsToCache = [
     '/style.css',
     '/app.js',
     '/firebase-backend.js',
+    '/icon-192x192.png',
+    '/icon-512x512.png',
     'https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js',
     'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js',
     'https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js'
