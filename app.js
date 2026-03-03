@@ -2171,7 +2171,7 @@ const renderDailyRegistration = (container) => {
         const regDate = document.getElementById('reg-date').value;
 
         // Validation: Hire Date
-        const employee = state.employees.find(e => `${e.firstName} ${e.lastName} ` === empName);
+        const employee = state.employees.find(e => `${e.firstName} ${e.lastName}` === empName);
         if (employee && employee.hireDate && regDate < employee.hireDate) {
             alert(`No se puede registrar labor antes de la fecha de ingreso del empleado(${employee.hireDate})`);
             return;
@@ -2214,7 +2214,7 @@ const renderDailyRegistration = (container) => {
         const listEmp = document.getElementById('list-emp');
         if (listEmp) {
             listEmp.innerHTML = filteredEmps.map(e =>
-                `< option value = "${e.firstName} ${e.lastName}" ></option > `
+                `<option value="${e.firstName} ${e.lastName}"></option>`
             ).join('');
         }
         const regEmpInput = document.getElementById('reg-emp');
@@ -2231,8 +2231,10 @@ const renderDailyRegistration = (container) => {
             const filter = regEmpInput.value.toLowerCase().trim();
             const rows = document.querySelectorAll('#daily-logs-tbody tr');
             rows.forEach(row => {
-                const empName = row.cells[1].textContent.toLowerCase();
-                row.style.display = empName.includes(filter) ? '' : 'none';
+                if (row.cells.length > 2) {
+                    const empName = row.cells[2].textContent.toLowerCase();
+                    row.style.display = empName.includes(filter) ? '' : 'none';
+                }
             });
         };
     }
@@ -2275,7 +2277,7 @@ window.renderBulkTable = () => {
     }
 
     tbody.innerHTML = emps.map(e => {
-        const fullName = `${e.firstName} ${e.lastName} `;
+        const fullName = `${e.firstName} ${e.lastName}`;
         const hasLog = (state.activePayroll.dailyLogs || []).some(l => l.employee === fullName && l.date === date);
 
         // Get pre-selected activity amount
@@ -2288,7 +2290,7 @@ window.renderBulkTable = () => {
         }
 
         return `
-            < tr data - emp="${fullName}" class="${hasLog ? 'duplicate-row' : ''}" >
+            <tr data-emp="${fullName}" class="${hasLog ? 'duplicate-row' : ''}">
                         <td style="font-weight: 500;">
                             ${fullName}
                             ${hasLog ? '<br><small class="text-danger"><i class="fas fa-exclamation-triangle"></i> Ya tiene registro hoy</small>' : ''}
@@ -2307,7 +2309,7 @@ window.renderBulkTable = () => {
                                 <i class="fas fa-times"></i>
                             </button>
                         </td>
-                    </tr >
+                    </tr>
             `;
     }).join('');
 };
