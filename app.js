@@ -2166,7 +2166,8 @@ const renderDailyRegistration = (container) => {
         </datalist>
         `;
 
-    document.getElementById('save-daily').onclick = () => {
+    const saveDailyBtn = document.getElementById('save-daily');
+    if (saveDailyBtn) saveDailyBtn.onclick = () => {
         const empName = document.getElementById('reg-emp').value;
         const regDate = document.getElementById('reg-date').value;
 
@@ -2174,6 +2175,13 @@ const renderDailyRegistration = (container) => {
         const employee = state.employees.find(e => `${e.firstName} ${e.lastName}` === empName);
         if (employee && employee.hireDate && regDate < employee.hireDate) {
             alert(`No se puede registrar labor antes de la fecha de ingreso del empleado(${employee.hireDate})`);
+            return;
+        }
+
+        // Validation: Payroll Date Range
+        const bounds = getPayrollBounds();
+        if (bounds && (regDate < bounds.min || regDate > bounds.max)) {
+            alert(`La fecha debe estar dentro del rango de la nómina abierta (${bounds.min} a ${bounds.max})`);
             return;
         }
 
@@ -2206,7 +2214,7 @@ const renderDailyRegistration = (container) => {
     };
 
     const deptSelect = document.getElementById('reg-dept');
-    deptSelect.onchange = () => {
+    if (deptSelect) deptSelect.onchange = () => {
         const selectedDept = deptSelect.value;
         const filteredEmps = state.employees.filter(e =>
             e.type === 'mobile' && e.active !== false && (selectedDept === 'all' || e.department === selectedDept)
@@ -2331,7 +2339,10 @@ window.applyBatchToAll = () => {
     const activity = state.activities.find(a => a.name === act);
 
     document.querySelectorAll('#bulk-tbody tr').forEach(row => {
-        if (op) row.querySelector('.bulk-op').value = op;
+        const opInput = row.querySelector('.bulk-op');
+        if (!opInput) return; // Skip placeholder
+
+        if (op) opInput.value = op;
         if (act) {
             row.querySelector('.bulk-act').value = act;
             if (activity && activity.dailySalary) {
@@ -2344,12 +2355,22 @@ window.applyBatchToAll = () => {
 
 window.saveBulkLogs = () => {
     const date = document.getElementById('bulk-date').value;
+
+    // Validation: Payroll Date Range
+    const bounds = getPayrollBounds();
+    if (bounds && (date < bounds.min || date > bounds.max)) {
+        alert(`La fecha debe estar dentro del rango de la nómina abierta (${bounds.min} a ${bounds.max})`);
+        return;
+    }
+
     const rows = document.querySelectorAll('#bulk-tbody tr');
     const logsToAdd = [];
     let duplicates = 0;
 
     rows.forEach(row => {
         const emp = row.getAttribute('data-emp');
+        if (!emp) return; // Skip placeholder
+
         const op = row.querySelector('.bulk-op').value;
         const act = row.querySelector('.bulk-act').value;
         const amt = row.querySelector('.bulk-amt').value;
@@ -2724,9 +2745,12 @@ window.viewHistoricalPayroll = (index) => {
                     Solo con monto a cobrar
                 </label>
             </div>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button class="btn btn-info" onclick="window.renderMobileDetailedReport(${index})">
                     <i class="fas fa-list-alt"></i> Detalle Labores Móviles
+                </button>
+                <button class="btn btn-info" onclick="window.renderMobileEmployeeDeptReport(${index})">
+                    <i class="fas fa-users"></i> Detalle por Depto/Empleado
                 </button>
                 <button class="btn btn-primary" onclick="window.print()">
                     <i class="fas fa-print"></i> Imprimir Reporte
@@ -2773,7 +2797,7 @@ window.printHistoricalPayroll = (index) => {
     }, 500);
 };
 
-const renderMobileDetailedReport = (historyIndex = null, filterOps = null) => {
+const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filterDept = null) => {
     const isHistorical = historyIndex !== null;
     const run = isHistorical ? state.payrollHistory[historyIndex] : state.activePayroll;
 
@@ -2782,9 +2806,18 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null) => {
     const logs = run.dailyLogs || [];
     const allOpsInRun = [...new Set(logs.map(l => l.op))].sort();
 
-    if (filterOps === null) {
-        filterOps = [...allOpsInRun];
+    // Manage global filter states
+    if (window.lastMobileHistoryIndex !== historyIndex) {
+        window.currentMobileFilterOps = [...allOpsInRun];
+        window.currentMobileFilterDept = 'all';
+        window.lastMobileHistoryIndex = historyIndex;
     }
+
+    if (filterOps !== null) window.currentMobileFilterOps = filterOps;
+    if (filterDept !== null) window.currentMobileFilterDept = filterDept;
+
+    filterOps = window.currentMobileFilterOps;
+    filterDept = window.currentMobileFilterDept;
 
     const bounds = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds();
     if (!bounds || !bounds.min || !bounds.max) {
@@ -2813,6 +2846,13 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null) => {
         // Filter by Operation
         if (!filterOps.includes(log.op)) return;
 
+        // Filter by Department
+        if (filterDept && filterDept !== 'all') {
+            const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
+            const dept = emp ? emp.department : 'Sin clasificar';
+            if (dept !== filterDept) return;
+        }
+
         if (!grouped[log.op]) grouped[log.op] = {};
         if (!grouped[log.op][log.employee]) grouped[log.op][log.employee] = {};
         if (!grouped[log.op][log.employee][log.act]) grouped[log.op][log.employee][log.act] = {};
@@ -2827,12 +2867,16 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null) => {
         const idx = filterOps.indexOf(op);
         if (idx > -1) filterOps.splice(idx, 1);
         else filterOps.push(op);
-        renderMobileDetailedReport(historyIndex, filterOps);
+        renderMobileDetailedReport(historyIndex, filterOps, filterDept);
     };
 
     window.selectAllMobileReportOps = (all) => {
         const ops = all ? [...allOpsInRun] : [];
-        renderMobileDetailedReport(historyIndex, ops);
+        renderMobileDetailedReport(historyIndex, ops, filterDept);
+    };
+
+    window.changeMobileReportDept = (selectObj) => {
+        renderMobileDetailedReport(historyIndex, filterOps, selectObj.value);
     };
 
     let html = `
@@ -2845,6 +2889,13 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null) => {
                     </div>
                     
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <div class="form-group no-print" style="min-width: 250px; margin-bottom: 0;">
+                            <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Filtrar Departamento:</label>
+                            <select class="form-control" onchange="window.changeMobileReportDept(this)" style="margin: 0; padding: 5px 10px;">
+                                <option value="all" ${filterDept === 'all' || !filterDept ? 'selected' : ''}>Todos los Departamentos</option>
+                                ${state.departments.map(d => `<option value="${d.name}" ${filterDept === d.name ? 'selected' : ''}>${d.name}</option>`).join('')}
+                            </select>
+                        </div>
                         <div class="multi-select-container no-print" style="min-width: 250px;">
                             <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Filtrar Operaciones:</label>
                             <div class="multi-select-btn" onclick="this.parentElement.classList.toggle('active')">
@@ -2968,6 +3019,184 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null) => {
     contentArea.innerHTML = html;
 };
 window.renderMobileDetailedReport = renderMobileDetailedReport;
+
+const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null) => {
+    const isHistorical = historyIndex !== null;
+    const run = isHistorical ? state.payrollHistory[historyIndex] : state.activePayroll;
+
+    if (!run) return;
+
+    const logs = run.dailyLogs || [];
+
+    // Manage global filter states for this specific report
+    if (window.lastMobileEmpDeptHistoryIndex !== historyIndex) {
+        window.currentMobileEmpDeptFilterDept = 'all';
+        window.lastMobileEmpDeptHistoryIndex = historyIndex;
+    }
+
+    if (filterDept !== null) window.currentMobileEmpDeptFilterDept = filterDept;
+    filterDept = window.currentMobileEmpDeptFilterDept;
+
+    const bounds = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds();
+    if (!bounds || !bounds.min || !bounds.max) {
+        alert("No hay un periodo definido para esta nómina.");
+        return;
+    }
+
+    // Generate date range
+    const dates = [];
+    let current = new Date(bounds.min + 'T00:00:00');
+    const end = new Date(bounds.max + 'T00:00:00');
+    while (current <= end) {
+        dates.push(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+    }
+
+    const dayNames = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+    const dateHeaders = dates.map(d => {
+        const dateObj = new Date(d + 'T00:00:00');
+        return { date: d, day: dayNames[dateObj.getDay()] };
+    });
+
+    // Group by Department -> Employee
+    const grouped = {};
+    logs.forEach(log => {
+        const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
+        const dept = emp ? (emp.department || 'Sin clasificar') : 'Sin clasificar';
+
+        // Filter by Department
+        if (filterDept && filterDept !== 'all' && dept !== filterDept) return;
+
+        if (!grouped[dept]) grouped[dept] = {};
+        if (!grouped[dept][log.employee]) grouped[dept][log.employee] = {};
+
+        grouped[dept][log.employee][log.date] = (grouped[dept][log.employee][log.date] || 0) + parseFloat(log.amount);
+    });
+
+    const contentArea = document.getElementById('content-area');
+
+    window.changeMobileEmpDeptReportDept = (selectObj) => {
+        renderMobileEmployeeDeptReport(historyIndex, selectObj.value);
+    };
+
+    let html = `
+                <div class="header-action no-print" style="flex-wrap: wrap; gap: 15px;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button class="btn btn-secondary" onclick="${isHistorical ? `window.viewHistoricalPayroll(${historyIndex})` : 'renderSection(\'reports\')'}">
+                            <i class="fas fa-arrow-left"></i> Volver
+                        </button>
+                        <h1>Detalle por Depto/Empleado</h1>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <div class="form-group no-print" style="min-width: 250px; margin-bottom: 0;">
+                            <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Filtrar Departamento:</label>
+                            <select class="form-control" onchange="window.changeMobileEmpDeptReportDept(this)" style="margin: 0; padding: 5px 10px;">
+                                <option value="all" ${filterDept === 'all' || !filterDept ? 'selected' : ''}>Todos los Departamentos</option>
+                                ${state.departments.map(d => `<option value="${d.name}" ${filterDept === d.name ? 'selected' : ''}>${d.name}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="window.print()">
+                        <i class="fas fa-print"></i> Imprimir
+                    </button>
+                </div>
+            <div class="card mt-4 print-area">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h1 style="margin: 0; color: var(--primary);">RELACIÓN DIARIA POR DEPARTAMENTO Y EMPLEADO</h1>
+                    <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.name || run.payrollName}</p>
+                    <p class="text-gray">Periodo: ${bounds.min} al ${bounds.max}</p>
+                </div>
+                <hr class="mt-4 mb-4" style="border: 0.5px solid var(--border-color)">
+                    `;
+
+    let grandTotal = 0;
+    const grandTotalByDate = {};
+    dates.forEach(d => grandTotalByDate[d] = 0);
+
+    Object.keys(grouped).sort().forEach(dept => {
+        let deptTotal = 0;
+        const deptDailyTotals = {};
+        dates.forEach(d => deptDailyTotals[d] = 0);
+
+        html += `
+                    <div class="mb-5">
+                        <h3 class="text-accent" style="border-bottom: 2px solid var(--accent-color); padding-bottom: 5px; margin-bottom: 15px;">Departamento: ${dept}</h3>
+                        <table class="data-table" style="font-size: 0.85rem">
+                            <thead>
+                                <tr>
+                                    <th>Empleado</th>
+                                    ${dateHeaders.map(h => `<th class="text-center" style="width: 40px">${h.day}<br><small style="font-size: 0.6rem">${h.date.split('-')[2]}</small></th>`).join('')}
+                                    <th class="text-right" style="font-weight: bold">Suma</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                `;
+
+        Object.keys(grouped[dept]).sort().forEach(empName => {
+            let rowTotal = 0;
+            html += `<tr><td>${empName}</td>`;
+
+            dates.forEach(d => {
+                const val = grouped[dept][empName][d] || 0;
+                rowTotal += val;
+                deptDailyTotals[d] += val;
+                grandTotalByDate[d] += val;
+                html += `<td class="text-center">${val > 0 ? val.toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`;
+            });
+
+            deptTotal += rowTotal;
+            grandTotal += rowTotal;
+            html += `<td class="text-right" style="font-weight: bold">$${rowTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`;
+        });
+
+        html += `
+                            </tbody>
+                            <tfoot style="background: rgba(var(--primary-rgb), 0.05); font-weight: bold; display: table-row-group;">
+                                <tr>
+                                    <td class="text-right">SUBTOTAL ${dept} :</td>
+                                    ${dates.map(d => `<td class="text-center">${deptDailyTotals[d] > 0 ? deptDailyTotals[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
+                                    <td class="text-right">$${deptTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    `;
+    });
+
+    if (Object.keys(grouped).length > 0) {
+        html += `
+                    <div class="summary-card mt-5" style="border: 2px solid var(--primary); padding: 20px; border-radius: 8px;">
+                        <h3 style="text-align: center; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 20px;">RESUMEN GENERAL</h3>
+                        <table class="data-table">
+                             <thead style="background: var(--primary); color: white;">
+                                <tr>
+                                    <th class="text-right">CONCEPTO</th>
+                                    ${dateHeaders.map(h => `<th class="text-center">${h.day}</th>`).join('')}
+                                    <th class="text-right">TOTAL</th>
+                                </tr>
+                             </thead>
+                             <tbody>
+                                <tr style="font-weight: bold; background: rgba(0,0,0,0.02);">
+                                    <td class="text-right">TOTAL ACUMULADO :</td>
+                                    ${dates.map(d => `<td class="text-center">${grandTotalByDate[d] > 0 ? grandTotalByDate[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
+                                    <td class="text-right" style="font-size: 1.1rem; color: var(--primary);">$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                             </tbody>
+                        </table>
+                    </div>
+                `;
+    }
+
+    if (Object.keys(grouped).length === 0) {
+        html += `<p style="text-align: center; padding: 40px; color: var(--gray);">No hay registros en este periodo.</p>`;
+    }
+
+    html += `</div>`;
+    contentArea.innerHTML = html;
+};
+window.renderMobileEmployeeDeptReport = renderMobileEmployeeDeptReport;
 
 // --- Utility: Payroll Calculation ---
 const calculateEmployeePayrollData = (emp, activePayroll) => {
@@ -3169,9 +3398,12 @@ const renderReports = (container) => {
                     Solo con monto a cobrar
                 </label>
             </div>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button class="btn btn-info" onclick="window.renderMobileDetailedReport()">
                     <i class="fas fa-list-alt"></i> Detalle Labores Móviles
+                </button>
+                <button class="btn btn-info" onclick="window.renderMobileEmployeeDeptReport()">
+                    <i class="fas fa-users"></i> Detalle por Depto/Empleado
                 </button>
                 <button class="btn btn-secondary" onclick="window.print()">
                     <i class="fas fa-print"></i> Imprimir Reporte
