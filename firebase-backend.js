@@ -243,40 +243,57 @@ if (typeof firebase !== 'undefined') {
             if (doc.exists) {
                 const data = doc.data();
                 console.log("[FIREBASE SNAPSHOT DATA LENGTHS:", Object.keys(data).map(k => `${k}: ${data[k]?.length || typeof data[k]}`).join(', '));
+
+                // --- INCOMING DELTA CALCULATION ---
+                // Only overwrite local state if the cloud actually changed that specific module.
+                // This prevents wiping out a user's local unsaved changes in one module
+                // when a snapshot arrives because someone else modified a different module.
+                const cloudChanges = {};
+                Object.keys(data).forEach(key => {
+                    const lastKnown = window._lastCloudState ? window._lastCloudState[key] : undefined;
+                    if (JSON.stringify(lastKnown) !== JSON.stringify(data[key])) {
+                        cloudChanges[key] = true;
+                    }
+                });
+
                 Object.keys(data).forEach(key => {
                     // Do not overwrite users array from globalState doc, it comes from users collection
                     // ALSO: Ignore payrollHistory from globalState if we are using the new collection
                     if (key !== 'users' && key !== 'payrollHistory' && window.globalState.hasOwnProperty(key)) {
-                        // Protect against null/undefined cloud fields overwriting valid local arrays
-                        if (data[key] !== undefined && data[key] !== null) {
-                            if (Array.isArray(window.globalState[key]) && Array.isArray(data[key])) {
-                                // Important: Protect rich local data from being wiped by an empty cloud state
-                                // If cloud is empty but local has data during initial load, WE SHOULD NOT OVERWRITE
-                                if (isInitialLoad && data[key].length === 0 && window.globalState[key].length > 0) {
-                                    console.warn(`[SYNC PROTECT] La base de datos en la nube para '${key}' está vacía. Restaurando desde la memoria local (${window.globalState[key].length} elementos)...`);
 
-                                    if (!window._restorationAlertShown) {
-                                        window._restorationAlertShown = true;
-                                        alert("ℹ️ Sistema: Se han restaurado tus datos locales porque la base de datos en la nube estaba vacía.\n\nSi tu intención era borrar todo, por favor usa el botón 'Limpiar Sistema' en el Dashboard para una limpieza completa.");
+                        // ONLY apply if it's the first load OR if this specific module changed in the cloud
+                        if (isInitialLoad || cloudChanges[key]) {
+                            // Protect against null/undefined cloud fields overwriting valid local arrays
+                            if (data[key] !== undefined && data[key] !== null) {
+                                if (Array.isArray(window.globalState[key]) && Array.isArray(data[key])) {
+                                    // Important: Protect rich local data from being wiped by an empty cloud state
+                                    // If cloud is empty but local has data during initial load, WE SHOULD NOT OVERWRITE
+                                    if (isInitialLoad && data[key].length === 0 && window.globalState[key].length > 0) {
+                                        console.warn(`[SYNC PROTECT] La base de datos en la nube para '${key}' está vacía. Restaurando desde la memoria local (${window.globalState[key].length} elementos)...`);
+
+                                        if (!window._restorationAlertShown) {
+                                            window._restorationAlertShown = true;
+                                            alert("ℹ️ Sistema: Se han restaurado tus datos locales porque la base de datos en la nube estaba vacía.\n\nSi tu intención era borrar todo, por favor usa el botón 'Limpiar Sistema' en el Dashboard para una limpieza completa.");
+                                        }
+
+                                        // Trigger a save so the cloud gets our rich local data
+                                        setTimeout(() => {
+                                            console.log(`[SYNC PROTECT] Subiendo datos de '${key}' a la nube para evitar pérdida de información.`);
+                                            window.saveStateToFirebase();
+                                        }, 2000);
+                                    } else {
+                                        // Standard Sync: Empty and push to preserve memory references (pointers)
+                                        window.globalState[key].length = 0;
+                                        data[key].forEach(item => window.globalState[key].push(item));
                                     }
-
-                                    // Trigger a save so the cloud gets our rich local data
-                                    setTimeout(() => {
-                                        console.log(`[SYNC PROTECT] Subiendo datos de '${key}' a la nube para evitar pérdida de información.`);
-                                        window.saveStateToFirebase();
-                                    }, 2000);
                                 } else {
-                                    // Standard Sync: Empty and push to preserve memory references (pointers)
-                                    window.globalState[key].length = 0;
-                                    data[key].forEach(item => window.globalState[key].push(item));
-                                }
-                            } else {
-                                window.globalState[key] = data[key];
-                                if (window.state && window.state !== window.globalState) {
-                                    window.state[key] = data[key];
+                                    window.globalState[key] = data[key];
+                                    if (window.state && window.state !== window.globalState) {
+                                        window.state[key] = data[key];
+                                    }
                                 }
                             }
-                        }
+                        } // Close: if (isInitialLoad || cloudChanges[key])
                     }
                 });
 
@@ -293,6 +310,9 @@ if (typeof firebase !== 'undefined') {
                 }
 
                 window.isFirebaseStateLoaded = true;
+
+                // Keep a baseline of what the cloud has, so we can calculate deltas
+                window._lastCloudState = JSON.parse(JSON.stringify(data));
 
                 // Immediately burn the fresh cloud data into the offline local storage cache
                 if (typeof window.syncToLocalStorage === 'function') {
@@ -402,8 +422,32 @@ if (typeof firebase !== 'undefined') {
             delete stateToSave.users;          // Users are managed in their own collection
             delete stateToSave.payrollHistory; // History is managed in history collection
 
-            // To prevent massive overwrite locks, we use merge: true
-            await db.collection('payroll').doc('globalState').set(stateToSave, { merge: true });
+            // --- DELTA CALCULATION ---
+            // Instead of sending the entire state and overwriting what other users
+            // might be doing in other modules, we ONLY send the modules that changed locally.
+            const updates = {};
+            Object.keys(stateToSave).forEach(key => {
+                const cloudVal = window._lastCloudState ? window._lastCloudState[key] : undefined;
+                const localVal = stateToSave[key];
+                // Compare local modification against what we last pulled/pushed from the cloud
+                if (JSON.stringify(cloudVal) !== JSON.stringify(localVal)) {
+                    updates[key] = localVal;
+                }
+            });
+
+            if (Object.keys(updates).length > 0) {
+                console.log("[FIREBASE SAVE] Updates detected for modules:", Object.keys(updates));
+                // We use merge: true so Firebase ONLY replaces these specific top-level keys
+                await db.collection('payroll').doc('globalState').set(updates, { merge: true });
+
+                // Update our baseline so we don't resave unless changed again
+                if (!window._lastCloudState) window._lastCloudState = {};
+                Object.keys(updates).forEach(k => {
+                    window._lastCloudState[k] = JSON.parse(JSON.stringify(updates[k]));
+                });
+            } else {
+                console.log("[FIREBASE SAVE] No module changes detected. Skipping write.");
+            }
         } catch (e) {
             console.error("Error writing to Firebase:", e);
             // alert("Error de conexión al guardar en la nube.");
