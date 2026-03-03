@@ -282,11 +282,45 @@ if (typeof firebase !== 'undefined') {
                                             window.saveStateToFirebase();
                                         }, 2000);
                                     } else {
-                                        // Standard Sync: Empty and push to preserve memory references (pointers)
+                                        // Standard Sync: Smart Array Merge for Concurrency
+                                        const merged = [...data[key]];
+                                        const cloudIds = new Set(data[key].map(i => i.id).filter(Boolean));
+                                        const lastCloudIds = new Set((window._lastCloudState && window._lastCloudState[key] ? window._lastCloudState[key] : []).map(i => i.id).filter(Boolean));
+
+                                        window.globalState[key].forEach(localItem => {
+                                            if (localItem.id && !cloudIds.has(localItem.id)) {
+                                                // Missing from Cloud. But did we create it locally recently, or was it deleted remotely?
+                                                if (!lastCloudIds.has(localItem.id)) {
+                                                    // We created it locally! Preserve it.
+                                                    merged.push(localItem);
+                                                }
+                                            }
+                                        });
+
                                         window.globalState[key].length = 0;
-                                        data[key].forEach(item => window.globalState[key].push(item));
+                                        merged.forEach(item => window.globalState[key].push(item));
                                     }
                                 } else {
+                                    // Special Deep Merge for activePayroll to protect dailyLogs
+                                    if (key === 'activePayroll' && window.globalState.activePayroll && data.activePayroll) {
+                                        const localLogs = window.globalState.activePayroll.dailyLogs || [];
+                                        const cloudLogs = data.activePayroll.dailyLogs || [];
+                                        const lastCloudLogs = window._lastCloudState && window._lastCloudState.activePayroll && window._lastCloudState.activePayroll.dailyLogs ? window._lastCloudState.activePayroll.dailyLogs : [];
+
+                                        const mergedLogs = [...cloudLogs];
+                                        const cloudLogIds = new Set(cloudLogs.map(l => l.id).filter(Boolean));
+                                        const lastCloudLogIds = new Set(lastCloudLogs.map(l => l.id).filter(Boolean));
+
+                                        localLogs.forEach(localLog => {
+                                            if (localLog.id && !cloudLogIds.has(localLog.id)) {
+                                                if (!lastCloudLogIds.has(localLog.id)) {
+                                                    mergedLogs.push(localLog);
+                                                }
+                                            }
+                                        });
+                                        data.activePayroll.dailyLogs = mergedLogs;
+                                    }
+
                                     window.globalState[key] = data[key];
                                     if (window.state && window.state !== window.globalState) {
                                         window.state[key] = data[key];

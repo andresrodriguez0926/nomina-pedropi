@@ -890,6 +890,7 @@ const renderDepartments = (container) => {
             if (name) {
                 const nextNum = state.departments.length > 0 ? Math.max(0, ...state.departments.map(d => parseInt(d.deptNumber) || 0)) + 1 : 1;
                 state.departments.push({
+                    id: Date.now().toString(36) + Math.random().toString(36).substring(2),
                     name,
                     deptNumber: nextNum,
                     createdBy: window.globalState.currentUser?.name || 'Desconocido'
@@ -981,6 +982,7 @@ const renderOperations = (container) => {
             if (name && account) {
                 const nextNum = state.operations.length > 0 ? Math.max(0, ...state.operations.map(o => parseInt(o.opNumber) || 0)) + 1 : 1;
                 state.operations.push({
+                    id: Date.now().toString(36) + Math.random().toString(36).substring(2),
                     name,
                     account,
                     useInAccounting,
@@ -1061,6 +1063,7 @@ const renderActivities = (container) => {
             if (name) {
                 const nextNum = state.activities.length > 0 ? Math.max(0, ...state.activities.map(a => parseInt(a.actNumber) || 0)) + 1 : 1;
                 state.activities.push({
+                    id: Date.now().toString(36) + Math.random().toString(36).substring(2),
                     name,
                     value: parseFloat(value) || 0,
                     dailySalary: parseFloat(dailySalary) || 0,
@@ -1243,6 +1246,7 @@ const renderEmployees = (container) => {
             };
 
             if (emp.firstName && emp.idNumber) {
+                emp.id = Date.now().toString(36) + Math.random().toString(36).substring(2);
                 state.employees.push(emp);
                 saveState();
                 renderSection('employees');
@@ -1438,7 +1442,7 @@ const renderPeriods = (container) => {
             const name = document.getElementById('p-name').value;
             const frequency = document.getElementById('p-freq').value;
             if (name) {
-                state.periods.push({ name, frequency });
+                state.periods.push({ id: Date.now().toString(36) + Math.random().toString(36).substring(2), name, frequency });
                 saveState();
                 renderSection('periods');
                 hideModal();
@@ -1772,6 +1776,7 @@ const renderOvertime = (container) => {
             const extraPay = hourlyRate * hours * factor;
 
             state.overtime.push({
+                id: Date.now().toString(36) + Math.random().toString(36).substring(2),
                 otNumber: state.overtime.length > 0 ? Math.max(0, ...state.overtime.map(x => parseInt(x.otNumber) || 0)) + 1 : 1,
                 date,
                 employeeName: empName,
@@ -1909,6 +1914,7 @@ const renderIncentives = (container) => {
                 if (!state.incentives) state.incentives = [];
                 const nextNum = state.incentives.length > 0 ? Math.max(0, ...state.incentives.map(x => parseInt(x.incNumber) || 0)) + 1 : 1;
                 inc.incNumber = nextNum;
+                inc.id = Date.now().toString(36) + Math.random().toString(36).substring(2);
                 state.incentives.push(inc);
                 saveState();
                 renderSection('incentives');
@@ -2186,6 +2192,7 @@ const renderDailyRegistration = (container) => {
         }
 
         const log = {
+            id: Date.now().toString(36) + Math.random().toString(36).substring(2),
             date: regDate,
             employee: empName,
             op: document.getElementById('reg-op').value,
@@ -2383,6 +2390,7 @@ window.saveBulkLogs = () => {
                 duplicates++;
             } else {
                 logsToAdd.push({
+                    id: Date.now().toString(36) + Math.random().toString(36).substring(2),
                     date,
                     employee: emp,
                     op,
@@ -4473,7 +4481,7 @@ window.editDailyLog = (index) => {
         };
 
         if (updatedLog.employee && updatedLog.amount) {
-            state.activePayroll.dailyLogs[index] = updatedLog;
+            state.activePayroll.dailyLogs[index] = { ...log, ...updatedLog };
             saveState();
             renderSection('daily-registration');
             hideModal();
@@ -4588,7 +4596,7 @@ window.editEmployee = (index) => {
         };
 
         if (updatedEmp.firstName && updatedEmp.idNumber) {
-            state.employees[index] = updatedEmp;
+            state.employees[index] = { ...emp, ...updatedEmp };
             saveState();
             renderSection('employees');
             hideModal();
@@ -4638,7 +4646,7 @@ window.editOperation = (index) => {
         const useInAccounting = document.getElementById('edit-op-use-acc').checked;
         const useInLabor = document.getElementById('edit-op-use-labor').checked;
         if (name && account) {
-            state.operations[index] = { name, account, useInAccounting, useInLabor };
+            state.operations[index] = { ...op, name, account, useInAccounting, useInLabor };
             saveState();
             renderSection('operations');
             hideModal();
@@ -4666,7 +4674,7 @@ window.editActivity = (index) => {
         const value = document.getElementById('edit-act-value').value;
         const dailySalary = document.getElementById('edit-act-daily-salary').value;
         if (name) {
-            state.activities[index] = { name, value: parseFloat(value) || 0, dailySalary: parseFloat(dailySalary) || 0 };
+            state.activities[index] = { ...act, name, value: parseFloat(value) || 0, dailySalary: parseFloat(dailySalary) || 0 };
             saveState();
             renderSection('activities');
             hideModal();
@@ -4703,6 +4711,7 @@ window.quickAddIncentive = (employeeName) => {
             </div>
         `, () => {
         const inc = {
+            id: Date.now().toString(36) + Math.random().toString(36).substring(2),
             date: document.getElementById('inc-date').value,
             employeeName: document.getElementById('inc-emp').value,
             amount: document.getElementById('inc-amount').value,
@@ -4768,6 +4777,7 @@ window.quickAddOvertime = (employeeName) => {
             const hourlyRate = (salary / 23.83) / 8;
             const extraPay = hourlyRate * hours * factor;
             state.overtime.push({
+                id: Date.now().toString(36) + Math.random().toString(36).substring(2),
                 date,
                 employeeName,
                 hours,
@@ -4799,6 +4809,7 @@ window.quickAddDiscount = (employeeName) => {
             </div>
         `, () => {
         const d = {
+            id: Date.now().toString(36) + Math.random().toString(36).substring(2),
             employeeName: document.getElementById('disc-emp').value,
             amount: document.getElementById('disc-amount').value,
             reason: document.getElementById('disc-reason').value,

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nomina-app-v7';
+const CACHE_NAME = 'nomina-app-v8';
 const urlsToCache = [
     '/',
     '/index.html',
