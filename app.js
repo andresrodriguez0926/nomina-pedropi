@@ -47,6 +47,58 @@ const state = {
 window.globalState = state; // Allow firebase-backend to write directly to it
 window.state = state; // Backup explicit reference
 
+// --- Migration & Utilities ---
+window.assignSequentialNumbers = () => {
+    const modules = [
+        { key: 'departments', numKey: 'deptNumber' },
+        { key: 'operations', numKey: 'opNumber' },
+        { key: 'activities', numKey: 'actNumber' },
+        { key: 'employees', numKey: 'regNumber' },
+        { key: 'discounts', numKey: 'loanNumber' },
+        { key: 'overtime', numKey: 'otNumber' },
+        { key: 'incentives', numKey: 'incNumber' },
+        { key: 'payrollHistory', numKey: 'payrollNumber' }
+    ];
+
+    modules.forEach(m => {
+        if (!state[m.key]) return;
+        let max = 0;
+        state[m.key].forEach(item => {
+            const num = parseInt(item[m.numKey]);
+            if (!isNaN(num) && num > max) max = num;
+        });
+
+        state[m.key].forEach(item => {
+            if (!item[m.numKey]) {
+                max++;
+                item[m.numKey] = max;
+            }
+            if (!item.createdBy) {
+                item.createdBy = m.key === 'payrollHistory' ? 'Sistema (Cierre)' : 'Sistema';
+            }
+        });
+    });
+
+    // Handle nested daily logs in active payroll
+    if (state.activePayroll && state.activePayroll.dailyLogs) {
+        let maxLog = 0;
+        state.activePayroll.dailyLogs.forEach(log => {
+            const num = parseInt(log.logNumber);
+            if (!isNaN(num) && num > maxLog) maxLog = num;
+        });
+        state.activePayroll.dailyLogs.forEach(log => {
+            if (!log.logNumber) {
+                maxLog++;
+                log.logNumber = maxLog;
+            }
+            if (!log.createdBy) log.createdBy = 'Sistema';
+        });
+    }
+};
+
+// Initial run
+window.assignSequentialNumbers();
+
 window.syncToLocalStorage = () => {
     localStorage.setItem('payroll_departments', JSON.stringify(state.departments || []));
     localStorage.setItem('payroll_operations', JSON.stringify(state.operations || []));
@@ -649,15 +701,47 @@ window.showEditUserModal = (uid) => {
                         <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrador (Acceso total)</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label>Módulos Autorizados</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 5px; max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #444; border-radius: 4px;">
+                        ${[
+            { id: 'dashboard', name: 'Dashboard' },
+            { id: 'users', name: 'Usuarios' },
+            { id: 'departments', name: 'Departamentos' },
+            { id: 'operations', name: 'Operaciones' },
+            { id: 'activities', name: 'Actividades' },
+            { id: 'tss', name: 'TSS / Seguros' },
+            { id: 'employees', name: 'Empleados' },
+            { id: 'employee-record', name: 'Récord de Empleado' },
+            { id: 'discounts', name: 'Descuentos' },
+            { id: 'overtime', name: 'Horas Extras' },
+            { id: 'incentives', name: 'Incentivos' },
+            { id: 'christmas-salary', name: 'Salario Navidad' },
+            { id: 'benefits', name: 'Prestaciones' },
+            { id: 'vacations', name: 'Vacaciones' },
+            { id: 'periods', name: 'Periodos' },
+            { id: 'payroll-runs', name: 'Abrir Nómina' },
+            { id: 'daily-registration', name: 'Registro Diario' },
+            { id: 'closing', name: 'Cierre Nómina' },
+            { id: 'reports', name: 'Reportes' },
+            { id: 'payroll-entry', name: 'Entrada de Nómina' }
+        ].map(m => `
+                            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; font-size: 0.85rem;">
+                                <input type="checkbox" class="user-module-check" value="${m.id}" ${(!user.allowedModules || user.allowedModules.includes(m.id)) ? 'checked' : ''}> ${m.name}
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
             `, () => {
         const name = document.getElementById('edit-user-name').value;
         const email = document.getElementById('edit-user-email').value;
         const password = document.getElementById('edit-user-password').value;
         const role = document.getElementById('edit-user-role').value;
+        const allowedModules = Array.from(document.querySelectorAll('.user-module-check:checked')).map(cb => cb.value);
 
         if (name && email) {
             if (window.updateUserAccess) {
-                const updatedData = { name, email, role };
+                const updatedData = { name, email, role, allowedModules };
                 if (password.length >= 6) {
                     updatedData.password = password;
                 } else if (password.length > 0) {
@@ -698,15 +782,47 @@ window.showAddUserModal = () => {
                         <option value="admin">Administrador (Acceso total)</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label>Módulos Autorizados</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 5px; max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #444; border-radius: 4px;">
+                        ${[
+            { id: 'dashboard', name: 'Dashboard' },
+            { id: 'users', name: 'Usuarios' },
+            { id: 'departments', name: 'Departamentos' },
+            { id: 'operations', name: 'Operaciones' },
+            { id: 'activities', name: 'Actividades' },
+            { id: 'tss', name: 'TSS / Seguros' },
+            { id: 'employees', name: 'Empleados' },
+            { id: 'employee-record', name: 'Récord de Empleado' },
+            { id: 'discounts', name: 'Descuentos' },
+            { id: 'overtime', name: 'Horas Extras' },
+            { id: 'incentives', name: 'Incentivos' },
+            { id: 'christmas-salary', name: 'Salario Navidad' },
+            { id: 'benefits', name: 'Prestaciones' },
+            { id: 'vacations', name: 'Vacaciones' },
+            { id: 'periods', name: 'Periodos' },
+            { id: 'payroll-runs', name: 'Abrir Nómina' },
+            { id: 'daily-registration', name: 'Registro Diario' },
+            { id: 'closing', name: 'Cierre Nómina' },
+            { id: 'reports', name: 'Reportes' },
+            { id: 'payroll-entry', name: 'Entrada de Nómina' }
+        ].map(m => `
+                            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; font-size: 0.85rem;">
+                                <input type="checkbox" class="user-module-check" value="${m.id}" checked> ${m.name}
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
             `, () => {
         const name = document.getElementById('new-user-name').value;
         const email = document.getElementById('new-user-email').value;
         const password = document.getElementById('new-user-password').value;
         const role = document.getElementById('new-user-role').value;
+        const allowedModules = Array.from(document.querySelectorAll('.user-module-check:checked')).map(cb => cb.value);
 
         if (name && email && password.length >= 6) {
             if (window.registerSecondaryUser) {
-                window.registerSecondaryUser(email, password, name, role);
+                window.registerSecondaryUser(email, password, name, role, allowedModules);
                 hideModal();
             } else {
                 alert("Error: Script de Firebase Backend no responde.");
@@ -738,14 +854,18 @@ const renderDepartments = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
+                        <th style="width: 50px">Nº</th>
                         <th>Nombre</th>
+                        <th>Registrado por</th>
                         <th style="width: 100px">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="dept-table-body">
                     ${state.departments.map((dept, index) => `
                         <tr>
+                            <td>D-${dept.deptNumber || (index + 1)}</td>
                             <td>${dept.name}</td>
+                            <td><small>${dept.createdBy || 'Sistema'}</small></td>
                             <td>
                                 <button class="btn-icon delete admin-only" onclick="deleteItem('departments', ${index})">
                                     <i class="fas fa-trash"></i>
@@ -768,7 +888,12 @@ const renderDepartments = (container) => {
         `, () => {
             const name = document.getElementById('dept-name').value;
             if (name) {
-                state.departments.push({ name });
+                const nextNum = state.departments.length > 0 ? Math.max(0, ...state.departments.map(d => parseInt(d.deptNumber) || 0)) + 1 : 1;
+                state.departments.push({
+                    name,
+                    deptNumber: nextNum,
+                    createdBy: window.globalState.currentUser?.name || 'Desconocido'
+                });
                 saveState();
                 renderSection('departments');
                 hideModal();
@@ -790,15 +915,18 @@ const renderOperations = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
+                        <th style="width: 50px">Nº</th>
                         <th>Nombre</th>
                         <th>Cuenta Contable</th>
                         <th>Propósito</th>
+                        <th>Registrado por</th>
                         <th style="width: 100px">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${state.operations.map((op, index) => `
                         <tr>
+                            <td>OP-${op.opNumber || (index + 1)}</td>
                             <td>${op.name}</td>
                             <td>${op.account}</td>
                             <td>
@@ -807,6 +935,7 @@ const renderOperations = (container) => {
                                     ${(op.useInLabor === undefined || op.useInLabor) ? '<span class="status-badge mobile" style="font-size: 0.6rem">Fijos/Móviles</span>' : ''}
                                 </div>
                             </td>
+                            <td><small>${op.createdBy || 'Sistema'}</small></td>
                             <td>
                                 <button class="btn-icon edit" onclick="editOperation(${index})">
                                     <i class="fas fa-edit"></i>
@@ -817,7 +946,7 @@ const renderOperations = (container) => {
                             </td>
                         </tr>
                     `).join('')}
-                    ${state.operations.length === 0 ? '<tr><td colspan="4" style="text-align:center">No hay operaciones registradas</td></tr>' : ''}
+                    ${state.operations.length === 0 ? '<tr><td colspan="5" style="text-align:center">No hay operaciones registradas</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -850,7 +979,15 @@ const renderOperations = (container) => {
             const useInAccounting = document.getElementById('op-use-acc').checked;
             const useInLabor = document.getElementById('op-use-labor').checked;
             if (name && account) {
-                state.operations.push({ name, account, useInAccounting, useInLabor });
+                const nextNum = state.operations.length > 0 ? Math.max(0, ...state.operations.map(o => parseInt(o.opNumber) || 0)) + 1 : 1;
+                state.operations.push({
+                    name,
+                    account,
+                    useInAccounting,
+                    useInLabor,
+                    opNumber: nextNum,
+                    createdBy: window.globalState.currentUser?.name || 'Desconocido'
+                });
                 saveState();
                 renderSection('operations');
                 hideModal();
@@ -872,6 +1009,7 @@ const renderActivities = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
+                        <th style="width: 50px">Nº</th>
                         <th>Nombre</th>
                         <th>Valor/Número</th>
                         <th>Salario Diario</th>
@@ -881,9 +1019,11 @@ const renderActivities = (container) => {
                 <tbody>
                     ${state.activities.map((act, index) => `
                         <tr>
+                            <td>ACT-${act.actNumber || (index + 1)}</td>
                             <td>${act.name}</td>
                             <td>$${parseFloat(act.value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td>$${parseFloat(act.dailySalary || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td><small>${act.createdBy || 'Sistema'}</small></td>
                             <td>
                                 <button class="btn-icon edit" onclick="editActivity(${index})">
                                     <i class="fas fa-edit"></i>
@@ -894,7 +1034,7 @@ const renderActivities = (container) => {
                             </td>
                         </tr>
                     `).join('')}
-                    ${state.activities.length === 0 ? '<tr><td colspan="4" style="text-align:center">No hay actividades registradas</td></tr>' : ''}
+                    ${state.activities.length === 0 ? '<tr><td colspan="5" style="text-align:center">No hay actividades registradas</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -919,7 +1059,14 @@ const renderActivities = (container) => {
             const value = document.getElementById('act-value').value;
             const dailySalary = document.getElementById('act-daily-salary').value;
             if (name) {
-                state.activities.push({ name, value: parseFloat(value) || 0, dailySalary: parseFloat(dailySalary) || 0 });
+                const nextNum = state.activities.length > 0 ? Math.max(0, ...state.activities.map(a => parseInt(a.actNumber) || 0)) + 1 : 1;
+                state.activities.push({
+                    name,
+                    value: parseFloat(value) || 0,
+                    dailySalary: parseFloat(dailySalary) || 0,
+                    actNumber: nextNum,
+                    createdBy: window.globalState.currentUser?.name || 'Desconocido'
+                });
                 saveState();
                 renderSection('activities');
                 hideModal();
@@ -948,8 +1095,7 @@ const renderEmployees = (container) => {
                         <th>Tipo</th>
                         <th>Estado</th>
                         <th>Departamento</th>
-                        <th>Ingreso</th>
-                        <th>Salario</th>
+                        <th>Registrado por</th>
                         <th style="width: 120px">Acciones</th>
                     </tr>
                 </thead>
@@ -967,8 +1113,7 @@ const renderEmployees = (container) => {
                                 </span>
                             </td>
                             <td>${emp.department || '-'}</td>
-                            <td>${emp.hireDate || '-'}</td>
-                            <td>${emp.type === 'fixed' ? '$' + parseFloat(emp.salary).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'N/A'}</td>
+                                <td><small>${emp.createdBy || 'Sistema'}</small></td>
                             <td>
                                 <div class="action-group">
                                     <button class="btn-icon" onclick="quickAddIncentive('${emp.firstName} ${emp.lastName}')" title="Aplicar Incentivo">
@@ -993,7 +1138,7 @@ const renderEmployees = (container) => {
                             </td>
                         </tr>
                     `).join('')}
-                    ${state.employees.length === 0 ? '<tr><td colspan="10" style="text-align:center">No hay empleados registrados</td></tr>' : ''}
+                    ${state.employees.length === 0 ? '<tr><td colspan="9" style="text-align:center">No hay empleados registrados</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -1093,7 +1238,8 @@ const renderEmployees = (container) => {
                 department: document.getElementById('emp-dept').value,
                 operation: document.getElementById('emp-op').value,
                 activity: document.getElementById('emp-act').value,
-                active: document.getElementById('emp-active').checked
+                active: document.getElementById('emp-active').checked,
+                createdBy: window.globalState.currentUser?.name || 'Desconocido'
             };
 
             if (emp.firstName && emp.idNumber) {
@@ -1314,11 +1460,13 @@ const renderDiscounts = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
+                        <th style="width: 50px">Nº</th>
                         <th>Empleado</th>
                         <th class="text-right">Deuda Total</th>
                         <th class="text-right">Cuota</th>
                         <th class="text-right">Balance Pendiente</th>
                         <th>Concepto</th>
+                        <th>Registrado por</th>
                         <th style="width: 80px">Acciones</th>
                     </tr>
                 </thead>
@@ -1331,6 +1479,7 @@ const renderDiscounts = (container) => {
 
         return `
                         <tr>
+                            <td>L-${d.loanNumber || (index + 1)}</td>
                             <td>${d.employeeName}</td>
                             <td class="td-numeric">$${originalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric">$${parseFloat(d.installment || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -1338,6 +1487,7 @@ const renderDiscounts = (container) => {
                                 $${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td>${d.reason}</td>
+                            <td><small>${d.createdBy || 'Sistema'}</small></td>
                             <td style="display: flex; gap: 5px;">
                                 <button class="btn-icon" onclick="viewLoanHistory('${d.id}')" title="Ver Historial de Cobros">
                                     <i class="fas fa-history"></i>
@@ -1358,7 +1508,7 @@ const renderDiscounts = (container) => {
                         </tr>
                     `;
     }).join('')}
-                    ${(!state.discounts || state.discounts.length === 0) ? '<tr><td colspan="6" style="text-align:center">No hay préstamos o descuentos registrados</td></tr>' : ''}
+                    ${(!state.discounts || state.discounts.length === 0) ? '<tr><td colspan="8" style="text-align:center">No hay préstamos o descuentos registrados</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -1436,10 +1586,13 @@ const renderDiscounts = (container) => {
                 installment: document.getElementById('disc-installment').value,
                 remainingBalance: document.getElementById('disc-total').value,
                 reason: document.getElementById('disc-reason').value,
-                operation: state.settings.payrollAccounts?.discounts || ''
+                operation: state.settings.payrollAccounts?.discounts || '',
+                createdBy: window.globalState.currentUser?.name || 'Desconocido'
             };
             if (d.employeeName && d.totalAmount && d.installment) {
                 if (!state.discounts) state.discounts = [];
+                const nextNum = state.discounts.length > 0 ? Math.max(0, ...state.discounts.map(x => parseInt(x.loanNumber) || 0)) + 1 : 1;
+                d.loanNumber = nextNum;
                 state.discounts.push(d);
                 saveState();
                 renderSection('discounts');
@@ -1554,11 +1707,13 @@ const renderOvertime = (container) => {
             <table class="data-table mt-2">
                 <thead>
                     <tr>
+                        <th style="width: 50px">Nº</th>
                         <th>Fecha</th>
                         <th>Empleado</th>
                         <th>Horas</th>
                         <th>Factor</th>
                         <th class="text-right">Monto</th>
+                        <th>Registrado por</th>
                         <th style="width: 80px">Acciones</th>
                     </tr>
                 </thead>
@@ -1572,11 +1727,13 @@ const renderOvertime = (container) => {
 
             return filtered.map(ot => `
                             <tr>
+                                <td>OT-${ot.otNumber || (ot.idx + 1)}</td>
                                 <td>${ot.date}</td>
                                 <td>${ot.employeeName}</td>
                                 <td>${ot.hours}</td>
                                 <td>${ot.factor}</td>
                                 <td class="td-numeric">$${parseFloat(ot.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td><small>${ot.createdBy || 'Sistema'}</small></td>
                                 <td>
                                     <button class="btn-icon delete admin-only" onclick="deleteItem('overtime', ${ot.idx})">
                                         <i class="fas fa-trash"></i>
@@ -1585,10 +1742,10 @@ const renderOvertime = (container) => {
                             </tr>
                         `).join('');
         })()}
-                    ${(() => {
+                        ${(() => {
             const bounds = getPayrollBounds();
             const count = (state.overtime || []).filter(ot => bounds && ot.date >= bounds.min && ot.date <= bounds.max).length;
-            return count === 0 ? '<tr><td colspan="6" style="text-align:center">No hay horas extras en este periodo</td></tr>' : '';
+            return count === 0 ? '<tr><td colspan="8" style="text-align:center">No hay horas extras en este periodo</td></tr>' : '';
         })()}
                 </tbody>
             </table>
@@ -1615,6 +1772,7 @@ const renderOvertime = (container) => {
             const extraPay = hourlyRate * hours * factor;
 
             state.overtime.push({
+                otNumber: state.overtime.length > 0 ? Math.max(0, ...state.overtime.map(x => parseInt(x.otNumber) || 0)) + 1 : 1,
                 date,
                 employeeName: empName,
                 hours,
@@ -1669,10 +1827,12 @@ const renderIncentives = (container) => {
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 50px">Nº</th>
                             <th>Fecha</th>
                             <th>Empleado</th>
                             <th>Monto</th>
                             <th>Motivo</th>
+                            <th>Registrado por</th>
                             <th style="width: 100px">Acciones</th>
                         </tr>
                     </thead>
@@ -1686,10 +1846,12 @@ const renderIncentives = (container) => {
 
             return filtered.map(inc => `
                             <tr>
+                                <td>INC-${inc.incNumber || (inc.idx + 1)}</td>
                                 <td>${inc.date}</td>
                                 <td>${inc.employeeName}</td>
                                 <td>$${parseFloat(inc.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                 <td>${inc.reason}</td>
+                                <td><small>${inc.createdBy || 'Sistema'}</small></td>
                                 <td>
                                     <button class="btn-icon delete admin-only" onclick="deleteItem('incentives', ${inc.idx})">
                                         <i class="fas fa-trash"></i>
@@ -1701,7 +1863,7 @@ const renderIncentives = (container) => {
                         ${(() => {
             const bounds = getPayrollBounds();
             const count = (state.incentives || []).filter(inc => bounds && inc.date >= bounds.min && inc.date <= bounds.max).length;
-            return count === 0 ? '<tr><td colspan="5" style="text-align:center">No hay incentivos en este periodo</td></tr>' : '';
+            return count === 0 ? '<tr><td colspan="7" style="text-align:center">No hay incentivos en este periodo</td></tr>' : '';
         })()}
                     </tbody>
                 </table>
@@ -1734,7 +1896,8 @@ const renderIncentives = (container) => {
                 employeeName: document.getElementById('inc-emp').value,
                 amount: document.getElementById('inc-amount').value,
                 reason: document.getElementById('inc-reason').value,
-                operation: state.settings.payrollAccounts?.incentives || ''
+                operation: state.settings.payrollAccounts?.incentives || '',
+                createdBy: window.globalState.currentUser?.name || 'Desconocido'
             };
             if (inc.employeeName && inc.amount && inc.date) {
                 const bounds = getPayrollBounds();
@@ -1744,6 +1907,8 @@ const renderIncentives = (container) => {
                 }
 
                 if (!state.incentives) state.incentives = [];
+                const nextNum = state.incentives.length > 0 ? Math.max(0, ...state.incentives.map(x => parseInt(x.incNumber) || 0)) + 1 : 1;
+                inc.incNumber = nextNum;
                 state.incentives.push(inc);
                 saveState();
                 renderSection('incentives');
@@ -1955,22 +2120,26 @@ const renderDailyRegistration = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
+                        <th style="width: 50px">Nº</th>
                         <th>Fecha</th>
                         <th>Empleado</th>
                         <th>Operación</th>
                         <th>Monto</th>
                         <th>TSS</th>
+                        <th>Registrado por</th>
                         <th style="width: 100px">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="daily-logs-tbody">
                     ${(state.activePayroll.dailyLogs || []).map((log, index) => `
                         <tr>
+                            <td>LOG-${log.logNumber || (index + 1)}</td>
                             <td>${log.date}</td>
                             <td>${log.employee}</td>
                             <td>${log.op}</td>
                             <td>$${parseFloat(log.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td>${log.applyTSS === 'si' ? '<span class="status-badge fixed">Sí</span>' : '<span class="status-badge mobile">No</span>'}</td>
+                            <td><small>${log.createdBy || 'Sistema'}</small></td>
                             <td>
                                 <button class="btn-icon edit" onclick="editDailyLog(${index})">
                                     <i class="fas fa-edit"></i>
@@ -1981,6 +2150,7 @@ const renderDailyRegistration = (container) => {
                             </td>
                         </tr>
                     `).join('')}
+                    ${(!state.activePayroll.dailyLogs || state.activePayroll.dailyLogs.length === 0) ? '<tr><td colspan="8" style="text-align:center">No hay registros diarios</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -2013,7 +2183,8 @@ const renderDailyRegistration = (container) => {
             op: document.getElementById('reg-op').value,
             act: document.getElementById('reg-act').value,
             amount: document.getElementById('reg-amount').value,
-            applyTSS: document.getElementById('reg-tss').value
+            applyTSS: document.getElementById('reg-tss').value,
+            createdBy: window.globalState.currentUser?.name || 'Desconocido'
         };
 
         if (log.employee && log.amount) {
@@ -2026,6 +2197,8 @@ const renderDailyRegistration = (container) => {
                 return;
             }
 
+            const nextLogNum = state.activePayroll.dailyLogs.length > 0 ? Math.max(0, ...state.activePayroll.dailyLogs.map(l => parseInt(l.logNumber) || 0)) + 1 : 1;
+            log.logNumber = nextLogNum;
             state.activePayroll.dailyLogs.push(log);
             saveState();
             renderSection('daily-registration');
@@ -2186,7 +2359,15 @@ window.saveBulkLogs = () => {
             if (exists) {
                 duplicates++;
             } else {
-                logsToAdd.push({ date, employee: emp, op, act, amount: amt, applyTSS: tss });
+                logsToAdd.push({
+                    date,
+                    employee: emp,
+                    op,
+                    act,
+                    amount: amt,
+                    applyTSS: tss,
+                    createdBy: window.globalState.currentUser?.name || 'Desconocido'
+                });
             }
         }
     });
@@ -2201,6 +2382,13 @@ window.saveBulkLogs = () => {
     }
 
     if (!state.activePayroll.dailyLogs) state.activePayroll.dailyLogs = [];
+
+    let nextLogNum = state.activePayroll.dailyLogs.length > 0 ? Math.max(0, ...state.activePayroll.dailyLogs.map(l => parseInt(l.logNumber) || 0)) + 1 : 1;
+    logsToAdd.forEach(l => {
+        l.logNumber = nextLogNum;
+        nextLogNum++;
+    });
+
     state.activePayroll.dailyLogs.push(...logsToAdd);
     saveState();
     alert(`Se han guardado ${logsToAdd.length} registros exitosamente.`);
@@ -2243,9 +2431,11 @@ const renderClosing = (container) => {
                         <table class="data-table">
                             <thead>
                                 <tr>
+                                    <th style="width: 50px">Nº</th>
                                     <th>Nombre de la Nómina</th>
                                     <th>Periodo</th>
                                     <th>Fecha de Cierre</th>
+                                    <th>Cerrado por</th>
                                     <th style="text-align: center">Acciones</th>
                                 </tr>
                             </thead>
@@ -2253,9 +2443,11 @@ const renderClosing = (container) => {
                                 ${state.payrollHistory.length > 0 ?
             state.payrollHistory.slice().reverse().map((run, i) => `
                                         <tr>
+                                            <td>PN-${run.payrollNumber || (state.payrollHistory.length - i)}</td>
                                             <td style="font-weight: 500">${run.payrollName || run.name || 'Sin nombre'}</td>
                                             <td>${run.periodStart} al ${run.periodEnd}</td>
                                             <td>${new Date(run.closedAt).toLocaleString()}</td>
+                                            <td><small>${run.closedBy || 'Sistema'}</small></td>
                                             <td style="text-align: center">
                                                 <button class="btn btn-sm btn-secondary" onclick="window.viewHistoricalPayroll(${state.payrollHistory.length - 1 - i})">
                                                     <i class="fas fa-eye"></i> Consultar
@@ -2266,7 +2458,7 @@ const renderClosing = (container) => {
                                             </td>
                                         </tr>
                                     `).join('') :
-            '<tr><td colspan="4" style="text-align: center; padding: 20px;">No hay nóminas cerradas en el historial.</td></tr>'
+            '<tr><td colspan="6" style="text-align: center; padding: 20px;">No hay nóminas cerradas en el historial.</td></tr>'
         }
                             </tbody>
                         </table>
@@ -2288,10 +2480,12 @@ const renderClosing = (container) => {
                         const snapshot = {
                             id: Date.now(),
                             payrollName: state.activePayroll.name || "Nómina sin nombre",
+                            payrollNumber: state.payrollHistory.length > 0 ? Math.max(0, ...state.payrollHistory.map(h => parseInt(h.payrollNumber) || 0)) + 1 : 1,
                             periodType: state.activePayroll.periodType,
                             periodStart: bounds.min,
                             periodEnd: bounds.max,
                             closedAt: new Date().toISOString(),
+                            closedBy: window.globalState.currentUser?.name || 'Desconocido',
                             dailyLogs: [...(state.activePayroll.dailyLogs || [])],
                             results: state.employees.filter(e => e && e.active !== false).map(emp => {
                                 try {

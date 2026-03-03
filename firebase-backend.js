@@ -16,7 +16,7 @@ if (typeof firebase !== 'undefined') {
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     // 2. Add User Management Logic (No Firebase Auth)
-    window.registerSecondaryUser = async (email, password, name, role) => {
+    window.registerSecondaryUser = async (email, password, name, role, allowedModules = []) => {
         try {
             // Generar un UID simple localmente
             const uid = 'usr_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -28,6 +28,7 @@ if (typeof firebase !== 'undefined') {
                 password: password, // Almacenamiento interno simple
                 name: name,
                 role: role,
+                allowedModules: allowedModules,
                 createdAt: new Date().toISOString()
             };
 
@@ -83,19 +84,61 @@ if (typeof firebase !== 'undefined') {
         window.globalState.currentUser = user;
         sessionStorage.setItem('activeSession', JSON.stringify(user));
 
-        // Apply UI permissions based on Role
-        const applyRolePermissions = (role) => {
-            const navItems = document.querySelectorAll('.nav-item');
-            navItems.forEach(item => {
-                if (item.getAttribute('data-section') === 'users') {
-                    item.style.display = (role === 'admin') ? 'block' : 'none';
+        // Apply UI permissions based on Role and allowedModules
+        const applyRolePermissions = (user) => {
+            const role = user.role;
+            const allowedModules = user.allowedModules || [];
+
+            const sidebar = document.querySelector('.sidebar-nav ul');
+            if (sidebar) {
+                const elements = Array.from(sidebar.children);
+                let currentHeader = null;
+                let headerHasVisibleItems = false;
+
+                elements.forEach(el => {
+                    if (el.classList.contains('nav-header')) {
+                        if (currentHeader) {
+                            currentHeader.style.display = (role === 'admin' || headerHasVisibleItems) ? 'block' : 'none';
+                        }
+                        currentHeader = el;
+                        headerHasVisibleItems = false;
+                    } else if (el.classList.contains('nav-item')) {
+                        const section = el.getAttribute('data-section');
+                        if (!section) return; // Skip logout or items without section
+
+                        let isVisible = false;
+                        if (role === 'admin') {
+                            isVisible = true;
+                        } else {
+                            if (section === 'users') {
+                                isVisible = false;
+                            } else if (allowedModules.length > 0) {
+                                isVisible = allowedModules.includes(section);
+                            } else {
+                                isVisible = true;
+                            }
+                        }
+
+                        el.style.display = isVisible ? 'block' : 'none';
+                        if (isVisible) headerHasVisibleItems = true;
+                    }
+                });
+
+                if (currentHeader) {
+                    currentHeader.style.display = (role === 'admin' || headerHasVisibleItems) ? 'block' : 'none';
                 }
-            });
+            }
+
+            // Hide reset button container for non-admins
+            const wipeBtn = document.getElementById('temp-wipe-btn');
+            if (wipeBtn) {
+                wipeBtn.parentElement.style.display = (role === 'admin') ? 'block' : 'none';
+            }
 
             document.body.classList.remove('role-admin', 'role-editor', 'role-viewer');
             document.body.classList.add(`role-${role}`);
         };
-        applyRolePermissions(user.role);
+        applyRolePermissions(user);
 
         // Trigger remote state loading
         window.loadStateFromFirebase();
@@ -210,9 +253,18 @@ if (typeof firebase !== 'undefined') {
                                 // Important: Protect rich local data from being wiped by an empty cloud state
                                 // If cloud is empty but local has data during initial load, WE SHOULD NOT OVERWRITE
                                 if (isInitialLoad && data[key].length === 0 && window.globalState[key].length > 0) {
-                                    console.log(`[SYNC PROTECT] Keeping local ${key} (${window.globalState[key].length}) because cloud is empty`);
-                                    // We trigger a save so the cloud gets our rich local data
-                                    setTimeout(() => window.saveStateToFirebase(), 2000);
+                                    console.warn(`[SYNC PROTECT] La base de datos en la nube para '${key}' está vacía. Restaurando desde la memoria local (${window.globalState[key].length} elementos)...`);
+
+                                    if (!window._restorationAlertShown) {
+                                        window._restorationAlertShown = true;
+                                        alert("ℹ️ Sistema: Se han restaurado tus datos locales porque la base de datos en la nube estaba vacía.\n\nSi tu intención era borrar todo, por favor usa el botón 'Limpiar Sistema' en el Dashboard para una limpieza completa.");
+                                    }
+
+                                    // Trigger a save so the cloud gets our rich local data
+                                    setTimeout(() => {
+                                        console.log(`[SYNC PROTECT] Subiendo datos de '${key}' a la nube para evitar pérdida de información.`);
+                                        window.saveStateToFirebase();
+                                    }, 2000);
                                 } else {
                                     // Standard Sync: Empty and push to preserve memory references (pointers)
                                     window.globalState[key].length = 0;
