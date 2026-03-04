@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nomina-app-v9';
+const CACHE_NAME = 'nomina-app-v10';
 const urlsToCache = [
     '/',
     '/index.html',
@@ -42,8 +42,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
 
-    // Dynamic strategy: Network-First for HTML, Stale-While-Revalidate for others
-    if (event.request.mode === 'navigate' || (url.origin === self.origin && url.pathname.endsWith('.html'))) {
+    // Dynamic strategy: Network-First for ALL local requests (HTML, JS, CSS)
+    if (event.request.mode === 'navigate' || url.origin === self.origin) {
         event.respondWith(
             fetch(event.request)
                 .then(networkResponse => {
