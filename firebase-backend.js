@@ -16,7 +16,7 @@ if (typeof firebase !== 'undefined') {
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     // 2. Add User Management Logic (No Firebase Auth)
-    window.registerSecondaryUser = async (email, password, name, role, allowedModules = []) => {
+    window.registerSecondaryUser = async (email, password, name, role, allowedModules = [], allowedDepartments = [], canCreateEmployees = false) => {
         try {
             // Generar un UID simple localmente
             const uid = 'usr_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -29,6 +29,8 @@ if (typeof firebase !== 'undefined') {
                 name: name,
                 role: role,
                 allowedModules: allowedModules,
+                allowedDepartments: allowedDepartments || [],
+                canCreateEmployees: canCreateEmployees,
                 createdAt: new Date().toISOString()
             };
 

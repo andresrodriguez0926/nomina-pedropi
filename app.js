@@ -1,4 +1,4 @@
-/**
+﻿/**
          * Payroll App Core Engine
          * Handles routing, state, and UI rendering
          */
@@ -46,6 +46,19 @@ const state = {
 
 window.globalState = state; // Allow firebase-backend to write directly to it
 window.state = state; // Backup explicit reference
+
+// --- Access Control Utilities ---
+window.hasDepartmentAccess = (deptName) => {
+    if (!window.globalState || !window.globalState.currentUser) return true;
+    const user = window.globalState.currentUser;
+    if (user.role === 'admin') return true;
+    if (!user.allowedDepartments || user.allowedDepartments.length === 0) return true; // Default to all if nothing selected
+    return user.allowedDepartments.includes(deptName);
+};
+
+window.getVisibleEmployees = () => {
+    return state.employees.filter(emp => window.hasDepartmentAccess(emp.department));
+};
 
 // --- Migration & Utilities ---
 window.assignSequentialNumbers = () => {
@@ -346,13 +359,15 @@ const renderDashboard = (container) => {
     const activityExpenses = {};
     if (state.activePayroll && state.activePayroll.dailyLogs) {
         state.activePayroll.dailyLogs.forEach(log => {
+            const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
+            if (emp && !window.hasDepartmentAccess(emp.department)) return;
             const actName = log.act || 'Sin Actividad';
             if (!activityExpenses[actName]) activityExpenses[actName] = 0;
             activityExpenses[actName] += parseFloat(log.amount) || 0;
         });
     }
     if (state.activePayroll) {
-        state.employees.filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
+        window.getVisibleEmployees().filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
             const actName = emp.activity || 'Sin Actividad';
             if (!activityExpenses[actName]) activityExpenses[actName] = 0;
             const res = calculateEmployeePayrollData(emp, state.activePayroll);
@@ -362,6 +377,7 @@ const renderDashboard = (container) => {
     state.payrollHistory.forEach(run => {
         run.results.forEach(res => {
             const emp = state.employees.find(e => e.idNumber === res.idNumber || `${e.firstName} ${e.lastName}` === res.fullName);
+            if (emp && !window.hasDepartmentAccess(emp.department)) return;
             const actName = emp ? (emp.activity || 'Sin Actividad') : 'Sin Actividad';
             if (!activityExpenses[actName]) activityExpenses[actName] = 0;
             activityExpenses[actName] += res.brute || 0;
@@ -384,10 +400,14 @@ const renderDashboard = (container) => {
     };
 
     if (state.activePayroll && state.activePayroll.dailyLogs) {
-        state.activePayroll.dailyLogs.forEach(log => processCost(log.op, log.act, parseFloat(log.amount) || 0));
+        state.activePayroll.dailyLogs.forEach(log => {
+            const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
+            if (emp && !window.hasDepartmentAccess(emp.department)) return;
+            processCost(log.op, log.act, parseFloat(log.amount) || 0);
+        });
     }
     if (state.activePayroll) {
-        state.employees.filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
+        window.getVisibleEmployees().filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
             const res = calculateEmployeePayrollData(emp, state.activePayroll);
             processCost(emp.operation, emp.activity, res.base || 0);
         });
@@ -395,6 +415,7 @@ const renderDashboard = (container) => {
     state.payrollHistory.forEach(run => {
         run.results.forEach(res => {
             const emp = state.employees.find(e => e.idNumber === res.idNumber || (e.firstName + ' ' + e.lastName) === res.fullName);
+            if (emp && !window.hasDepartmentAccess(emp.department)) return;
             const actName = emp ? emp.activity : 'Sin Actividad';
             const opName = emp ? emp.operation : 'Sin Operación';
             processCost(opName, actName, res.brute || 0);
@@ -414,15 +435,15 @@ const renderDashboard = (container) => {
                 <div class="card stat-card">
                     <div class="stat-label">Total Empleados</div>
                     <div class="stat-value">
-                        ${state.employees.filter(e => e.active !== false).length} 
-                        <span style="font-size: 0.9rem; opacity: 0.7;">/ ${state.employees.length}</span>
+                        ${window.getVisibleEmployees().filter(e => e.active !== false).length} 
+                        <span style="font-size: 0.9rem; opacity: 0.7;">/ ${window.getVisibleEmployees().length}</span>
                     </div>
                 </div>
                 <div class="card stat-card" style="display: flex; flex-direction: column; justify-content: center;">
                     <div class="stat-label" style="margin-bottom: 5px;">Por Género (Activos)</div>
                     <div class="stat-value" style="font-size: 1.3rem; display: flex; justify-content: space-around; width: 100%;">
-                        <span title="Masculino" style="color: #60a5fa;"><i class="fas fa-mars"></i> ${state.employees.filter(e => e.active !== false && e.gender === 'M').length}</span>
-                        <span title="Femenino" style="color: #f472b6;"><i class="fas fa-venus"></i> ${state.employees.filter(e => e.active !== false && e.gender === 'F').length}</span>
+                        <span title="Masculino" style="color: #60a5fa;"><i class="fas fa-mars"></i> ${window.getVisibleEmployees().filter(e => e.active !== false && e.gender === 'M').length}</span>
+                        <span title="Femenino" style="color: #f472b6;"><i class="fas fa-venus"></i> ${window.getVisibleEmployees().filter(e => e.active !== false && e.gender === 'F').length}</span>
                     </div>
                 </div>
                 <div class="card stat-card">
@@ -734,16 +755,33 @@ window.showEditUserModal = (uid) => {
                         `).join('')}
                     </div>
                 </div>
+                <div class="form-group">
+                    <label>Departamentos Permitidos</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 5px; max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #444; border-radius: 4px;">
+                        ${state.departments.map(d => `
+                            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; font-size: 0.85rem;">
+                                <input type="checkbox" class="user-dept-check" value="${d.name}" ${(!user.allowedDepartments || user.allowedDepartments.includes(d.name)) ? 'checked' : ''}> ${d.name}
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="edit-user-can-create-emp" ${user.canCreateEmployees ? 'checked' : ''}> Permitir Crear Empleados
+                    </label>
+                </div>
             `, () => {
         const name = document.getElementById('edit-user-name').value;
         const email = document.getElementById('edit-user-email').value;
         const password = document.getElementById('edit-user-password').value;
         const role = document.getElementById('edit-user-role').value;
         const allowedModules = Array.from(document.querySelectorAll('.user-module-check:checked')).map(cb => cb.value);
+        const allowedDepartments = Array.from(document.querySelectorAll('.user-dept-check:checked')).map(cb => cb.value);
+        const canCreateEmployees = document.getElementById('edit-user-can-create-emp').checked;
 
         if (name && email) {
             if (window.updateUserAccess) {
-                const updatedData = { name, email, role, allowedModules };
+                const updatedData = { name, email, role, allowedModules, allowedDepartments, canCreateEmployees };
                 if (password.length >= 6) {
                     updatedData.password = password;
                 } else if (password.length > 0) {
@@ -815,16 +853,33 @@ window.showAddUserModal = () => {
                         `).join('')}
                     </div>
                 </div>
+                <div class="form-group">
+                    <label>Departamentos Permitidos</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 5px; max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #444; border-radius: 4px;">
+                        ${state.departments.map(d => `
+                            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; font-size: 0.85rem;">
+                                <input type="checkbox" class="user-dept-check" value="${d.name}" checked> ${d.name}
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="new-user-can-create-emp"> Permitir Crear Empleados
+                    </label>
+                </div>
             `, () => {
         const name = document.getElementById('new-user-name').value;
         const email = document.getElementById('new-user-email').value;
         const password = document.getElementById('new-user-password').value;
         const role = document.getElementById('new-user-role').value;
         const allowedModules = Array.from(document.querySelectorAll('.user-module-check:checked')).map(cb => cb.value);
+        const allowedDepartments = Array.from(document.querySelectorAll('.user-dept-check:checked')).map(cb => cb.value);
+        const canCreateEmployees = document.getElementById('new-user-can-create-emp').checked;
 
         if (name && email && password.length >= 6) {
             if (window.registerSecondaryUser) {
-                window.registerSecondaryUser(email, password, name, role, allowedModules);
+                window.registerSecondaryUser(email, password, name, role, allowedModules, allowedDepartments, canCreateEmployees);
                 hideModal();
             } else {
                 alert("Error: Script de Firebase Backend no responde.");
@@ -1085,7 +1140,7 @@ const renderEmployees = (container) => {
     container.innerHTML = `
         <div class="header-action">
             <h1>Empleados</h1>
-            <button class="btn btn-primary admin-only" id="add-emp-btn">
+            <button class="btn btn-primary" id="add-emp-btn" style="${window.globalState?.currentUser?.role === 'admin' || window.globalState?.currentUser?.canCreateEmployees ? '' : 'display: none;'}">
                 <i class="fas fa-user-plus"></i> Nuevo Empleado
             </button>
         </div>
@@ -1105,7 +1160,9 @@ const renderEmployees = (container) => {
                     </tr>
                 </thead>
                 <tbody>
-                    ${state.employees.map((emp, index) => `
+                    ${window.getVisibleEmployees().map((emp) => {
+        const index = state.employees.indexOf(emp);
+        return `
                         <tr>
                             <td>${emp.regNumber || '-'}</td>
                             <td>${emp.firstName} ${emp.lastName}</td>
@@ -1142,8 +1199,8 @@ const renderEmployees = (container) => {
                                 </div>
                             </td>
                         </tr>
-                    `).join('')}
-                    ${state.employees.length === 0 ? '<tr><td colspan="9" style="text-align:center">No hay empleados registrados</td></tr>' : ''}
+                    `}).join('')}
+                    ${window.getVisibleEmployees().length === 0 ? '<tr><td colspan="9" style="text-align:center">No hay empleados registrados para su visualización</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -1569,7 +1626,7 @@ const renderDiscounts = (container) => {
             <div class="form-group">
                 <label>Empleado</label>
                 <select id="disc-emp" class="form-control">
-                    ${state.employees.filter(e => e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}">${e.firstName} ${e.lastName}</option>`).join('')}
+                    ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}">${e.firstName} ${e.lastName}</option>`).join('')}
                 </select>
             </div>
             <div class="form-group">
@@ -1685,7 +1742,7 @@ const renderOvertime = (container) => {
                 <div class="form-group">
                     <label>Empleado</label>
                     <select id="ot-emp" class="form-control">
-                        ${state.employees.filter(e => e.type === 'fixed' && e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}" data-salary="${e.salary}">${e.firstName} ${e.lastName}</option>`).join('')}
+                        ${window.getVisibleEmployees().filter(e => e.type === 'fixed' && e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}" data-salary="${e.salary}">${e.firstName} ${e.lastName}</option>`).join('')}
                     </select>
                 </div>
             </div>
@@ -1886,7 +1943,7 @@ const renderIncentives = (container) => {
             <div class="form-group">
                 <label>Empleado</label>
                 <select id="inc-emp" class="form-control">
-                    ${state.employees.filter(e => e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}">${e.firstName} ${e.lastName}</option>`).join('')}
+                    ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}">${e.firstName} ${e.lastName}</option>`).join('')}
                 </select>
             </div>
             <div class="form-group">
@@ -2164,7 +2221,7 @@ const renderDailyRegistration = (container) => {
         </div>
 
         <datalist id="list-emp">
-            ${state.employees.filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}"></option>`).join('')}
+            ${window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}"></option>`).join('')}
         </datalist>
         <datalist id="list-op">
             ${state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => `<option value="${o.name}"></option>`).join('')}
@@ -2225,7 +2282,7 @@ const renderDailyRegistration = (container) => {
     const deptSelect = document.getElementById('reg-dept');
     if (deptSelect) deptSelect.onchange = () => {
         const selectedDept = deptSelect.value;
-        const filteredEmps = state.employees.filter(e =>
+        const filteredEmps = window.getVisibleEmployees().filter(e =>
             e.type === 'mobile' && e.active !== false && (selectedDept === 'all' || e.department === selectedDept)
         );
         const listEmp = document.getElementById('list-emp');
@@ -2287,7 +2344,7 @@ window.renderBulkTable = () => {
         return;
     }
 
-    const emps = state.employees.filter(e => e.type === 'mobile' && e.active !== false && e.department === dept);
+    const emps = window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false && e.department === dept);
     if (emps.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center" class="text-gray">No hay empleados móviles en este departamento</td></tr>';
         return;
@@ -2520,7 +2577,7 @@ const renderClosing = (container) => {
                             closedAt: new Date().toISOString(),
                             closedBy: window.globalState.currentUser?.name || 'Desconocido',
                             dailyLogs: [...(state.activePayroll.dailyLogs || [])],
-                            results: state.employees.filter(e => e && e.active !== false).map(emp => {
+                            results: window.getVisibleEmployees().filter(e => e && e.active !== false).map(emp => {
                                 try {
                                     const res = calculateEmployeePayrollData(emp, state.activePayroll);
                                     return {
@@ -2856,10 +2913,12 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
         // Filter by Operation
         if (!filterOps.includes(log.op)) return;
 
-        // Filter by Department
+        // Filter by Department and Access
+        const empAccess = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
+        if (empAccess && !window.hasDepartmentAccess(empAccess.department)) return;
+
         if (filterDept && filterDept !== 'all') {
-            const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
-            const dept = emp ? emp.department : 'Sin clasificar';
+            const dept = empAccess ? empAccess.department : 'Sin clasificar';
             if (dept !== filterDept) return;
         }
 
@@ -3074,7 +3133,10 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null) 
         const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
         const dept = emp ? (emp.department || 'Sin clasificar') : 'Sin clasificar';
 
-        // Filter by Department
+        // Filter by Department Access
+        if (emp && !window.hasDepartmentAccess(emp.department)) return;
+
+        // Filter by selected Department
         if (filterDept && filterDept !== 'all' && dept !== filterDept) return;
 
         if (!grouped[dept]) grouped[dept] = {};
@@ -3452,7 +3514,7 @@ const renderReports = (container) => {
 
             filteredDepts.forEach(dept => {
                 const deptName = (dept.name || '').trim().toLowerCase();
-                const deptEmps = state.employees.filter(e => {
+                const deptEmps = window.getVisibleEmployees().filter(e => {
                     const eDept = (e.department || '').trim().toLowerCase();
                     return eDept === deptName && e.active !== false;
                 });
@@ -3725,7 +3787,7 @@ const renderEmployeeRecord = (container) => {
                             <label>Seleccionar Empleado</label>
                             <select id="rec-emp-select" class="form-control" onchange="window.updateEmpRecord('employeeName', this.value)">
                                 <option value="">Seleccione un empleado...</option>
-                                ${state.employees.map(e => `<option value="${e.firstName} ${e.lastName}" ${data.employeeName === `${e.firstName} ${e.lastName}` ? 'selected' : ''}>${e.firstName} ${e.lastName}</option>`).join('')}
+                                ${window.getVisibleEmployees().map(e => `<option value="${e.firstName} ${e.lastName}" ${data.employeeName === `${e.firstName} ${e.lastName}` ? 'selected' : ''}>${e.firstName} ${e.lastName}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group mb-0">
@@ -3859,6 +3921,8 @@ const renderPayrollEntry = (container) => {
     if (isHistorical && run.results) {
         // Historical Case: Use saved results for credits
         run.results.forEach(res => {
+            const empCheck = state.employees.find(e => e.idNumber === res.idNumber);
+            if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
             totalCredits.tss += (res.tss || 0);
             totalCredits.isr += (res.isr || 0);
             totalCredits.disc += (res.disc || 0);
@@ -3876,12 +3940,16 @@ const renderPayrollEntry = (container) => {
         // Mobile: Only if dailyLogs were saved
         const logs = run.dailyLogs || [];
         logs.forEach(l => {
+            const empCheck = state.employees.find(e => `${e.firstName} ${e.lastName}` === l.employee);
+            if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
             const key = `${l.op || 'Sin Cuenta'}| ${l.act || '-'} `;
             debits[key] = (debits[key] || 0) + (parseFloat(l.amount) || 0);
         });
 
         // Global accounts (Incentives/OT/Christmas) - usually stored in results
         run.results.forEach(res => {
+            const empCheck = state.employees.find(e => e.idNumber === res.idNumber);
+            if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
             if (res.incentives > 0) {
                 const incKey = `${state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente'}| -`;
                 debits[incKey] = (debits[incKey] || 0) + res.incentives;
@@ -3898,7 +3966,7 @@ const renderPayrollEntry = (container) => {
 
     } else {
         // Active Case or Fallback: Calculate fresh
-        state.employees.filter(e => e.active !== false).forEach(emp => {
+        window.getVisibleEmployees().filter(e => e.active !== false).forEach(emp => {
             const data = calculateEmployeePayrollData(emp, run);
             const empFullName = `${emp.firstName} ${emp.lastName} `;
 
@@ -4079,6 +4147,7 @@ const renderPayrollEntry = (container) => {
             if (isHistorical && run.results) {
                 run.results.forEach(res => {
                     const emp = state.employees.find(e => e.idNumber === res.idNumber);
+                    if (emp && !window.hasDepartmentAccess(emp.department)) return;
                     if (res.type === 'fixed') {
                         rows.push({
                             name: res.fullName,
@@ -4089,6 +4158,8 @@ const renderPayrollEntry = (container) => {
                     }
                 });
                 (run.dailyLogs || []).forEach(l => {
+                    const empCheck = state.employees.find(e => `${e.firstName} ${e.lastName}` === l.employee);
+                    if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
                     rows.push({
                         name: l.employee,
                         acc: getAccNum(l.op),
@@ -4098,12 +4169,14 @@ const renderPayrollEntry = (container) => {
                 });
                 // Global amounts (distributed per employee who had them)
                 run.results.forEach(res => {
+                    const empCheck = state.employees.find(e => e.idNumber === res.idNumber);
+                    if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
                     if (res.incentives > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.incentives || 'Incentivos'), act: '-', amt: res.incentives });
                     if (res.overtime > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.overtime || 'Horas Extras'), act: '-', amt: res.overtime });
                     if (res.christmas > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.christmas || 'Navidad'), act: '-', amt: res.christmas });
                 });
             } else {
-                state.employees.filter(e => e.active !== false).forEach(emp => {
+                window.getVisibleEmployees().filter(e => e.active !== false).forEach(emp => {
                     const data = calculateEmployeePayrollData(emp, run);
                     const empFullName = `${emp.firstName} ${emp.lastName}`;
                     if (emp.type === 'fixed') {
@@ -4183,7 +4256,7 @@ const renderChristmasSalary = (container) => {
     const currentYear = new Date().getFullYear();
 
     // Calculate data for each employee
-    const christmasData = state.employees.filter(e => e.active !== false).map(emp => {
+    const christmasData = window.getVisibleEmployees().filter(e => e.active !== false).map(emp => {
         try {
             const empId = emp.idNumber;
             const empName = `${emp.firstName} ${emp.lastName} `;
@@ -4441,7 +4514,7 @@ window.editDailyLog = (index) => {
                     <div class="form-group">
                         <label>Empleado</label>
                         <select id="edit-reg-emp" class="form-control">
-                            ${state.employees.filter(e => e.type === 'mobile').map(e => `<option value="${e.firstName} ${e.lastName}" ${log.employee === (e.firstName + ' ' + e.lastName) ? 'selected' : ''}>${e.firstName} ${e.lastName}</option>`).join('')}
+                            ${window.getVisibleEmployees().filter(e => e.type === 'mobile').map(e => `<option value="${e.firstName} ${e.lastName}" ${log.employee === (e.firstName + ' ' + e.lastName) ? 'selected' : ''}>${e.firstName} ${e.lastName}</option>`).join('')}
                         </select>
                     </div>
                 </div >
@@ -4880,7 +4953,7 @@ const renderBenefits = (container) => {
                     <label>Escriba el Empleado a Buscar</label>
                     <input list="ben-emp-list" id="ben-emp-search" class="form-control" placeholder="Buscar por nombre o cédula...">
                     <datalist id="ben-emp-list">
-                        ${state.employees.filter(e => e.active !== false).map(e => `<option value="${e.idNumber}">[${e.idNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
+                        ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${e.idNumber}">[${e.idNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
                     </datalist>
                 </div>
             </div>
@@ -5440,7 +5513,7 @@ const renderVacations = (container) => {
                     <label>Buscar Empleado (Sólo Activos)</label>
                     <input list="vac-emp-list" id="vac-emp-search" class="form-control" placeholder="Escriba nombre o cédula...">
                     <datalist id="vac-emp-list">
-                        ${state.employees.filter(e => e.active !== false).map(e => `<option value="${e.idNumber}">[${e.idNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
+                        ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${e.idNumber}">[${e.idNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
                     </datalist>
                 </div>
                 <div class="form-group">
