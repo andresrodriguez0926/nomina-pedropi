@@ -285,53 +285,62 @@ if (typeof firebase !== 'undefined') {
                                         }, 2000);
                                     } else {
                                         // Standard Sync: Smart Array Merge for Concurrency
-                                        const cloudIds = new Set(data[key].map(i => String(i.id || i.idNumber)).filter(id => id !== "undefined" && id !== "null"));
-                                        const lastCloudIds = new Set((window._lastCloudState && window._lastCloudState[key] ? window._lastCloudState[key] : []).map(i => String(i.id || i.idNumber)).filter(id => id !== "undefined" && id !== "null"));
+                                        let finalMerged = [];
 
-                                        const merged = [...data[key]];
+                                        if (isInitialLoad && data[key].length > 0) {
+                                            // On initial load, cloud is absolute master if it has data.
+                                            // This prevents stale local data from being treated as "new creations".
+                                            console.log(`[SYNC] Initial load for '${key}': Cloud is master.`);
+                                            finalMerged = [...data[key]];
+                                        } else {
+                                            // Background Sync or Cloud Empty: Perform Smart Merge
+                                            const cloudIds = new Set(data[key].map(i => String(i.id || i.idNumber)).filter(id => id !== "undefined" && id !== "null"));
+                                            const lastCloudIds = new Set((window._lastCloudState && window._lastCloudState[key] ? window._lastCloudState[key] : []).map(i => String(i.id || i.idNumber)).filter(id => id !== "undefined" && id !== "null"));
 
-                                        window.globalState[key].forEach(localItem => {
-                                            const localId = String(localItem.id || localItem.idNumber);
-                                            if (localId !== "undefined" && localId !== "null" && !cloudIds.has(localId)) {
-                                                // Missing from Cloud. But did we create it locally recently, or was it deleted remotely?
-                                                if (!lastCloudIds.has(localId)) {
-                                                    // We created it locally! Preserve it.
-                                                    merged.push(localItem);
+                                            const merged = [...data[key]];
+
+                                            window.globalState[key].forEach(localItem => {
+                                                const localId = String(localItem.id || localItem.idNumber);
+                                                if (localId !== "undefined" && localId !== "null" && !cloudIds.has(localId)) {
+                                                    // Missing from Cloud. But did we create it locally recently, or was it deleted remotely?
+                                                    if (!lastCloudIds.has(localId)) {
+                                                        // We created it locally! Preserve it.
+                                                        merged.push(localItem);
+                                                    }
                                                 }
-                                            }
-                                        });
+                                            });
 
-                                        const finalMerged = [];
-                                        merged.forEach(item => {
-                                            const itemIdStr = item && (item.id || item.idNumber) ? String(item.id || item.idNumber) : null;
-                                            if (!itemIdStr) {
-                                                finalMerged.push(item);
-                                                return;
-                                            }
+                                            merged.forEach(item => {
+                                                const itemIdStr = item && (item.id || item.idNumber) ? String(item.id || item.idNumber) : null;
+                                                if (!itemIdStr) {
+                                                    finalMerged.push(item);
+                                                    return;
+                                                }
 
-                                            const local = window.globalState[key].find(l => String(l.id || l.idNumber) === itemIdStr);
-                                            const lastCloud = (window._lastCloudState && window._lastCloudState[key]) ? window._lastCloudState[key].find(lc => String(lc.id || lc.idNumber) === itemIdStr) : null;
+                                                const local = window.globalState[key].find(l => String(l.id || l.idNumber) === itemIdStr);
+                                                const lastCloud = (window._lastCloudState && window._lastCloudState[key]) ? window._lastCloudState[key].find(lc => String(lc.id || lc.idNumber) === itemIdStr) : null;
 
-                                            if (!local && lastCloud) {
-                                                // It was in our last cloud sync, but it's gone from local. 
-                                                // This means WE deleted it. Do not restore it.
-                                                console.log(`[SYNC] Ignoring restoration of deleted item: ${itemIdStr} in ${key}`);
-                                            } else if (local && lastCloud) {
-                                                // Both exist. Check for local modifications that aren't in cloud yet.
-                                                const localModified = JSON.stringify(local) !== JSON.stringify(lastCloud);
-                                                const remoteModified = JSON.stringify(item) !== JSON.stringify(lastCloud);
+                                                if (!local && lastCloud) {
+                                                    // It was in our last cloud sync, but it's gone from local. 
+                                                    // This means WE deleted it. Do not restore it.
+                                                    console.log(`[SYNC] Ignoring restoration of deleted item: ${itemIdStr} in ${key}`);
+                                                } else if (local && lastCloud) {
+                                                    // Both exist. Check for local modifications that aren't in cloud yet.
+                                                    const localModified = JSON.stringify(local) !== JSON.stringify(lastCloud);
+                                                    const remoteModified = JSON.stringify(item) !== JSON.stringify(lastCloud);
 
-                                                if (localModified && !remoteModified) {
-                                                    // Only changed locally. Keep our version to prevent flickers.
-                                                    finalMerged.push(local);
+                                                    if (localModified && !remoteModified) {
+                                                        // Only changed locally. Keep our version to prevent flickers.
+                                                        finalMerged.push(local);
+                                                    } else {
+                                                        // Remote changed or both same. Cloud version (item) is master.
+                                                        finalMerged.push(item);
+                                                    }
                                                 } else {
-                                                    // Remote changed or both same. Cloud version (item) is master.
                                                     finalMerged.push(item);
                                                 }
-                                            } else {
-                                                finalMerged.push(item);
-                                            }
-                                        });
+                                            });
+                                        }
 
                                         // Special Deep Merge for activePayrolls to protect dailyLogs concurrency
                                         if (key === 'activePayrolls') {
