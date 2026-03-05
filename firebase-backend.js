@@ -286,19 +286,16 @@ if (typeof firebase !== 'undefined') {
                                     } else {
                                         // Standard Sync: Smart Array Merge for Concurrency
                                         const merged = [...data[key]];
-                                        const cloudIds = new Set(data[key].map(i => i.id).filter(Boolean));
-                                        const lastCloudIds = new Set((window._lastCloudState && window._lastCloudState[key] ? window._lastCloudState[key] : []).map(i => i.id).filter(Boolean));
+                                        const cloudIds = new Set(data[key].map(i => String(i.id)).filter(id => id !== "undefined" && id !== "null"));
+                                        const lastCloudIds = new Set((window._lastCloudState && window._lastCloudState[key] ? window._lastCloudState[key] : []).map(i => String(i.id)).filter(id => id !== "undefined" && id !== "null"));
 
                                         window.globalState[key].forEach(localItem => {
-                                            if (localItem.id && !cloudIds.has(localItem.id)) {
+                                            if (localItem.id && !cloudIds.has(String(localItem.id))) {
                                                 // Missing from Cloud. But did we create it locally recently, or was it deleted remotely?
-                                                if (!lastCloudIds.has(localItem.id)) {
+                                                if (!lastCloudIds.has(String(localItem.id))) {
                                                     // We created it locally! Preserve it.
                                                     merged.push(localItem);
                                                 }
-                                                // If it WAS in lastCloudIds but not in cloudIds, it means it was deleted remotely. 
-                                                // If it WAS in lastCloudIds and IS in localState, we keep it locally until saveStateToFirebase syncs the deletion?
-                                                // Actually, the issue is the other way: item is in Cloud but NOT in Local.
                                             }
                                         });
 
@@ -308,19 +305,19 @@ if (typeof firebase !== 'undefined') {
                                         // so it doesn't reappear, and then saveStateToFirebase will eventually remove it from cloud.
                                         const finalMerged = [];
                                         merged.forEach(item => {
-                                            const isIdentified = item && item.id;
-                                            if (!isIdentified) {
+                                            const itemIdStr = item && item.id ? String(item.id) : null;
+                                            if (!itemIdStr) {
                                                 finalMerged.push(item);
                                                 return;
                                             }
 
-                                            const inLocal = window.globalState[key].find(l => l.id === item.id);
-                                            const inLastCloud = lastCloudIds.has(item.id);
+                                            const inLocal = window.globalState[key].find(l => String(l.id) === itemIdStr);
+                                            const inLastCloud = lastCloudIds.has(itemIdStr);
 
                                             if (!inLocal && inLastCloud) {
                                                 // It was in our last cloud sync, but it's gone from local. 
                                                 // This means WE deleted it. Do not restore it.
-                                                console.log(`[SYNC] Ignoring restoration of deleted item: ${item.id} in ${key}`);
+                                                console.log(`[SYNC] Ignoring restoration of deleted item: ${itemIdStr} in ${key}`);
                                             } else {
                                                 finalMerged.push(item);
                                             }
@@ -329,20 +326,22 @@ if (typeof firebase !== 'undefined') {
                                         // Special Deep Merge for activePayrolls to protect dailyLogs concurrency
                                         if (key === 'activePayrolls') {
                                             finalMerged.forEach(cloudPayroll => {
-                                                const localPayroll = (window.globalState.activePayrolls || []).find(p => p.id === cloudPayroll.id);
+                                                const cloudPayrollIdStr = String(cloudPayroll.id);
+                                                const localPayroll = (window.globalState.activePayrolls || []).find(p => String(p.id) === cloudPayrollIdStr);
                                                 if (localPayroll) {
                                                     const localLogs = localPayroll.dailyLogs || [];
                                                     const cloudLogs = cloudPayroll.dailyLogs || [];
-                                                    const lastCloudPayroll = (window._lastCloudState && window._lastCloudState.activePayrolls) ? window._lastCloudState.activePayrolls.find(p => p.id === cloudPayroll.id) : null;
+                                                    const lastCloudPayroll = (window._lastCloudState && window._lastCloudState.activePayrolls) ? window._lastCloudState.activePayrolls.find(p => String(p.id) === cloudPayrollIdStr) : null;
                                                     const lastCloudLogs = (lastCloudPayroll && lastCloudPayroll.dailyLogs) ? lastCloudPayroll.dailyLogs : [];
-                                                    const lastCloudLogIds = new Set(lastCloudLogs.map(l => l.id).filter(Boolean));
+                                                    const lastCloudLogIds = new Set(lastCloudLogs.map(l => String(l.id)).filter(Boolean));
 
                                                     const mergedLogs = [...cloudLogs];
-                                                    const cloudLogIds = new Set(cloudLogs.map(l => l.id).filter(Boolean));
+                                                    const cloudLogIds = new Set(cloudLogs.map(l => String(l.id)).filter(Boolean));
 
                                                     // 1. Preserve local logs not yet in cloud
                                                     localLogs.forEach(localLog => {
-                                                        if (localLog.id && !cloudLogIds.has(localLog.id) && !lastCloudLogIds.has(localLog.id)) {
+                                                        const localLogIdStr = String(localLog.id);
+                                                        if (localLog.id && !cloudLogIds.has(localLogIdStr) && !lastCloudLogIds.has(localLogIdStr)) {
                                                             mergedLogs.push(localLog);
                                                         }
                                                     });
@@ -350,10 +349,11 @@ if (typeof firebase !== 'undefined') {
                                                     // 2. Filter out logs we deleted locally
                                                     cloudPayroll.dailyLogs = mergedLogs.filter(log => {
                                                         if (!log.id) return true;
-                                                        const inLocalLogs = localLogs.find(l => l.id === log.id);
-                                                        const wasInCloud = lastCloudLogIds.has(log.id);
+                                                        const logIdStr = String(log.id);
+                                                        const inLocalLogs = localLogs.find(l => String(l.id) === logIdStr);
+                                                        const wasInCloud = lastCloudLogIds.has(logIdStr);
                                                         if (!inLocalLogs && wasInCloud) {
-                                                            console.log(`[SYNC] Preventing reappearance of deleted log: ${log.id}`);
+                                                            console.log(`[SYNC] Preventing reappearance of deleted log: ${logIdStr}`);
                                                             return false;
                                                         }
                                                         return true;
@@ -404,8 +404,16 @@ if (typeof firebase !== 'undefined') {
                     window.renderSection(window.globalState.currentSection || 'dashboard');
                     isInitialLoad = false;
                 } else {
-                    // It's a background sync update. We only update data tables
-                    // minimally to prevent wiping out what the current user is typing.
+                    // It's a background sync update.
+                    // PROTECTION: Do not re-render if the user is currently typing in an input or select
+                    const activeEl = document.activeElement;
+                    const isUserTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'TEXTAREA');
+
+                    if (isUserTyping) {
+                        console.log("[SYNC] User is typing. Skipping destructive re-render to protect uncommitted data.");
+                        return;
+                    }
+
                     if (window.globalState.currentSection === 'daily-registration' || window.globalState.currentSection === 'dashboard' || window.globalState.currentSection === 'reports') {
                         // Rerendering the whole section usually wipes inputs.
                         // For a quick fix that doesn't wipe active inputs, we can just let
@@ -414,10 +422,6 @@ if (typeof firebase !== 'undefined') {
                         const tbody = document.getElementById('daily-logs-tbody');
                         if (tbody && window.globalState.currentSection === 'daily-registration') {
                             window.renderSection('daily-registration');
-                            // Note: In a larger refactor, we would only update `tbody.innerHTML`,
-                            // but the user expects the UI to update. If they are typing, doing a full
-                            // renderSection might interrupt them, but it fulfills the "don't delete my data" 
-                            // requirement as the database stays perfectly synced.
                         } else {
                             window.renderSection(window.globalState.currentSection);
                         }
