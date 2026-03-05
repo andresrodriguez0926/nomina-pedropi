@@ -299,6 +299,7 @@ window.renderSection = (sectionId) => {
             case 'payroll-entry': renderPayrollEntry(contentArea); break;
             case 'benefits': renderBenefits(contentArea); break;
             case 'vacations': renderVacations(contentArea); break;
+            case 'isr': renderISR(contentArea); break;
             default:
                 contentArea.innerHTML = `<h2>Módulo ${sectionId} en construcción</h2>`;
         }
@@ -1329,6 +1330,11 @@ const renderEmployees = (container) => {
                     <input type="checkbox" id="emp-active" checked> Empleado Activo (Aparece en Nómina)
                 </label>
             </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="emp-isr" checked> Aplicar Retención de ISR (Impuesto Sobre la Renta)
+                </label>
+            </div>
         `, () => {
             const emp = {
                 regNumber: document.getElementById('emp-reg').value,
@@ -1344,6 +1350,7 @@ const renderEmployees = (container) => {
                 operation: document.getElementById('emp-op').value,
                 activity: document.getElementById('emp-act').value,
                 active: document.getElementById('emp-active').checked,
+                applyISR: document.getElementById('emp-isr').checked,
                 createdBy: window.globalState.currentUser?.name || 'Desconocido'
             };
 
@@ -2405,6 +2412,73 @@ const renderDailyRegistration = (container) => {
             }
         };
     }
+};
+
+// --- Module: ISR / Impuestos ---
+const renderISR = (container) => {
+    container.innerHTML = `
+        <div class="header-action">
+            <h1>Gestión de ISR (Impuesto Sobre la Renta)</h1>
+            <p class="text-gray">Active o desactive la retención de ISR para cada empleado. El sistema calculará el impuesto automáticamente solo para los marcados.</p>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="search-box mb-4">
+                <input type="text" id="isr-search" class="form-control" placeholder="Buscar empleado por nombre o cédula..." oninput="filterISRTable(this.value)">
+            </div>
+            
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Empleado</th>
+                        <th>Cédula</th>
+                        <th>Departamento</th>
+                        <th>Tipo</th>
+                        <th>Salario Base</th>
+                        <th style="text-align: center">¿Aplica ISR?</th>
+                    </tr>
+                </thead>
+                <tbody id="isr-tbody">
+                    ${window.getVisibleEmployees().filter(e => e.active !== false).map(emp => `
+                        <tr>
+                            <td><strong>${emp.firstName} ${emp.lastName}</strong></td>
+                            <td>${emp.idNumber || '-'}</td>
+                            <td>${emp.department || '-'}</td>
+                            <td>${emp.type === 'fixed' ? 'Fijo' : 'Móvil'}</td>
+                            <td>$${(parseFloat(emp.salary) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                            <td style="text-align: center">
+                                <label class="switch">
+                                    <input type="checkbox" ${emp.applyISR !== false ? 'checked' : ''} 
+                                           onchange="window.toggleISRStatus('${emp.idNumber}')">
+                                    <span class="slider round"></span>
+                                </label>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+};
+
+window.toggleISRStatus = (idNumber) => {
+    const emp = state.employees.find(e => e.idNumber === idNumber);
+    if (emp) {
+        emp.applyISR = (emp.applyISR === false) ? true : false;
+        saveState();
+        // Notification for user
+        const status = emp.applyISR ? 'activado' : 'desactivado';
+        console.log(`ISR ${status} para ${emp.firstName}`);
+    }
+};
+
+window.filterISRTable = (query) => {
+    const q = query.toLowerCase();
+    const rows = document.querySelectorAll('#isr-tbody tr');
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(q) ? '' : 'none';
+    });
 };
 
 window.updateBatchAmount = (actName) => {
@@ -3556,7 +3630,7 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
         isr = Math.max(0, taxDueSoFar - accumulatedISR);
     } else {
-        isr = calculateMonthlyISR(currentTaxableIncome);
+        isr = (emp.applyISR !== false) ? calculateMonthlyISR(currentTaxableIncome) : 0;
     }
 
     const net = brute - tss - disc - isr;
@@ -4812,6 +4886,11 @@ window.editEmployee = (index) => {
                         <input type="checkbox" id="edit-emp-active" ${emp.active !== false ? 'checked' : ''}> Empleado Activo (Aparece en Nómina)
                     </label>
                 </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="edit-emp-isr" ${emp.applyISR !== false ? 'checked' : ''}> Aplicar Retención de ISR (Impuesto Sobre la Renta)
+                    </label>
+                </div>
         `, () => {
         const updatedEmp = {
             regNumber: document.getElementById('edit-emp-reg').value,
@@ -4826,7 +4905,8 @@ window.editEmployee = (index) => {
             department: document.getElementById('edit-emp-dept').value,
             operation: document.getElementById('edit-emp-op').value,
             activity: document.getElementById('edit-emp-act').value,
-            active: document.getElementById('edit-emp-active').checked
+            active: document.getElementById('edit-emp-active').checked,
+            applyISR: document.getElementById('edit-emp-isr').checked
         };
 
         if (updatedEmp.firstName && updatedEmp.idNumber) {
