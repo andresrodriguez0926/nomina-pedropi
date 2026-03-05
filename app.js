@@ -2983,9 +2983,16 @@ window.printHistoricalPayroll = (index) => {
     }, 500);
 };
 
-const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filterDept = null) => {
+const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filterDept = null, activePayrollId = null) => {
     const isHistorical = historyIndex !== null;
-    const run = isHistorical ? state.payrollHistory[historyIndex] : state.activePayroll;
+    let run = null;
+    if (isHistorical) {
+        run = state.payrollHistory[historyIndex];
+    } else if (activePayrollId) {
+        run = (state.activePayrolls || []).find(p => p.id == activePayrollId);
+    } else {
+        run = state.activePayroll || (state.activePayrolls && state.activePayrolls[0]);
+    }
 
     if (!run) return;
 
@@ -3208,9 +3215,16 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
 };
 window.renderMobileDetailedReport = renderMobileDetailedReport;
 
-const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null) => {
+const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, activePayrollId = null) => {
     const isHistorical = historyIndex !== null;
-    const run = isHistorical ? state.payrollHistory[historyIndex] : state.activePayroll;
+    let run = null;
+    if (isHistorical) {
+        run = state.payrollHistory[historyIndex];
+    } else if (activePayrollId) {
+        run = (state.activePayrolls || []).find(p => p.id == activePayrollId);
+    } else {
+        run = state.activePayroll || (state.activePayrolls && state.activePayrolls[0]);
+    }
 
     if (!run) return;
 
@@ -3605,10 +3619,10 @@ const renderReports = (container) => {
                 </label>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button class="btn btn-info" onclick="window.renderMobileDetailedReport()">
+                <button class="btn btn-info" onclick="window.renderMobileDetailedReport(null, null, null, window.currentReportPayrollId)">
                     <i class="fas fa-list-alt"></i> Detalle Labores Móviles
                 </button>
-                <button class="btn btn-info" onclick="window.renderMobileEmployeeDeptReport()">
+                <button class="btn btn-info" onclick="window.renderMobileEmployeeDeptReport(null, null, window.currentReportPayrollId)">
                     <i class="fas fa-users"></i> Detalle por Depto/Empleado
                 </button>
                 <button class="btn btn-secondary" onclick="window.print()">
