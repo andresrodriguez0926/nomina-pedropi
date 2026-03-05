@@ -137,6 +137,23 @@ window.assignSequentialNumbers = () => {
 // Initial run
 window.assignSequentialNumbers();
 
+window.getBestActivePayroll = () => {
+    if (!state.activePayrolls || state.activePayrolls.length === 0) return null;
+    // Prefer the one with most logs to avoid defaulting to empty ghosts
+    const sorted = [...state.activePayrolls].sort((a, b) => (b.dailyLogs?.length || 0) - (a.dailyLogs?.length || 0));
+    return sorted[0];
+};
+
+window.cleanupGhostPayrolls = () => {
+    if (!confirm("Esto eliminará las nóminas abiertas que no tengan ningún registro (nóminas vacías). ¿Deseas continuar?")) return;
+    const initialCount = state.activePayrolls.length;
+    state.activePayrolls = state.activePayrolls.filter(p => p.dailyLogs && p.dailyLogs.length > 0);
+    const finalCount = state.activePayrolls.length;
+    saveState();
+    renderSection(state.currentSection);
+    alert(`Se eliminaron ${initialCount - finalCount} nóminas vacías.`);
+};
+
 window.syncToLocalStorage = () => {
     localStorage.setItem('payroll_departments', JSON.stringify(state.departments || []));
     localStorage.setItem('payroll_operations', JSON.stringify(state.operations || []));
@@ -432,6 +449,17 @@ const renderDashboard = (container) => {
             });
         }
     };
+
+    // --- Add Maintenance Tools ---
+    const adminTools = `
+        <div class="card mt-4 no-print" style="border: 1px dashed var(--warning); background: rgba(245, 158, 11, 0.05);">
+            <h3 style="color: var(--warning); margin-bottom: 15px;"><i class="fas fa-tools"></i> Mantenimiento de Datos</h3>
+            <p style="margin-bottom: 15px; font-size: 0.9rem;">Si nota duplicados o faltantes causados por errores de sincronización previos, utilice estas herramientas:</p>
+            <button class="btn" style="background: var(--warning); color: white;" onclick="window.cleanupGhostPayrolls()">
+                <i class="fas fa-broom"></i> Eliminar Nóminas Abiertas Vacias
+            </button>
+        </div>
+    `;
 
     if (selectedPayrollValue === 'all') {
         // Show aggregate of ALL active payrolls
@@ -2481,7 +2509,6 @@ window.toggleISRStatus = (idNumber) => {
         emp.applyISR = (emp.applyISR === false) ? true : false;
         saveState();
         // Notification for user
-        const status = emp.applyISR ? 'activado' : 'desactivado';
         console.log(`ISR ${status} para ${emp.firstName}`);
     }
 };
@@ -2946,7 +2973,7 @@ window.viewHistoricalPayroll = (index) => {
 
         reportHtml += `
             < div class="dept-report-section mb-4" >
-                <h3 class="text-accent">${deptName}</h3>
+                <h3 class="text-accent" style="border-bottom: 2px solid var(--accent-color); padding-bottom: 5px; margin-bottom: 15px;">Departamento: ${deptName}</h3>
                 <table class="data-table">
                     <thead>
                         <tr>
@@ -2977,8 +3004,8 @@ window.viewHistoricalPayroll = (index) => {
                             <td class="td-numeric">$${deptBrute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric">$${deptTSS.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric">$${deptISR.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            <td class="td-numeric">$${deptDisc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            <td class="td-numeric">$${deptNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric" style="color: var(--danger)">$${deptDisc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric" style="font-weight: bold; background: rgba(0,255,0,0.05)">$${deptNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -3663,13 +3690,22 @@ const renderReports = (container) => {
 
     // Handle Payroll Selection
     if (window.currentReportPayrollId === undefined) {
-        window.currentReportPayrollId = state.activePayrolls && state.activePayrolls.length > 0 ? state.activePayrolls[0].id : null;
+        const best = window.getBestActivePayroll();
+        window.currentReportPayrollId = best ? best.id : null;
     }
     let selectedPayroll = (state.activePayrolls || []).find(p => p.id == window.currentReportPayrollId);
     if (!selectedPayroll && state.activePayrolls && state.activePayrolls.length > 0) {
-        selectedPayroll = state.activePayrolls[0];
+        selectedPayroll = window.getBestActivePayroll() || state.activePayrolls[0];
         window.currentReportPayrollId = selectedPayroll.id;
     }
+
+    const searchWarning = state.globalSearchQuery ? `
+        <div class="status-box warning no-print" style="margin-bottom: 20px; font-size: 0.9rem;">
+            <i class="fas fa-exclamation-triangle"></i> 
+            <strong>Aviso:</strong> El reporte está siendo filtrado por la búsqueda: "<strong>${state.globalSearchQuery}</strong>". 
+            Esto afecta los totales. <span style="text-decoration: underline; cursor: pointer;" onclick="document.getElementById('global-search').value = ''; state.globalSearchQuery = ''; renderSection('reports');">Limpiar</span>
+        </div>
+    ` : '';
 
     container.innerHTML = `
             <div class="header-action">
@@ -3713,11 +3749,12 @@ const renderReports = (container) => {
                 <button class="btn btn-info" onclick="window.renderMobileEmployeeDeptReport(null, null, window.currentReportPayrollId)">
                     <i class="fas fa-users"></i> Detalle por Depto/Empleado
                 </button>
-                <button class="btn btn-secondary" onclick="window.print()">
+                <button class="btn btn-primary" onclick="window.print()">
                     <i class="fas fa-print"></i> Imprimir Reporte
                 </button>
             </div>
         </div >
+            ${searchWarning}
             <div class="card mt-4 print-area">
                 <h2 style="text-align: center">Resumen de Pagos por Departamento</h2>
                 ${(() => {
@@ -4129,7 +4166,8 @@ const renderPayrollEntry = (container) => {
 
     // State for selected payroll in this view
     if (window.selectedEntryRunId === undefined) {
-        window.selectedEntryRunId = hasActive ? state.activePayrolls[0].id : getRunId(state.payrollHistory[0]);
+        const best = window.getBestActivePayroll();
+        window.selectedEntryRunId = hasActive ? best.id : getRunId(state.payrollHistory[0]);
     }
 
     const currentRunId = window.selectedEntryRunId;
@@ -4142,6 +4180,13 @@ const renderPayrollEntry = (container) => {
         run = (state.payrollHistory || []).find(h => getRunId(h) == currentRunId);
         if (run) isHistorical = true;
     }
+
+    const searchWarning = state.globalSearchQuery ? `
+        <div class="status-box warning no-print" style="margin-bottom: 20px; font-size: 0.9rem;">
+            <i class="fas fa-exclamation-triangle"></i> 
+            <strong>Aviso:</strong> Filtrando por: "<strong>${state.globalSearchQuery}</strong>". <span style="text-decoration: underline; cursor: pointer;" onclick="document.getElementById('global-search').value = ''; state.globalSearchQuery = ''; renderSection('payroll-entry');">Limpiar</span>
+        </div>
+    ` : '';
 
     if (!run) {
         // Fallback to first active or first historical
