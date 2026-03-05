@@ -154,6 +154,12 @@ window.cleanupGhostPayrolls = () => {
     alert(`Se eliminaron ${initialCount - finalCount} nóminas vacías.`);
 };
 
+window.forceMasterReload = () => {
+    if (!confirm("⚠️ ATENCIÓN: Esto borrará la memoria de este navegador y descargará TODO de nuevo desde el servidor. Use esto solo si ve datos fantasmas que no se borran.\n\n¿Desea continuar?")) return;
+    localStorage.clear();
+    location.reload();
+};
+
 window.syncToLocalStorage = () => {
     localStorage.setItem('payroll_departments', JSON.stringify(state.departments || []));
     localStorage.setItem('payroll_operations', JSON.stringify(state.operations || []));
@@ -288,6 +294,13 @@ const initRouter = () => {
 
 window.switchSection = (sectionId) => {
     state.currentSection = sectionId;
+
+    // Auto-clear search on critical views to avoid confusion
+    if (state.globalSearchQuery && (sectionId === 'reports' || sectionId === 'dashboard' || sectionId === 'payroll-entry')) {
+        state.globalSearchQuery = '';
+        const searchInput = document.getElementById('global-search');
+        if (searchInput) searchInput.value = '';
+    }
 
     // Update Sidebar
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -455,9 +468,14 @@ const renderDashboard = (container) => {
         <div class="card mt-4 no-print" style="border: 1px dashed var(--warning); background: rgba(245, 158, 11, 0.05);">
             <h3 style="color: var(--warning); margin-bottom: 15px;"><i class="fas fa-tools"></i> Mantenimiento de Datos</h3>
             <p style="margin-bottom: 15px; font-size: 0.9rem;">Si nota duplicados o faltantes causados por errores de sincronización previos, utilice estas herramientas:</p>
-            <button class="btn" style="background: var(--warning); color: white;" onclick="window.cleanupGhostPayrolls()">
-                <i class="fas fa-broom"></i> Eliminar Nóminas Abiertas Vacias
-            </button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" style="background: var(--warning); color: white;" onclick="window.cleanupGhostPayrolls()">
+                    <i class="fas fa-broom"></i> Eliminar Nóminas Abiertas Vacias
+                </button>
+                <button class="btn" style="background: var(--danger); color: white;" onclick="window.forceMasterReload()">
+                    <i class="fas fa-sync-alt"></i> Reiniciar desde la Nube (Limpieza Profunda)
+                </button>
+            </div>
         </div>
     `;
 
@@ -2509,7 +2527,8 @@ window.toggleISRStatus = (idNumber) => {
         emp.applyISR = (emp.applyISR === false) ? true : false;
         saveState();
         // Notification for user
-        console.log(`ISR ${status} para ${emp.firstName}`);
+        const statusStr = emp.applyISR ? 'activado' : 'desactivado';
+        console.log(`ISR ${statusStr} para ${emp.firstName}`);
     }
 };
 
@@ -3688,12 +3707,22 @@ const renderReports = (container) => {
     }
     const filter = window.currentReportFilter;
 
-    // Handle Payroll Selection
     if (window.currentReportPayrollId === undefined) {
         const best = window.getBestActivePayroll();
         window.currentReportPayrollId = best ? best.id : null;
     }
-    let selectedPayroll = (state.activePayrolls || []).find(p => p.id == window.currentReportPayrollId);
+    let selectedPayroll = (state.activePayrolls || []).find(p => String(p.id) === String(window.currentReportPayrollId));
+
+    // Aggressive Auto-Switch: If current selected is empty and there's one with data, switch to it.
+    if (selectedPayroll && (!selectedPayroll.dailyLogs || selectedPayroll.dailyLogs.length === 0)) {
+        const bestWithData = (state.activePayrolls || []).find(p => p.dailyLogs && p.dailyLogs.length > 0);
+        if (bestWithData && String(bestWithData.id) !== String(selectedPayroll.id)) {
+            console.log(`[REPORTS] Switched from empty payroll ${selectedPayroll.id} to non-empty ${bestWithData.id}`);
+            selectedPayroll = bestWithData;
+            window.currentReportPayrollId = bestWithData.id;
+        }
+    }
+
     if (!selectedPayroll && state.activePayrolls && state.activePayrolls.length > 0) {
         selectedPayroll = window.getBestActivePayroll() || state.activePayrolls[0];
         window.currentReportPayrollId = selectedPayroll.id;

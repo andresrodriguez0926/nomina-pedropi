@@ -269,8 +269,9 @@ if (typeof firebase !== 'undefined') {
                             if (data[key] !== undefined && data[key] !== null) {
                                 if (Array.isArray(window.globalState[key]) && Array.isArray(data[key])) {
                                     // Important: Protect rich local data from being wiped by an empty cloud state
-                                    // If cloud is empty but local has data during initial load, WE SHOULD NOT OVERWRITE
-                                    if (isInitialLoad && data[key].length === 0 && window.globalState[key].length > 0) {
+                                    // ONLY if this is the very first time the user opens the app (no last known state).
+                                    // If we HAVE a last known state, and cloud is empty, it means someone (or we) wiped the cloud.
+                                    if (isInitialLoad && data[key].length === 0 && window.globalState[key].length > 0 && !window._lastCloudState) {
                                         console.warn(`[SYNC PROTECT] La base de datos en la nube para '${key}' está vacía. Restaurando desde la memoria local (${window.globalState[key].length} elementos)...`);
 
                                         if (!window._restorationAlertShown) {
@@ -283,6 +284,10 @@ if (typeof firebase !== 'undefined') {
                                             console.log(`[SYNC PROTECT] Subiendo datos de '${key}' a la nube para evitar pérdida de información.`);
                                             window.saveStateToFirebase();
                                         }, 2000);
+                                    } else if (isInitialLoad && data[key].length === 0 && window.globalState[key].length > 0 && window._lastCloudState) {
+                                        // CLOUD WIPED DETECTED: Favor cloud (empty) over local
+                                        console.log(`[SYNC] Initial load for '${key}': Cloud is empty (Wiped). Local data ignored to prevent resurrection.`);
+                                        finalMerged = []; // Cloud is master
                                     } else {
                                         // Standard Sync: Smart Array Merge for Concurrency
                                         let finalMerged = [];
