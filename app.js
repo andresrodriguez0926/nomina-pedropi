@@ -419,7 +419,6 @@ const renderDashboard = (container) => {
     });
     const monthlyData = sortedMonths.map(m => monthlyExpenses[m]);
 
-    const selectedPayrollValue = window.dashboardPayrollFilter || 'all';
 
     const activityExpenses = {};
     const opStats = {};
@@ -436,7 +435,7 @@ const renderDashboard = (container) => {
     };
 
     // Helper to extract data from a payroll object (active)
-    const processActivePayroll = (payroll) => {
+    const processActivePayroll = (payroll, includeFixed = true) => {
         if (payroll.dailyLogs) {
             payroll.dailyLogs.forEach(log => {
                 const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
@@ -444,10 +443,13 @@ const renderDashboard = (container) => {
                 processCost(log.op, log.act, parseFloat(log.amount) || 0);
             });
         }
-        window.getVisibleEmployees().filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
-            const res = calculateEmployeePayrollData(emp, payroll);
-            processCost(emp.operation, emp.activity, res.base || 0);
-        });
+
+        if (includeFixed) {
+            window.getVisibleEmployees().filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
+                const res = calculateEmployeePayrollData(emp, payroll);
+                processCost(emp.operation, emp.activity, res.base || 0);
+            });
+        }
     };
 
     // Helper to extract data from a historical run
@@ -479,15 +481,29 @@ const renderDashboard = (container) => {
         </div>
     `;
 
+    if (window.dashboardPayrollFilter === undefined) {
+        const best = window.getBestActivePayroll();
+        window.dashboardPayrollFilter = best ? 'active_' + best.id : 'all';
+    }
+
+    const selectedPayrollValue = window.dashboardPayrollFilter;
+
     if (selectedPayrollValue === 'all') {
         // Show aggregate of ALL active payrolls
-        if (state.activePayrolls) {
-            state.activePayrolls.forEach(p => processActivePayroll(p));
+        if (state.activePayrolls && state.activePayrolls.length > 0) {
+            // Process logs for all
+            state.activePayrolls.forEach(p => processActivePayroll(p, false));
+            // Process fixed employees ONLY ONCE using the best available payroll for context
+            const bestContext = window.getBestActivePayroll() || state.activePayrolls[0];
+            window.getVisibleEmployees().filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
+                const res = calculateEmployeePayrollData(emp, bestContext);
+                processCost(emp.operation, emp.activity, res.base || 0);
+            });
         }
     } else if (selectedPayrollValue.startsWith('active_')) {
         const pid = selectedPayrollValue.replace('active_', '');
         const payroll = state.activePayrolls.find(p => String(p.id) === pid);
-        if (payroll) processActivePayroll(payroll);
+        if (payroll) processActivePayroll(payroll, true);
     } else if (selectedPayrollValue.startsWith('history_')) {
         const hIdx = parseInt(selectedPayrollValue.replace('history_', ''));
         const run = state.payrollHistory[hIdx];
