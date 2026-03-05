@@ -285,39 +285,49 @@ if (typeof firebase !== 'undefined') {
                                         }, 2000);
                                     } else {
                                         // Standard Sync: Smart Array Merge for Concurrency
+                                        const cloudIds = new Set(data[key].map(i => String(i.id || i.idNumber)).filter(id => id !== "undefined" && id !== "null"));
+                                        const lastCloudIds = new Set((window._lastCloudState && window._lastCloudState[key] ? window._lastCloudState[key] : []).map(i => String(i.id || i.idNumber)).filter(id => id !== "undefined" && id !== "null"));
+
                                         const merged = [...data[key]];
-                                        const cloudIds = new Set(data[key].map(i => String(i.id)).filter(id => id !== "undefined" && id !== "null"));
-                                        const lastCloudIds = new Set((window._lastCloudState && window._lastCloudState[key] ? window._lastCloudState[key] : []).map(i => String(i.id)).filter(id => id !== "undefined" && id !== "null"));
 
                                         window.globalState[key].forEach(localItem => {
-                                            if (localItem.id && !cloudIds.has(String(localItem.id))) {
+                                            const localId = String(localItem.id || localItem.idNumber);
+                                            if (localId !== "undefined" && localId !== "null" && !cloudIds.has(localId)) {
                                                 // Missing from Cloud. But did we create it locally recently, or was it deleted remotely?
-                                                if (!lastCloudIds.has(String(localItem.id))) {
+                                                if (!lastCloudIds.has(localId)) {
                                                     // We created it locally! Preserve it.
                                                     merged.push(localItem);
                                                 }
                                             }
                                         });
 
-                                        // REVERSED LOGIC: If item is in Cloud but NOT in Local, should we keep it?
-                                        // ONLY if it's NEW to the cloud (not in lastCloudIds).
-                                        // If it was in lastCloudIds and we deleted it locally, we should REMOVE it from the merged result
-                                        // so it doesn't reappear, and then saveStateToFirebase will eventually remove it from cloud.
                                         const finalMerged = [];
                                         merged.forEach(item => {
-                                            const itemIdStr = item && item.id ? String(item.id) : null;
+                                            const itemIdStr = item && (item.id || item.idNumber) ? String(item.id || item.idNumber) : null;
                                             if (!itemIdStr) {
                                                 finalMerged.push(item);
                                                 return;
                                             }
 
-                                            const inLocal = window.globalState[key].find(l => String(l.id) === itemIdStr);
-                                            const inLastCloud = lastCloudIds.has(itemIdStr);
+                                            const local = window.globalState[key].find(l => String(l.id || l.idNumber) === itemIdStr);
+                                            const lastCloud = (window._lastCloudState && window._lastCloudState[key]) ? window._lastCloudState[key].find(lc => String(lc.id || lc.idNumber) === itemIdStr) : null;
 
-                                            if (!inLocal && inLastCloud) {
+                                            if (!local && lastCloud) {
                                                 // It was in our last cloud sync, but it's gone from local. 
                                                 // This means WE deleted it. Do not restore it.
                                                 console.log(`[SYNC] Ignoring restoration of deleted item: ${itemIdStr} in ${key}`);
+                                            } else if (local && lastCloud) {
+                                                // Both exist. Check for local modifications that aren't in cloud yet.
+                                                const localModified = JSON.stringify(local) !== JSON.stringify(lastCloud);
+                                                const remoteModified = JSON.stringify(item) !== JSON.stringify(lastCloud);
+
+                                                if (localModified && !remoteModified) {
+                                                    // Only changed locally. Keep our version to prevent flickers.
+                                                    finalMerged.push(local);
+                                                } else {
+                                                    // Remote changed or both same. Cloud version (item) is master.
+                                                    finalMerged.push(item);
+                                                }
                                             } else {
                                                 finalMerged.push(item);
                                             }

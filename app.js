@@ -1350,6 +1350,7 @@ const renderEmployees = (container) => {
             </div>
         `, () => {
             const emp = {
+                id: 'emp_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
                 regNumber: document.getElementById('emp-reg').value,
                 gender: document.getElementById('emp-gender').value,
                 firstName: document.getElementById('emp-fn').value,
@@ -3606,7 +3607,7 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
     // --- ISR Progressive Projection Logic ---
     let isr = 0;
-    if (currentTaxableIncome > 0 && bounds) {
+    if (currentTaxableIncome > 0 && bounds && emp.applyISR !== false) {
         const currentMonth = bounds.min.substring(0, 7); // YYYY-MM
         let accumulatedTaxable = 0;
         let accumulatedISR = 0;
