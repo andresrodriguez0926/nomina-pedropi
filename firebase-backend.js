@@ -414,7 +414,7 @@ if (typeof firebase !== 'undefined') {
                         return;
                     }
 
-                    if (window.globalState.currentSection === 'daily-registration' || window.globalState.currentSection === 'dashboard' || window.globalState.currentSection === 'reports') {
+                    if (window.globalState.currentSection === 'daily-registration' || window.globalState.currentSection === 'dashboard') {
                         // Rerendering the whole section usually wipes inputs.
                         // For a quick fix that doesn't wipe active inputs, we can just let
                         // the user see the new data whenever they change sections, OR we safely re-render.
@@ -425,7 +425,8 @@ if (typeof firebase !== 'undefined') {
                         } else {
                             window.renderSection(window.globalState.currentSection);
                         }
-                    } else {
+                    } else if (window.globalState.currentSection !== 'reports') {
+                        // Skip auto-refresh for 'reports' to keep them static while viewing
                         window.renderSection(window.globalState.currentSection);
                     }
                 }
