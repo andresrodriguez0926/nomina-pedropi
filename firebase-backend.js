@@ -299,30 +299,36 @@ if (typeof firebase !== 'undefined') {
                                             }
                                         });
 
+                                        // Special Deep Merge for activePayrolls to protect dailyLogs concurrency
+                                        if (key === 'activePayrolls') {
+                                            merged.forEach(cloudPayroll => {
+                                                const localPayroll = (window.globalState.activePayrolls || []).find(p => p.id === cloudPayroll.id);
+                                                if (localPayroll) {
+                                                    const localLogs = localPayroll.dailyLogs || [];
+                                                    const cloudLogs = cloudPayroll.dailyLogs || [];
+                                                    const lastCloudPayroll = (window._lastCloudState && window._lastCloudState.activePayrolls) ? window._lastCloudState.activePayrolls.find(p => p.id === cloudPayroll.id) : null;
+                                                    const lastCloudLogs = (lastCloudPayroll && lastCloudPayroll.dailyLogs) ? lastCloudPayroll.dailyLogs : [];
+
+                                                    const mergedLogs = [...cloudLogs];
+                                                    const cloudLogIds = new Set(cloudLogs.map(l => l.id).filter(Boolean));
+                                                    const lastCloudLogIds = new Set(lastCloudLogs.map(l => l.id).filter(Boolean));
+
+                                                    localLogs.forEach(localLog => {
+                                                        if (localLog.id && !cloudLogIds.has(localLog.id)) {
+                                                            if (!lastCloudLogIds.has(localLog.id)) {
+                                                                mergedLogs.push(localLog);
+                                                            }
+                                                        }
+                                                    });
+                                                    cloudPayroll.dailyLogs = mergedLogs;
+                                                }
+                                            });
+                                        }
+
                                         window.globalState[key].length = 0;
                                         merged.forEach(item => window.globalState[key].push(item));
                                     }
                                 } else {
-                                    // Special Deep Merge for activePayroll to protect dailyLogs
-                                    if (key === 'activePayroll' && window.globalState.activePayroll && data.activePayroll) {
-                                        const localLogs = window.globalState.activePayroll.dailyLogs || [];
-                                        const cloudLogs = data.activePayroll.dailyLogs || [];
-                                        const lastCloudLogs = window._lastCloudState && window._lastCloudState.activePayroll && window._lastCloudState.activePayroll.dailyLogs ? window._lastCloudState.activePayroll.dailyLogs : [];
-
-                                        const mergedLogs = [...cloudLogs];
-                                        const cloudLogIds = new Set(cloudLogs.map(l => l.id).filter(Boolean));
-                                        const lastCloudLogIds = new Set(lastCloudLogs.map(l => l.id).filter(Boolean));
-
-                                        localLogs.forEach(localLog => {
-                                            if (localLog.id && !cloudLogIds.has(localLog.id)) {
-                                                if (!lastCloudLogIds.has(localLog.id)) {
-                                                    mergedLogs.push(localLog);
-                                                }
-                                            }
-                                        });
-                                        data.activePayroll.dailyLogs = mergedLogs;
-                                    }
-
                                     window.globalState[key] = data[key];
                                     if (window.state && window.state !== window.globalState) {
                                         window.state[key] = data[key];
@@ -501,7 +507,7 @@ if (typeof firebase !== 'undefined') {
             activities: JSON.parse(localStorage.getItem('payroll_activities') || '[]'),
             employees: JSON.parse(localStorage.getItem('payroll_employees') || '[]'),
             periods: JSON.parse(localStorage.getItem('payroll_periods') || '[]'),
-            activePayroll: JSON.parse(localStorage.getItem('payroll_active') || 'null'),
+            activePayrolls: JSON.parse(localStorage.getItem('payroll_active') || '[]'),
             discounts: JSON.parse(localStorage.getItem('payroll_discounts') || '[]'),
             incentives: JSON.parse(localStorage.getItem('payroll_incentives') || '[]'),
             overtime: JSON.parse(localStorage.getItem('payroll_overtime') || '[]'),
@@ -538,7 +544,7 @@ if (typeof firebase !== 'undefined') {
             window.globalState.activities = [];
             window.globalState.employees = [];
             window.globalState.periods = [];
-            window.globalState.activePayroll = null;
+            window.globalState.activePayrolls = [];
             window.globalState.discounts = [];
             window.globalState.incentives = [];
             window.globalState.overtime = [];

@@ -24,7 +24,14 @@ const state = {
     activities: JSON.parse(localStorage.getItem('payroll_activities') || '[]'),
     employees: JSON.parse(localStorage.getItem('payroll_employees') || '[]'),
     periods: JSON.parse(localStorage.getItem('payroll_periods') || '[]'),
-    activePayroll: JSON.parse(localStorage.getItem('payroll_active') || 'null'),
+    activePayrolls: (() => {
+        const stored = localStorage.getItem('payroll_active');
+        if (!stored || stored === 'null') return [];
+        try {
+            const parsed = JSON.parse(stored);
+            return Array.isArray(parsed) ? parsed : [parsed];
+        } catch { return []; }
+    })(),
     overtime: JSON.parse(localStorage.getItem('payroll_overtime') || '[]'),
     discounts: JSON.parse(localStorage.getItem('payroll_discounts') || '[]'),
     incentives: JSON.parse(localStorage.getItem('payroll_incentives') || '[]'),
@@ -92,19 +99,24 @@ window.assignSequentialNumbers = () => {
         });
     });
 
-    // Handle nested daily logs in active payroll
-    if (state.activePayroll && state.activePayroll.dailyLogs) {
-        let maxLog = 0;
-        state.activePayroll.dailyLogs.forEach(log => {
-            const num = parseInt(log.logNumber);
-            if (!isNaN(num) && num > maxLog) maxLog = num;
-        });
-        state.activePayroll.dailyLogs.forEach(log => {
-            if (!log.logNumber) {
-                maxLog++;
-                log.logNumber = maxLog;
+    // Handle nested daily logs in active payrolls
+    if (state.activePayrolls) {
+        state.activePayrolls.forEach(payroll => {
+            if (payroll && payroll.dailyLogs) {
+                let maxLog = 0;
+                payroll.dailyLogs.forEach(log => {
+                    const num = parseInt(log.logNumber);
+                    if (!isNaN(num) && num > maxLog) maxLog = num;
+                });
+                payroll.dailyLogs.forEach(log => {
+                    if (!log.logNumber) {
+                        maxLog++;
+                        log.logNumber = maxLog;
+                    }
+                    if (!log.createdBy) log.createdBy = 'Sistema';
+                    if (!log.id) log.id = Date.now().toString(36) + Math.random().toString(36).substring(2);
+                });
             }
-            if (!log.createdBy) log.createdBy = 'Sistema';
         });
     }
 };
@@ -118,7 +130,7 @@ window.syncToLocalStorage = () => {
     localStorage.setItem('payroll_activities', JSON.stringify(state.activities || []));
     localStorage.setItem('payroll_employees', JSON.stringify(state.employees || []));
     localStorage.setItem('payroll_periods', JSON.stringify(state.periods || []));
-    localStorage.setItem('payroll_active', JSON.stringify(state.activePayroll || null));
+    localStorage.setItem('payroll_active', JSON.stringify(state.activePayrolls || []));
     localStorage.setItem('payroll_discounts', JSON.stringify(state.discounts || []));
     localStorage.setItem('payroll_incentives', JSON.stringify(state.incentives || []));
     localStorage.setItem('payroll_overtime', JSON.stringify(state.overtime || []));
@@ -166,10 +178,17 @@ const calculateLegislativeDays = (start, end) => {
     return total;
 };
 
-const getPayrollBounds = () => {
-    if (!state.activePayroll) return null;
-    const startStr = state.activePayroll.startDate;
-    const pType = (state.activePayroll.periodType || '').toLowerCase();
+const getPayrollBounds = (payrollId) => {
+    if (!state.activePayrolls || state.activePayrolls.length === 0) return null;
+    let payroll = state.activePayrolls[0];
+    if (payrollId) {
+        const found = state.activePayrolls.find(p => p.id === payrollId || p.id == payrollId);
+        if (found) payroll = found;
+    }
+
+    if (!payroll) return null;
+    const startStr = payroll.startDate;
+    const pType = (payroll.periodType || '').toLowerCase();
     const period = state.periods.find(p => p.name.toLowerCase() === pType || pType.includes(p.name.toLowerCase()));
 
     if (!period) {
@@ -294,7 +313,7 @@ window.exportLocalData = () => {
         activities: state.activities,
         employees: state.employees,
         periods: state.periods,
-        activePayroll: state.activePayroll,
+        activePayrolls: state.activePayrolls,
         discounts: state.discounts,
         incentives: state.incentives,
         overtime: state.overtime,
@@ -320,7 +339,7 @@ window.importLocalData = () => {
         state.activities = dump.activities || [];
         state.employees = dump.employees || [];
         state.periods = dump.periods || [];
-        state.activePayroll = dump.activePayroll || null;
+        state.activePayrolls = dump.activePayrolls || (dump.activePayroll ? [dump.activePayroll] : []);
         state.discounts = dump.discounts || [];
         state.incentives = dump.incentives || [];
         state.overtime = dump.overtime || [];
@@ -357,20 +376,24 @@ const renderDashboard = (container) => {
     const monthlyData = sortedMonths.map(m => monthlyExpenses[m]);
 
     const activityExpenses = {};
-    if (state.activePayroll && state.activePayroll.dailyLogs) {
-        state.activePayroll.dailyLogs.forEach(log => {
-            const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
-            if (emp && !window.hasDepartmentAccess(emp.department)) return;
-            const actName = log.act || 'Sin Actividad';
-            if (!activityExpenses[actName]) activityExpenses[actName] = 0;
-            activityExpenses[actName] += parseFloat(log.amount) || 0;
+    if (state.activePayrolls && state.activePayrolls.length > 0) {
+        state.activePayrolls.forEach(payroll => {
+            if (payroll.dailyLogs) {
+                payroll.dailyLogs.forEach(log => {
+                    const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
+                    if (emp && !window.hasDepartmentAccess(emp.department)) return;
+                    const actName = log.act || 'Sin Actividad';
+                    if (!activityExpenses[actName]) activityExpenses[actName] = 0;
+                    activityExpenses[actName] += parseFloat(log.amount) || 0;
+                });
+            }
         });
-    }
-    if (state.activePayroll) {
+
         window.getVisibleEmployees().filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
             const actName = emp.activity || 'Sin Actividad';
             if (!activityExpenses[actName]) activityExpenses[actName] = 0;
-            const res = calculateEmployeePayrollData(emp, state.activePayroll);
+            // Solo usar la primera nómina activa para empleados fijos temporalmente, o unificarlos si el sueldo fijo es igual
+            const res = calculateEmployeePayrollData(emp, state.activePayrolls[0]);
             activityExpenses[actName] += res.base || 0;
         });
     }
@@ -399,16 +422,19 @@ const renderDashboard = (container) => {
         opStats[op].activities[act] += amount;
     };
 
-    if (state.activePayroll && state.activePayroll.dailyLogs) {
-        state.activePayroll.dailyLogs.forEach(log => {
-            const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
-            if (emp && !window.hasDepartmentAccess(emp.department)) return;
-            processCost(log.op, log.act, parseFloat(log.amount) || 0);
+    if (state.activePayrolls && state.activePayrolls.length > 0) {
+        state.activePayrolls.forEach(payroll => {
+            if (payroll.dailyLogs) {
+                payroll.dailyLogs.forEach(log => {
+                    const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
+                    if (emp && !window.hasDepartmentAccess(emp.department)) return;
+                    processCost(log.op, log.act, parseFloat(log.amount) || 0);
+                });
+            }
         });
-    }
-    if (state.activePayroll) {
+
         window.getVisibleEmployees().filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
-            const res = calculateEmployeePayrollData(emp, state.activePayroll);
+            const res = calculateEmployeePayrollData(emp, state.activePayrolls[0]);
             processCost(emp.operation, emp.activity, res.base || 0);
         });
     }
@@ -451,9 +477,9 @@ const renderDashboard = (container) => {
                     <div class="stat-value">${state.departments.length}</div>
                 </div>
                 <div class="card stat-card">
-                    <div class="stat-label">Nómina Activa</div>
-                    <div class="stat-value ${state.activePayroll ? 'text-success' : 'text-danger'}" id="dash-active-payroll">
-                        ${state.activePayroll ? state.activePayroll.name : 'NO'}
+                    <div class="stat-label">Nóminas Abiertas</div>
+                    <div class="stat-value ${(state.activePayrolls && state.activePayrolls.length > 0) ? 'text-success' : 'text-danger'}" id="dash-active-payroll">
+                        ${(state.activePayrolls && state.activePayrolls.length > 0) ? state.activePayrolls.length : 'NO'}
                     </div>
                 </div>
                 <div class="card stat-card" style="display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 8px;">
@@ -2001,30 +2027,35 @@ const getNextDateSuggestion = (periodName) => {
     return new Date().toISOString().split('T')[0];
 };
 
-// --- Module: Payroll Runs (Abrir Nómina) ---
 const renderPayrollRuns = (container) => {
     container.innerHTML = `
             <div class="header-action">
-            <h1>Gestión de Pagos (Nóminas)</h1>
+            <h1>Gestión de Pagos (Nóminas Abiertas)</h1>
             <button class="btn btn-primary" id="open-payroll-btn">
                 <i class="fas fa-play"></i> Abrir Nueva Nómina
             </button>
-        </div >
+        </div>
             <div class="card mt-4">
                 <div id="active-payroll-info">
-                    ${state.activePayroll ? `
-                    <div class="status-box success">
-                        <h3>Nómina Actual: ${state.activePayroll.name}</h3>
-                        <p>Periodo: ${state.activePayroll.periodType} | Inicio: ${state.activePayroll.startDate}</p>
-                    </div>
-                ` : '<p>No hay ninguna nómina habilitada para pago en este momento.</p>'}
+                    ${(state.activePayrolls && state.activePayrolls.length > 0) ? `
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+                            ${state.activePayrolls.map(payroll => `
+                                <div class="status-box success" style="margin: 0;">
+                                    <h3>${payroll.name}</h3>
+                                    <p>Periodo: ${payroll.periodType}</p>
+                                    <p>Inicio: ${payroll.startDate}</p>
+                                    <p><small>${payroll.dailyLogs ? payroll.dailyLogs.length : 0} registros activos</small></p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : '<p>No hay ninguna nómina habilitada para pago en este momento.</p>'}
                 </div>
             </div>
         `;
 
     document.getElementById('open-payroll-btn').onclick = () => {
         showModal('Abrir Nómina', `
-            < div class="form-group" >
+            <div class="form-group">
                 <label>Nombre identificador</label>
                 <input type="text" id="run-name" class="form-control" placeholder="Ej: Nómina Marzo Q1">
             </div>
@@ -2040,14 +2071,15 @@ const renderPayrollRuns = (container) => {
                 <input type="date" id="run-date" class="form-control">
             </div>
         `, () => {
-            state.activePayroll = {
-                id: Date.now(),
+            if (!state.activePayrolls) state.activePayrolls = [];
+            state.activePayrolls.push({
+                id: Date.now().toString(36) + Math.random().toString(36).substring(2),
                 name: document.getElementById('run-name').value,
                 periodType: document.getElementById('run-period').value,
                 startDate: document.getElementById('run-date').value,
                 status: 'open',
                 dailyLogs: []
-            };
+            });
             saveState();
             renderSection('payroll-runs');
             hideModal();
@@ -2057,7 +2089,7 @@ const renderPayrollRuns = (container) => {
 
 // --- Module: Daily Registration ---
 const renderDailyRegistration = (container) => {
-    if (!state.activePayroll) {
+    if (!state.activePayrolls || state.activePayrolls.length === 0) {
         container.innerHTML = '<h1>Registro Diario</h1><div class="card mt-4"><p class="text-danger">Debe abrir una nómina primero en la sección "Abrir Nómina".</p></div>';
         return;
     }
@@ -2065,15 +2097,28 @@ const renderDailyRegistration = (container) => {
     if (!window.dailyRegTab) window.dailyRegTab = 'individual';
     const tab = window.dailyRegTab;
 
-    const bounds = getPayrollBounds();
+    if (!window.selectedDailyPayrollId && state.activePayrolls.length > 0) {
+        window.selectedDailyPayrollId = state.activePayrolls[0].id;
+    }
+    const payrollOptions = state.activePayrolls.map(p =>
+        `<option value="${p.id}" ${p.id == window.selectedDailyPayrollId ? 'selected' : ''}>${p.name} (${p.startDate})</option>`
+    ).join('');
+
+    const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
+    const bounds = getPayrollBounds(activePayroll.id);
     const defaultDate = bounds ? bounds.min : new Date().toISOString().split('T')[0];
 
     container.innerHTML = `
             <div class="header-action">
             <h1>Registro Diario - Empleados Móviles</h1>
-            <div class="tabs no-print">
-                <button class="tab-btn ${tab === 'individual' ? 'active' : ''}" onclick="window.dailyRegTab = 'individual'; renderSection('daily-registration')">Individual</button>
-                <button class="tab-btn ${tab === 'masivo' ? 'active' : ''}" onclick="window.dailyRegTab = 'masivo'; renderSection('daily-registration')">Registro Masivo</button>
+            <div style="display: flex; gap: 15px; align-items: center;">
+                <select id="daily-payroll-select" class="form-control" style="width: auto; font-weight: bold; padding: 5px 10px;" onchange="window.selectedDailyPayrollId = this.value; renderSection('daily-registration')">
+                    ${payrollOptions}
+                </select>
+                <div class="tabs no-print">
+                    <button class="tab-btn ${tab === 'individual' ? 'active' : ''}" onclick="window.dailyRegTab = 'individual'; renderSection('daily-registration')">Individual</button>
+                    <button class="tab-btn ${tab === 'masivo' ? 'active' : ''}" onclick="window.dailyRegTab = 'masivo'; renderSection('daily-registration')">Registro Masivo</button>
+                </div>
             </div>
         </div >
 
@@ -2196,7 +2241,7 @@ const renderDailyRegistration = (container) => {
                     </tr>
                 </thead>
                 <tbody id="daily-logs-tbody">
-                    ${(state.activePayroll.dailyLogs || []).map((log, index) => `
+                    ${(activePayroll.dailyLogs || []).map((log, index) => `
                         <tr>
                             <td>LOG-${log.logNumber || (index + 1)}</td>
                             <td>${log.date}</td>
@@ -2215,7 +2260,7 @@ const renderDailyRegistration = (container) => {
                             </td>
                         </tr>
                     `).join('')}
-                    ${(!state.activePayroll.dailyLogs || state.activePayroll.dailyLogs.length === 0) ? '<tr><td colspan="8" style="text-align:center">No hay registros diarios</td></tr>' : ''}
+                    ${(!activePayroll.dailyLogs || activePayroll.dailyLogs.length === 0) ? '<tr><td colspan="8" style="text-align:center">No hay registros diarios</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -2244,7 +2289,8 @@ const renderDailyRegistration = (container) => {
         }
 
         // Validation: Payroll Date Range
-        const bounds = getPayrollBounds();
+        const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
+        const bounds = getPayrollBounds(activePayroll.id);
         if (bounds && (regDate < bounds.min || regDate > bounds.max)) {
             alert(`La fecha debe estar dentro del rango de la nómina abierta (${bounds.min} a ${bounds.max})`);
             return;
@@ -2262,18 +2308,18 @@ const renderDailyRegistration = (container) => {
         };
 
         if (log.employee && log.amount) {
-            if (!state.activePayroll.dailyLogs) state.activePayroll.dailyLogs = [];
+            if (!activePayroll.dailyLogs) activePayroll.dailyLogs = [];
 
             // Check for duplicates
-            const isDuplicate = state.activePayroll.dailyLogs.find(l => l.employee === log.employee && l.date === log.date);
+            const isDuplicate = activePayroll.dailyLogs.find(l => l.employee === log.employee && l.date === log.date);
             if (isDuplicate) {
                 alert(`Atención: El empleado ${log.employee} ya tiene un salario digitado para el día ${log.date}.`);
                 return;
             }
 
-            const nextLogNum = state.activePayroll.dailyLogs.length > 0 ? Math.max(0, ...state.activePayroll.dailyLogs.map(l => parseInt(l.logNumber) || 0)) + 1 : 1;
+            const nextLogNum = activePayroll.dailyLogs.length > 0 ? Math.max(0, ...activePayroll.dailyLogs.map(l => parseInt(l.logNumber) || 0)) + 1 : 1;
             log.logNumber = nextLogNum;
-            state.activePayroll.dailyLogs.push(log);
+            activePayroll.dailyLogs.push(log);
             saveState();
             renderSection('daily-registration');
         }
@@ -2352,7 +2398,8 @@ window.renderBulkTable = () => {
 
     tbody.innerHTML = emps.map(e => {
         const fullName = `${e.firstName} ${e.lastName}`;
-        const hasLog = (state.activePayroll.dailyLogs || []).some(l => l.employee === fullName && l.date === date);
+        const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
+        const hasLog = (activePayroll.dailyLogs || []).some(l => l.employee === fullName && l.date === date);
 
         // Get pre-selected activity amount
         let defaultAmount = '';
@@ -2379,7 +2426,7 @@ window.renderBulkTable = () => {
                             </select>
                         </td>
                         <td>
-                            <button class="btn-icon delete admin-only" onclick="this.closest('tr').remove()" title="Quitar del lote">
+                            <button class="btn-icon delete" onclick="this.closest('tr').remove()" title="Quitar del lote">
                                 <i class="fas fa-times"></i>
                             </button>
                         </td>
@@ -2423,7 +2470,8 @@ window.saveBulkLogs = () => {
     const date = document.getElementById('bulk-date').value;
 
     // Validation: Payroll Date Range
-    const bounds = getPayrollBounds();
+    const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
+    const bounds = getPayrollBounds(activePayroll.id);
     if (bounds && (date < bounds.min || date > bounds.max)) {
         alert(`La fecha debe estar dentro del rango de la nómina abierta (${bounds.min} a ${bounds.max})`);
         return;
@@ -2444,7 +2492,7 @@ window.saveBulkLogs = () => {
 
         if (emp && amt) {
             // Final check for duplicates in state
-            const exists = (state.activePayroll.dailyLogs || []).some(l => l.employee === emp && l.date === date);
+            const exists = (activePayroll.dailyLogs || []).some(l => l.employee === emp && l.date === date);
             if (exists) {
                 duplicates++;
             } else {
@@ -2468,18 +2516,18 @@ window.saveBulkLogs = () => {
     }
 
     if (duplicates > 0) {
-        if (!confirm(`${duplicates} empleados ya tenían registros para esta fecha y fueron ignorados. ¿Desea guardar el resto ? `)) return;
+        if (!confirm(`${duplicates} empleados ya tenían registros para esta fecha y fueron ignorados. ¿Desea guardar el resto? `)) return;
     }
 
-    if (!state.activePayroll.dailyLogs) state.activePayroll.dailyLogs = [];
+    if (!activePayroll.dailyLogs) activePayroll.dailyLogs = [];
 
-    let nextLogNum = state.activePayroll.dailyLogs.length > 0 ? Math.max(0, ...state.activePayroll.dailyLogs.map(l => parseInt(l.logNumber) || 0)) + 1 : 1;
+    let nextLogNum = activePayroll.dailyLogs.length > 0 ? Math.max(0, ...activePayroll.dailyLogs.map(l => parseInt(l.logNumber) || 0)) + 1 : 1;
     logsToAdd.forEach(l => {
         l.logNumber = nextLogNum;
         nextLogNum++;
     });
 
-    state.activePayroll.dailyLogs.push(...logsToAdd);
+    activePayroll.dailyLogs.push(...logsToAdd);
     saveState();
     alert(`Se han guardado ${logsToAdd.length} registros exitosamente.`);
     renderSection('daily-registration');
@@ -2488,30 +2536,49 @@ window.saveBulkLogs = () => {
 // --- Module: Closing ---
 const renderClosing = (container) => {
     let html = `
-            < h1 > Cierre de Nómina</h1 >
-                <div class="card mt-4">
-                    <p>Al cerrar la nómina, los registros del periodo actual quedarán bloqueados y no podrán ser modificados.</p>
-                    ${state.activePayroll ? `
-                        <div class="mt-4" style="display: flex; gap: 15px;">
-                            <button class="btn btn-danger" id="close-payroll-btn">
-                                <i class="fas fa-lock"></i> Cerrar Nómina Actual (${state.activePayroll.name})
-                            </button>
-                            <button class="btn btn-secondary" id="delete-open-payroll-btn" style="background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;">
-                                <i class="fas fa-trash-alt"></i> Eliminar Nómina (Descartar)
-                            </button>
-                        </div>
-                    ` : '<p class="mt-4">No hay ninguna nómina abierta para cerrar.</p>'}
-                </div>
+            <div class="header-action">
+                <h1>Cierre de Nómina</h1>
+            </div>
         `;
 
-    if (!state.activePayroll) {
+    if (!state.activePayrolls || state.activePayrolls.length === 0) {
         html += `
-            < div class="card mt-4" style = "text-align: center; padding: 40px;" >
-                        <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success); margin-bottom: 20px;"></i>
-                        <h2>No hay ninguna nómina abierta actualmente.</h2>
-                        <p class="text-gray">Puede crear un nuevo periodo desde la sección de "Periodos".</p>
-                    </div >
+            <div class="card mt-4" style="text-align: center; padding: 40px;">
+                <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success); margin-bottom: 20px;"></i>
+                <h2>No hay ninguna nómina abierta actualmente.</h2>
+                <p class="text-gray">Puede abrir una nueva nómina desde la sección de "Abrir Nómina".</p>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="card mt-4">
+                <p>Al cerrar la nómina, los registros del periodo quedarán bloqueados y pasarán al historial.</p>
+                <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;">
+        `;
+
+        state.activePayrolls.forEach(payroll => {
+            html += `
+                <div style="border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.2); flex-wrap: wrap; gap: 15px;">
+                    <div>
+                        <h3 style="margin: 0; color: var(--text-main);">${payroll.name}</h3>
+                        <p style="margin: 5px 0 0 0; color: var(--text-light); font-size: 0.9em;">Periodo: ${payroll.periodType} | Inicio: ${payroll.startDate} | Registros: ${payroll.dailyLogs ? payroll.dailyLogs.length : 0}</p>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-danger close-payroll-btn" data-id="${payroll.id}">
+                            <i class="fas fa-lock"></i> Cerrar Nómina
+                        </button>
+                        <button class="btn btn-secondary delete-open-payroll-btn" data-id="${payroll.id}" style="background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;">
+                            <i class="fas fa-trash-alt"></i> Descartar
+                        </button>
+                    </div>
+                </div>
             `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
     }
 
     html += `
@@ -2558,28 +2625,31 @@ const renderClosing = (container) => {
 
     container.innerHTML = html;
 
-    if (state.activePayroll) {
-        const closeBtn = document.getElementById('close-payroll-btn');
-        if (closeBtn) {
-            closeBtn.onclick = async () => {
-                if (confirm('¿Está seguro que desea cerrar esta nómina? Los montos calculados se guardarán en el historial para fines de Regalía Pascual.')) {
+    if (state.activePayrolls && state.activePayrolls.length > 0) {
+        const closeBtns = document.querySelectorAll('.close-payroll-btn');
+        closeBtns.forEach(btn => {
+            btn.onclick = async () => {
+                const targetId = btn.getAttribute('data-id');
+                const targetPayroll = state.activePayrolls.find(p => p.id == targetId);
+
+                if (confirm(`¿Está seguro que desea cerrar la nómina "${targetPayroll.name}"? Los montos calculados se guardarán en el historial para fines de Regalía Pascual.`)) {
                     try {
-                        const bounds = getPayrollBounds();
+                        const bounds = getPayrollBounds(targetId);
                         if (!bounds) throw new Error("No se pudierón calcular los límites del periodo.");
 
                         const snapshot = {
                             id: Date.now(),
-                            payrollName: state.activePayroll.name || "Nómina sin nombre",
+                            payrollName: targetPayroll.name || "Nómina sin nombre",
                             payrollNumber: state.payrollHistory.length > 0 ? Math.max(0, ...state.payrollHistory.map(h => parseInt(h.payrollNumber) || 0)) + 1 : 1,
-                            periodType: state.activePayroll.periodType,
+                            periodType: targetPayroll.periodType,
                             periodStart: bounds.min,
                             periodEnd: bounds.max,
                             closedAt: new Date().toISOString(),
                             closedBy: window.globalState.currentUser?.name || 'Desconocido',
-                            dailyLogs: [...(state.activePayroll.dailyLogs || [])],
+                            dailyLogs: [...(targetPayroll.dailyLogs || [])],
                             results: window.getVisibleEmployees().filter(e => e && e.active !== false).map(emp => {
                                 try {
-                                    const res = calculateEmployeePayrollData(emp, state.activePayroll);
+                                    const res = calculateEmployeePayrollData(emp, targetPayroll);
                                     return {
                                         idNumber: emp.idNumber,
                                         fullName: `${emp.firstName} ${emp.lastName} `,
@@ -2638,7 +2708,9 @@ const renderClosing = (container) => {
                             state.payrollHistory.push(snapshot);
                         }
 
-                        state.activePayroll = null;
+                        state.activePayrolls = state.activePayrolls.filter(p => p.id !== targetId);
+                        if (window.selectedDailyPayrollId === targetId) window.selectedDailyPayrollId = null;
+
                         saveState();
                         renderSection('closing');
                         alert('Nómina cerrada exitosamente.');
@@ -2648,19 +2720,24 @@ const renderClosing = (container) => {
                     }
                 }
             };
-        }
+        });
 
-        const deleteBtn = document.getElementById('delete-open-payroll-btn');
-        if (deleteBtn) {
-            deleteBtn.onclick = () => {
-                if (confirm(`¿Está TOTALMENTE SEGURO de eliminar la nómina "${state.activePayroll.name}" ?\n\nEsto borrará todos los registros diarios asociados y no se podrá deshacer.`)) {
-                    state.activePayroll = null;
+        const deleteBtns = document.querySelectorAll('.delete-open-payroll-btn');
+        deleteBtns.forEach(btn => {
+            btn.onclick = () => {
+                const targetId = btn.getAttribute('data-id');
+                const targetPayroll = state.activePayrolls.find(p => p.id == targetId);
+
+                if (confirm(`¿Está TOTALMENTE SEGURO de eliminar la nómina "${targetPayroll.name}"?\n\nEsto borrará todos los registros diarios asociados y no se podrá deshacer.`)) {
+                    state.activePayrolls = state.activePayrolls.filter(p => p.id !== targetId);
+                    if (window.selectedDailyPayrollId === targetId) window.selectedDailyPayrollId = null;
+
                     saveState();
                     renderSection('closing');
                     alert('Nómina eliminada permanentemente.');
                 }
             };
-        }
+        });
     }
 };
 
@@ -4502,8 +4579,9 @@ const hideModal = () => {
 };
 
 window.editDailyLog = (index) => {
-    const log = state.activePayroll.dailyLogs[index];
-    const bounds = getPayrollBounds();
+    const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
+    const log = activePayroll.dailyLogs[index];
+    const bounds = getPayrollBounds(activePayroll.id);
     showModal('Editar Registro Diario', `
             < div class="form-row" >
                     <div class="form-group">
@@ -4556,7 +4634,7 @@ window.editDailyLog = (index) => {
         };
 
         if (updatedLog.employee && updatedLog.amount) {
-            state.activePayroll.dailyLogs[index] = { ...log, ...updatedLog };
+            activePayroll.dailyLogs[index] = { ...log, ...updatedLog };
             saveState();
             renderSection('daily-registration');
             hideModal();
@@ -4567,7 +4645,8 @@ window.editDailyLog = (index) => {
 
 window.deleteDailyLog = (index) => {
     if (confirm('¿Seguro que desea eliminar este registro diario?')) {
-        state.activePayroll.dailyLogs.splice(index, 1);
+        const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
+        activePayroll.dailyLogs.splice(index, 1);
         saveState();
         renderSection('daily-registration');
     }
