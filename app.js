@@ -2010,20 +2010,37 @@ const renderIncentives = (container) => {
 };
 
 const getNextDateSuggestion = (periodName) => {
-    // Priority 1: Check if there's an active payroll of this type (if we are allowed to have multiple, otherwise it's closed)
-    // But usually we close before opening. So check history.
-    const history = state.payrollHistory || [];
-    const sameType = history
-        .filter(h => h.periodType === periodName && h.periodEnd)
-        .sort((a, b) => new Date(b.periodEnd) - new Date(a.periodEnd));
+    // Priority 1: Check if there's an active payroll of this type
+    const activePayrolls = state.activePayrolls || [];
+    const sameTypeActive = activePayrolls
+        .filter(p => p.periodType === periodName && p.startDate)
+        .sort((a, b) => new Date(b.startDate) - new Date(a.startDate)); // Sort descending by start date
 
-    if (sameType.length > 0) {
-        const lastEnd = new Date(sameType[0].periodEnd + 'T00:00:00');
+    if (sameTypeActive.length > 0) {
+        // Calculate the end date of this active payroll
+        const latestActive = sameTypeActive[0];
+        const bounds = getPayrollBounds(latestActive.id);
+
+        if (bounds && bounds.max) {
+            const lastEnd = new Date(bounds.max + 'T00:00:00');
+            lastEnd.setDate(lastEnd.getDate() + 1);
+            return lastEnd.toISOString().split('T')[0];
+        }
+    }
+
+    // Priority 2: Check history of closed payrolls
+    const history = state.payrollHistory || [];
+    const sameTypeHistory = history
+        .filter(h => h.periodType === periodName && h.periodEnd)
+        .sort((a, b) => new Date(b.periodEnd) - new Date(a.periodEnd)); // Sort descending by end date
+
+    if (sameTypeHistory.length > 0) {
+        const lastEnd = new Date(sameTypeHistory[0].periodEnd + 'T00:00:00');
         lastEnd.setDate(lastEnd.getDate() + 1);
         return lastEnd.toISOString().split('T')[0];
     }
 
-    // Priority 2: Return today
+    // Priority 3: Return today
     return new Date().toISOString().split('T')[0];
 };
 
@@ -3517,10 +3534,25 @@ const renderReports = (container) => {
     }
     const filter = window.currentReportFilter;
 
+    // Handle Payroll Selection
+    if (window.currentReportPayrollId === undefined) {
+        window.currentReportPayrollId = state.activePayrolls && state.activePayrolls.length > 0 ? state.activePayrolls[0].id : null;
+    }
+    let selectedPayroll = (state.activePayrolls || []).find(p => p.id == window.currentReportPayrollId);
+    if (!selectedPayroll && state.activePayrolls && state.activePayrolls.length > 0) {
+        selectedPayroll = state.activePayrolls[0];
+        window.currentReportPayrollId = selectedPayroll.id;
+    }
+
     container.innerHTML = `
             <div class="header-action">
-            <div style="display: flex; align-items: center; gap: 20px;">
+            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
                 <h1>Reporte de Nómina</h1>
+                <div class="no-print">
+                    <select class="form-control" style="min-width: 200px; padding: 5px 10px;" onchange="window.currentReportPayrollId = this.value; renderSection('reports')">
+                        ${(state.activePayrolls || []).map(p => `<option value="${p.id}" ${window.currentReportPayrollId == p.id ? 'selected' : ''}>${p.name} (${p.periodType})</option>`).join('')}
+                    </select>
+                </div>
                 <div class="multi-select-container no-print" id="dept-multi-select">
                     <div class="multi-select-btn" onclick="this.parentElement.classList.toggle('active')">
                         ${filter.length === state.departments.length ? 'Todos los Departamentos' : (filter.length === 0 ? 'Ningún Departamento' : `${filter.length} Seleccionados`)}
@@ -3562,8 +3594,8 @@ const renderReports = (container) => {
             <div class="card mt-4 print-area">
                 <h2 style="text-align: center">Resumen de Pagos por Departamento</h2>
                 ${(() => {
-            const bounds = getPayrollBounds();
-            if (bounds && state.activePayroll) {
+            const bounds = getPayrollBounds(window.currentReportPayrollId);
+            if (bounds && selectedPayroll) {
                 return `<p style="text-align: center; font-weight: 500; font-size: 1.1rem; color: var(--gray); margin-top: 5px; margin-bottom: 20px;">
                         Periodo: ${bounds.min} al ${bounds.max}
                     </p>`;
@@ -3612,7 +3644,7 @@ const renderReports = (container) => {
                     const empId = emp.idNumber || `${emp.firstName}-${emp.lastName}`;
                     renderedEmpIds.add(empId);
 
-                    const res = calculateEmployeePayrollData(emp, state.activePayroll);
+                    const res = calculateEmployeePayrollData(emp, selectedPayroll);
 
                     if (window.reportOnlyWithPayment && res.net <= 0.005) return '';
 
@@ -3951,7 +3983,10 @@ const renderEmployeeRecord = (container) => {
 const renderPayrollEntry = (container) => {
     const getRunId = (run) => run.id || (run.closedAt ? new Date(run.closedAt).getTime() : null);
 
-    if (!state.activePayroll && (!state.payrollHistory || state.payrollHistory.length === 0)) {
+    const hasActive = state.activePayrolls && state.activePayrolls.length > 0;
+    const hasHistory = state.payrollHistory && state.payrollHistory.length > 0;
+
+    if (!hasActive && !hasHistory) {
         container.innerHTML = `
             <div class="header-action">
                 <h1>Entrada de Nómina</h1>
@@ -3967,23 +4002,25 @@ const renderPayrollEntry = (container) => {
 
     // State for selected payroll in this view
     if (window.selectedEntryRunId === undefined) {
-        window.selectedEntryRunId = state.activePayroll ? state.activePayroll.id : getRunId(state.payrollHistory[0]);
+        window.selectedEntryRunId = hasActive ? state.activePayrolls[0].id : getRunId(state.payrollHistory[0]);
     }
 
     const currentRunId = window.selectedEntryRunId;
     let isHistorical = false;
-    let run = (state.activePayroll && state.activePayroll.id === currentRunId) ? state.activePayroll : null;
+
+    // First try to find in active payrolls
+    let run = hasActive ? state.activePayrolls.find(p => p.id == currentRunId) : null;
 
     if (!run) {
-        run = (state.payrollHistory || []).find(h => getRunId(h) === currentRunId);
+        run = (state.payrollHistory || []).find(h => getRunId(h) == currentRunId);
         if (run) isHistorical = true;
     }
 
     if (!run) {
-        // Fallback to active or first historical
-        run = state.activePayroll || state.payrollHistory[0];
+        // Fallback to first active or first historical
+        run = hasActive ? state.activePayrolls[0] : state.payrollHistory[0];
         window.selectedEntryRunId = getRunId(run);
-        isHistorical = !state.activePayroll || getRunId(run) !== state.activePayroll.id;
+        isHistorical = !hasActive || getRunId(run) != state.activePayrolls[0].id;
     }
 
     const debits = {}; // key: "Account|Activity", value: amount
@@ -4113,11 +4150,15 @@ const renderPayrollEntry = (container) => {
                     <div style="display: flex; gap: 10px; align-items: flex-end;">
                         <div class="no-print">
                             <label style="display: block; font-size: 0.8rem; margin-bottom: 4px;">Seleccionar Nómina:</label>
-                            <select class="form-control" style="width: 250px;" onchange="window.selectedEntryRunId = parseFloat(this.value); renderSection('payroll-entry')">
-                                ${state.activePayroll ? `<option value="${state.activePayroll.id}" ${currentRunId === state.activePayroll.id ? 'selected' : ''}>NÓMINA ACTUAL: ${state.activePayroll.name}</option>` : ''}
+                            <select class="form-control" style="width: 250px;" onchange="window.selectedEntryRunId = this.value; renderSection('payroll-entry')">
+                                ${(state.activePayrolls || []).length > 0 ? `<optgroup label="Nóminas Abiertas">` : ''}
+                                ${(state.activePayrolls || []).map(p => `<option value="${p.id}" ${currentRunId == p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                                ${(state.activePayrolls || []).length > 0 ? `</optgroup>` : ''}
+                                
+                                ${(state.payrollHistory || []).length > 0 ? `<optgroup label="Histórico">` : ''}
                                 ${(state.payrollHistory || []).map(h => {
         const rid = getRunId(h);
-        return `<option value="${rid}" ${currentRunId === rid ? 'selected' : ''}>CERRADA: ${h.payrollName || h.name} (${h.periodStart})</option>`;
+        return `<option value="${rid}" ${currentRunId == rid ? 'selected' : ''}>${h.payrollName || h.name} (${h.periodStart})</option>`;
     }).join('')}
                             </select>
                         </div>
