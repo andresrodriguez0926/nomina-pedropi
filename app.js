@@ -375,43 +375,9 @@ const renderDashboard = (container) => {
     });
     const monthlyData = sortedMonths.map(m => monthlyExpenses[m]);
 
+    const selectedPayrollValue = window.dashboardPayrollFilter || 'all';
+
     const activityExpenses = {};
-    if (state.activePayrolls && state.activePayrolls.length > 0) {
-        state.activePayrolls.forEach(payroll => {
-            if (payroll.dailyLogs) {
-                payroll.dailyLogs.forEach(log => {
-                    const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
-                    if (emp && !window.hasDepartmentAccess(emp.department)) return;
-                    const actName = log.act || 'Sin Actividad';
-                    if (!activityExpenses[actName]) activityExpenses[actName] = 0;
-                    activityExpenses[actName] += parseFloat(log.amount) || 0;
-                });
-            }
-        });
-
-        window.getVisibleEmployees().filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
-            const actName = emp.activity || 'Sin Actividad';
-            if (!activityExpenses[actName]) activityExpenses[actName] = 0;
-            // Solo usar la primera nómina activa para empleados fijos temporalmente, o unificarlos si el sueldo fijo es igual
-            const res = calculateEmployeePayrollData(emp, state.activePayrolls[0]);
-            activityExpenses[actName] += res.base || 0;
-        });
-    }
-    state.payrollHistory.forEach(run => {
-        run.results.forEach(res => {
-            const emp = state.employees.find(e => e.idNumber === res.idNumber || `${e.firstName} ${e.lastName}` === res.fullName);
-            if (emp && !window.hasDepartmentAccess(emp.department)) return;
-            const actName = emp ? (emp.activity || 'Sin Actividad') : 'Sin Actividad';
-            if (!activityExpenses[actName]) activityExpenses[actName] = 0;
-            activityExpenses[actName] += res.brute || 0;
-        });
-    });
-
-    const sortedActivities = Object.keys(activityExpenses).sort((a, b) => activityExpenses[b] - activityExpenses[a]);
-    const topActivitiesCount = 5;
-    const activityLabels = sortedActivities.slice(0, topActivitiesCount);
-    const activityDataSeries = activityLabels.map(a => activityExpenses[a]);
-
     const opStats = {};
     const processCost = (opName, actName, amount) => {
         const op = opName || 'Sin Operación';
@@ -420,33 +386,58 @@ const renderDashboard = (container) => {
         if (!opStats[op].activities[act]) opStats[op].activities[act] = 0;
         opStats[op].total += amount;
         opStats[op].activities[act] += amount;
+
+        if (!activityExpenses[act]) activityExpenses[act] = 0;
+        activityExpenses[act] += amount;
     };
 
-    if (state.activePayrolls && state.activePayrolls.length > 0) {
-        state.activePayrolls.forEach(payroll => {
-            if (payroll.dailyLogs) {
-                payroll.dailyLogs.forEach(log => {
-                    const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
-                    if (emp && !window.hasDepartmentAccess(emp.department)) return;
-                    processCost(log.op, log.act, parseFloat(log.amount) || 0);
-                });
-            }
-        });
-
+    // Helper to extract data from a payroll object (active)
+    const processActivePayroll = (payroll) => {
+        if (payroll.dailyLogs) {
+            payroll.dailyLogs.forEach(log => {
+                const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
+                if (emp && !window.hasDepartmentAccess(emp.department)) return;
+                processCost(log.op, log.act, parseFloat(log.amount) || 0);
+            });
+        }
         window.getVisibleEmployees().filter(e => e.type === 'fixed' && e.active !== false).forEach(emp => {
-            const res = calculateEmployeePayrollData(emp, state.activePayrolls[0]);
+            const res = calculateEmployeePayrollData(emp, payroll);
             processCost(emp.operation, emp.activity, res.base || 0);
         });
+    };
+
+    // Helper to extract data from a historical run
+    const processHistoricalRun = (run) => {
+        if (run.results) {
+            run.results.forEach(res => {
+                const emp = state.employees.find(e => e.idNumber === res.idNumber || `${e.firstName} ${e.lastName}` === res.fullName);
+                if (emp && !window.hasDepartmentAccess(emp.department)) return;
+                const actName = emp ? (emp.activity || 'Sin Actividad') : 'Sin Actividad';
+                const opName = emp ? (emp.operation || 'Sin Operación') : 'Sin Operación';
+                processCost(opName, actName, res.brute || 0);
+            });
+        }
+    };
+
+    if (selectedPayrollValue === 'all') {
+        // Show aggregate of ALL active payrolls
+        if (state.activePayrolls) {
+            state.activePayrolls.forEach(p => processActivePayroll(p));
+        }
+    } else if (selectedPayrollValue.startsWith('active_')) {
+        const pid = selectedPayrollValue.replace('active_', '');
+        const payroll = state.activePayrolls.find(p => String(p.id) === pid);
+        if (payroll) processActivePayroll(payroll);
+    } else if (selectedPayrollValue.startsWith('history_')) {
+        const hIdx = parseInt(selectedPayrollValue.replace('history_', ''));
+        const run = state.payrollHistory[hIdx];
+        if (run) processHistoricalRun(run);
     }
-    state.payrollHistory.forEach(run => {
-        run.results.forEach(res => {
-            const emp = state.employees.find(e => e.idNumber === res.idNumber || (e.firstName + ' ' + e.lastName) === res.fullName);
-            if (emp && !window.hasDepartmentAccess(emp.department)) return;
-            const actName = emp ? emp.activity : 'Sin Actividad';
-            const opName = emp ? emp.operation : 'Sin Operación';
-            processCost(opName, actName, res.brute || 0);
-        });
-    });
+
+    const sortedActivities = Object.keys(activityExpenses).sort((a, b) => activityExpenses[b] - activityExpenses[a]);
+    const topActivitiesCount = 5;
+    const activityLabels = sortedActivities.slice(0, topActivitiesCount);
+    const activityDataSeries = activityLabels.map(a => activityExpenses[a]);
 
     window.dashboardOpStats = opStats;
     let reportHtml = '';
@@ -454,9 +445,35 @@ const renderDashboard = (container) => {
         reportHtml = '<div class="card mt-4 print-area" id="op-comparison-card"></div>';
     }
 
+    // Prepare filter options
+    const activeOptions = (state.activePayrolls || []).map(p =>
+        `<option value="active_${p.id}" ${selectedPayrollValue === 'active_' + p.id ? 'selected' : ''}>[Abierta] ${p.name}</option>`
+    ).join('');
+
+    const historyOptions = (state.payrollHistory || []).slice().reverse().map((run, i) => {
+        const realIdx = state.payrollHistory.length - 1 - i;
+        const name = run.payrollName || run.name || `Histórica #${realIdx + 1}`;
+        return `<option value="history_${realIdx}" ${selectedPayrollValue === 'history_' + realIdx ? 'selected' : ''}>[Cerrada] ${name} (${run.periodEnd})</option>`;
+    }).join('');
+
     container.innerHTML = `
         <div class="dashboard-grid">
-            <h1 class="mb-4">Resumen del Sistema</h1>
+            <div class="header-action mb-4" style="background: var(--glass-bg); padding: 15px; border-radius: var(--radius-md); border: 1px solid var(--border-color); flex-wrap: wrap; gap: 15px;">
+                <h1 style="margin:0; font-size: 1.5rem;"><i class="fas fa-chart-line text-accent"></i> Resumen de Nómina</h1>
+                <div style="display: flex; gap: 10px; align-items: center;" class="no-print">
+                    <label style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Periodo:</label>
+                    <select class="form-control" style="width: auto; min-width: 250px; background: var(--bg-color);" onchange="window.dashboardPayrollFilter = this.value; renderSection('dashboard')">
+                        <option value="all" ${selectedPayrollValue === 'all' ? 'selected' : ''}>Resumen General (Nóminas Abiertas)</option>
+                        <optgroup label="Nóminas en Curso">
+                            ${activeOptions}
+                        </optgroup>
+                        <optgroup label="Historial de Nóminas">
+                            ${historyOptions}
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+            
             <div class="stats-row">
                 <div class="card stat-card">
                     <div class="stat-label">Total Empleados</div>
@@ -2725,7 +2742,7 @@ const renderClosing = (container) => {
                             state.payrollHistory.push(snapshot);
                         }
 
-                        state.activePayrolls = state.activePayrolls.filter(p => p.id !== targetId);
+                        state.activePayrolls = state.activePayrolls.filter(p => String(p.id) !== String(targetId));
                         if (window.selectedDailyPayrollId === targetId) window.selectedDailyPayrollId = null;
 
                         saveState();
@@ -2743,11 +2760,19 @@ const renderClosing = (container) => {
         deleteBtns.forEach(btn => {
             btn.onclick = () => {
                 const targetId = btn.getAttribute('data-id');
-                const targetPayroll = state.activePayrolls.find(p => p.id == targetId);
+                const targetPayroll = state.activePayrolls.find(p => String(p.id) === String(targetId));
+
+                if (!targetPayroll) return;
+
+                // Added condition: do not allow deletion if there are records
+                if (targetPayroll.dailyLogs && targetPayroll.dailyLogs.length > 0) {
+                    alert(`No se puede eliminar la nómina "${targetPayroll.name}" porque ya tiene registros diarios. Debe cerrar la nómina o eliminar los registros individualmente primero.`);
+                    return;
+                }
 
                 if (confirm(`¿Está TOTALMENTE SEGURO de eliminar la nómina "${targetPayroll.name}"?\n\nEsto borrará todos los registros diarios asociados y no se podrá deshacer.`)) {
-                    state.activePayrolls = state.activePayrolls.filter(p => p.id !== targetId);
-                    if (window.selectedDailyPayrollId === targetId) window.selectedDailyPayrollId = null;
+                    state.activePayrolls = state.activePayrolls.filter(p => String(p.id) !== String(targetId));
+                    if (String(window.selectedDailyPayrollId) === String(targetId)) window.selectedDailyPayrollId = null;
 
                     saveState();
                     renderSection('closing');

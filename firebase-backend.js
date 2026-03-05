@@ -296,37 +296,74 @@ if (typeof firebase !== 'undefined') {
                                                     // We created it locally! Preserve it.
                                                     merged.push(localItem);
                                                 }
+                                                // If it WAS in lastCloudIds but not in cloudIds, it means it was deleted remotely. 
+                                                // If it WAS in lastCloudIds and IS in localState, we keep it locally until saveStateToFirebase syncs the deletion?
+                                                // Actually, the issue is the other way: item is in Cloud but NOT in Local.
+                                            }
+                                        });
+
+                                        // REVERSED LOGIC: If item is in Cloud but NOT in Local, should we keep it?
+                                        // ONLY if it's NEW to the cloud (not in lastCloudIds).
+                                        // If it was in lastCloudIds and we deleted it locally, we should REMOVE it from the merged result
+                                        // so it doesn't reappear, and then saveStateToFirebase will eventually remove it from cloud.
+                                        const finalMerged = [];
+                                        merged.forEach(item => {
+                                            const isIdentified = item && item.id;
+                                            if (!isIdentified) {
+                                                finalMerged.push(item);
+                                                return;
+                                            }
+
+                                            const inLocal = window.globalState[key].find(l => l.id === item.id);
+                                            const inLastCloud = lastCloudIds.has(item.id);
+
+                                            if (!inLocal && inLastCloud) {
+                                                // It was in our last cloud sync, but it's gone from local. 
+                                                // This means WE deleted it. Do not restore it.
+                                                console.log(`[SYNC] Ignoring restoration of deleted item: ${item.id} in ${key}`);
+                                            } else {
+                                                finalMerged.push(item);
                                             }
                                         });
 
                                         // Special Deep Merge for activePayrolls to protect dailyLogs concurrency
                                         if (key === 'activePayrolls') {
-                                            merged.forEach(cloudPayroll => {
+                                            finalMerged.forEach(cloudPayroll => {
                                                 const localPayroll = (window.globalState.activePayrolls || []).find(p => p.id === cloudPayroll.id);
                                                 if (localPayroll) {
                                                     const localLogs = localPayroll.dailyLogs || [];
                                                     const cloudLogs = cloudPayroll.dailyLogs || [];
                                                     const lastCloudPayroll = (window._lastCloudState && window._lastCloudState.activePayrolls) ? window._lastCloudState.activePayrolls.find(p => p.id === cloudPayroll.id) : null;
                                                     const lastCloudLogs = (lastCloudPayroll && lastCloudPayroll.dailyLogs) ? lastCloudPayroll.dailyLogs : [];
+                                                    const lastCloudLogIds = new Set(lastCloudLogs.map(l => l.id).filter(Boolean));
 
                                                     const mergedLogs = [...cloudLogs];
                                                     const cloudLogIds = new Set(cloudLogs.map(l => l.id).filter(Boolean));
-                                                    const lastCloudLogIds = new Set(lastCloudLogs.map(l => l.id).filter(Boolean));
 
+                                                    // 1. Preserve local logs not yet in cloud
                                                     localLogs.forEach(localLog => {
-                                                        if (localLog.id && !cloudLogIds.has(localLog.id)) {
-                                                            if (!lastCloudLogIds.has(localLog.id)) {
-                                                                mergedLogs.push(localLog);
-                                                            }
+                                                        if (localLog.id && !cloudLogIds.has(localLog.id) && !lastCloudLogIds.has(localLog.id)) {
+                                                            mergedLogs.push(localLog);
                                                         }
                                                     });
-                                                    cloudPayroll.dailyLogs = mergedLogs;
+
+                                                    // 2. Filter out logs we deleted locally
+                                                    cloudPayroll.dailyLogs = mergedLogs.filter(log => {
+                                                        if (!log.id) return true;
+                                                        const inLocalLogs = localLogs.find(l => l.id === log.id);
+                                                        const wasInCloud = lastCloudLogIds.has(log.id);
+                                                        if (!inLocalLogs && wasInCloud) {
+                                                            console.log(`[SYNC] Preventing reappearance of deleted log: ${log.id}`);
+                                                            return false;
+                                                        }
+                                                        return true;
+                                                    });
                                                 }
                                             });
                                         }
 
                                         window.globalState[key].length = 0;
-                                        merged.forEach(item => window.globalState[key].push(item));
+                                        finalMerged.forEach(item => window.globalState[key].push(item));
                                     }
                                 } else {
                                     window.globalState[key] = data[key];
@@ -443,6 +480,23 @@ if (typeof firebase !== 'undefined') {
         } catch (e) {
             console.error("Error saving to history collection:", e);
             return false;
+        }
+    };
+
+    // TEMPORARY: Function to clear all history
+    window.clearPayrollHistory = async () => {
+        try {
+            const snapshot = await db.collection('history').get();
+            const batch = db.batch();
+            snapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+            console.log("[CLEANUP] History collection cleared.");
+            alert("El historial ha sido borrado exitosamente.");
+            window.location.reload();
+        } catch (e) {
+            console.error("Error clearing history:", e);
         }
     };
 
