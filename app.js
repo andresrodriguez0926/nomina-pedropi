@@ -38,6 +38,7 @@ const state = {
     christmasSalary: JSON.parse(localStorage.getItem('payroll_christmas') || '[]'),
     payrollHistory: JSON.parse(localStorage.getItem('payroll_history') || '[]'),
     vacations: JSON.parse(localStorage.getItem('payroll_vacations') || '[]'),
+    globalSearchQuery: '',
     settings: JSON.parse(localStorage.getItem('payroll_settings') || JSON.stringify({
         tss_rate: 0.05,
         payrollAccounts: {},
@@ -64,7 +65,19 @@ window.hasDepartmentAccess = (deptName) => {
 };
 
 window.getVisibleEmployees = () => {
-    return state.employees.filter(emp => window.hasDepartmentAccess(emp.department));
+    let emps = state.employees.filter(emp => window.hasDepartmentAccess(emp.department));
+
+    if (state.globalSearchQuery && state.globalSearchQuery.trim() !== '') {
+        const q = state.globalSearchQuery.toLowerCase().trim();
+        emps = emps.filter(emp => {
+            const fullName = `${emp.firstName} ${emp.lastName}`.toLowerCase();
+            const idNumber = (emp.idNumber || '').toLowerCase();
+            const regNumber = (emp.regNumber || '').toString();
+            return fullName.includes(q) || idNumber.includes(q) || regNumber.includes(q);
+        });
+    }
+
+    return emps;
 };
 
 // --- Migration & Utilities ---
@@ -5964,6 +5977,19 @@ window.printBenefitsReport = () => {
 document.addEventListener('DOMContentLoaded', () => {
     initRouter();
     document.getElementById('current-date').innerText = new Date().toLocaleDateString();
+
+    // Global Search listener
+    const globalSearch = document.getElementById('global-search');
+    if (globalSearch) {
+        globalSearch.addEventListener('input', (e) => {
+            state.globalSearchQuery = e.target.value;
+            // Re-render current section if it depends on getVisibleEmployees
+            if (['employees', 'isr', 'dashboard'].includes(state.currentSection)) {
+                renderSection(state.currentSection);
+            }
+        });
+    }
+
     switchSection('dashboard');
 });
 
