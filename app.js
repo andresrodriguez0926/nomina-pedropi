@@ -2847,7 +2847,8 @@ const renderClosing = (container) => {
                                         tss: res.tss || 0,
                                         isr: res.isr || 0,
                                         disc: res.disc || 0,
-                                        net: res.net || 0
+                                        net: res.net || 0,
+                                        daysPaid: res.daysPaid || 0
                                     };
                                 } catch (err) {
                                     console.error(`Error calculando empleado ${emp.firstName}: `, err);
@@ -3087,6 +3088,12 @@ window.viewHistoricalPayroll = (index) => {
                 </button>
                 <button class="btn btn-info" onclick="window.renderMobileEmployeeDeptReport(${index})">
                     <i class="fas fa-users"></i> Detalle por Depto/Empleado
+                </button>
+                <button class="btn btn-primary" onclick="window.renderPaySlips(${index}, null, window.currentHistoricalFilter)">
+                    <i class="fas fa-file-invoice-dollar"></i> Imprimir Volantes
+                </button>
+                <button class="btn btn-primary" onclick="window.exportPayrollToExcel(${index})" style="background-color: #16a34a;">
+                    <i class="fas fa-file-excel"></i> Exportar XLSX
                 </button>
                 <button class="btn btn-primary" onclick="window.print()">
                     <i class="fas fa-print"></i> Imprimir Reporte
@@ -3711,7 +3718,17 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
     const net = brute - tss - disc - isr;
 
-    return { base, tss, inc, ot, disc, chr, brute, isr, net };
+    // Additional info for Mobile employees: Count of distinct days worked
+    let daysPaid = 0;
+    if (emp.type === 'mobile') {
+        const logs = activePayroll?.dailyLogs || [];
+        const empLogs = logs.filter(l => (l.employee || '').trim().toLowerCase() === empFullName);
+        // Using distinct dates in case of multiple entries for same day, though currently logic prevents that
+        const distinctDates = [...new Set(empLogs.map(l => l.date))];
+        daysPaid = distinctDates.length;
+    }
+
+    return { base, tss, inc, ot, disc, chr, brute, isr, net, daysPaid };
 };
 
 // --- Module: Reports ---
@@ -3793,6 +3810,12 @@ const renderReports = (container) => {
                 </button>
                 <button class="btn btn-info" onclick="window.renderMobileEmployeeDeptReport(null, null, window.currentReportPayrollId)">
                     <i class="fas fa-users"></i> Detalle por Depto/Empleado
+                </button>
+                <button class="btn btn-primary" onclick="window.renderPaySlips(null, window.currentReportPayrollId, window.currentReportFilter)">
+                    <i class="fas fa-file-invoice-dollar"></i> Imprimir Volantes
+                </button>
+                <button class="btn btn-primary" onclick="window.exportPayrollToExcel(null, window.currentReportPayrollId)" style="background-color: #16a34a;">
+                    <i class="fas fa-file-excel"></i> Exportar XLSX
                 </button>
                 <button class="btn btn-primary" onclick="window.print()">
                     <i class="fas fa-print"></i> Imprimir Reporte
@@ -6063,6 +6086,235 @@ window.markVacationReturned = (vacId) => {
 window.printBenefitsReport = () => {
     window.print();
 };
+
+// --- Module: Individual Pay Slips (Volantes de Pago) ---
+const renderPaySlips = (historyIndex = null, activePayrollId = null, optionalDeptFilter = null) => {
+    const isHistorical = historyIndex !== null;
+    let run = null;
+    if (isHistorical) {
+        run = state.payrollHistory[historyIndex];
+    } else if (activePayrollId) {
+        run = (state.activePayrolls || []).find(p => p.id == activePayrollId);
+    }
+
+    if (!run) {
+        alert("No se encontró la nómina seleccionada.");
+        return;
+    }
+
+    const contentArea = document.getElementById('content-area');
+    contentArea.innerHTML = '<div class="loading-spinner"><div class="spinner"></div></div>';
+
+    setTimeout(() => {
+        let html = `
+            <div class="no-print" style="padding: 20px; display: flex; gap: 15px; background: var(--sidebar-bg); border-bottom: 1px solid var(--border-color);">
+                <button class="btn btn-secondary" onclick="${isHistorical ? `window.viewHistoricalPayroll(${historyIndex})` : 'renderSection(\'reports\')'}">
+                    <i class="fas fa-arrow-left"></i> Volver
+                </button>
+                <button class="btn btn-primary" onclick="window.print()">
+                    <i class="fas fa-print"></i> Imprimir Todo
+                </button>
+                <div style="flex: 1; text-align: right; color: var(--text-secondary); align-self: center;">
+                    Vista Previa de Volantes de Pago - <strong>${run.name || run.payrollName}</strong>
+                    ${optionalDeptFilter ? ` <br><span style="font-size: 0.8rem;">Filtrado por: ${optionalDeptFilter.join(', ')}</span>` : ''}
+                </div>
+            </div>
+            <div class="pay-slips-container">
+        `;
+
+        let results = isHistorical ? run.results : [];
+
+        if (!isHistorical) {
+            // If active, we need to calculate results for all visible employees
+            const employees = window.getVisibleEmployees().filter(e => e.active !== false);
+            results = employees.map(emp => {
+                const res = calculateEmployeePayrollData(emp, run);
+                return {
+                    ...res,
+                    fullName: `${emp.firstName} ${emp.lastName}`,
+                    idNumber: emp.idNumber,
+                    type: emp.type,
+                    dept: emp.department
+                };
+            }).filter(r => r.net > 0.005);
+        }
+
+        // Apply department filter if provided
+        if (optionalDeptFilter && Array.isArray(optionalDeptFilter)) {
+            const normalizedFilter = optionalDeptFilter.map(d => d.trim().toLowerCase());
+            results = results.filter(r => {
+                const rDept = (r.dept || 'Sin Departamento').trim().toLowerCase();
+                return normalizedFilter.includes(rDept);
+            });
+        }
+
+        results.forEach(res => {
+            const dateHeaders = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds(activePayrollId);
+            const periodLabel = isHistorical ? run.periodStart.substring(0, 7) : dateHeaders.min.substring(0, 7);
+            const [year, month] = periodLabel.split('-');
+            const monthNames = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+            const formattedMonth = monthNames[parseInt(month) - 1];
+
+            html += `
+                <div class="pay-slip">
+                    <div class="pay-slip-header">
+                        <div class="pay-slip-company">
+                            <h1>${state.settings.companyName || 'NóminaApp'}</h1>
+                            <p>COMPROBANTE DE NÓMINA</p>
+                        </div>
+                        <div class="pay-slip-title">
+                            <h2>Bolante de Pago</h2>
+                            <p>PERÍODO: ${formattedMonth} ${year}</p>
+                            <p>TIPO: ${res.type === 'fixed' ? 'FIJO' : 'MÓVIL'}</p>
+                        </div>
+                    </div>
+
+                    <div class="pay-slip-employee-info">
+                        <div class="info-item">
+                            <label>Empleado</label>
+                            <span>${res.fullName.toUpperCase()}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Cédula</label>
+                            <span>${res.idNumber || 'N/A'}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Departamento</label>
+                            <span>${(res.dept || 'GENERAL').toUpperCase()}</span>
+                        </div>
+                        ${res.type === 'mobile' ? `
+                        <div class="info-item">
+                            <label>Días Pagados</label>
+                            <span>${res.daysPaid || 0}</span>
+                        </div>` : ''}
+                    </div>
+
+                    <div class="pay-slip-grid">
+                        <div class="grid-section">
+                            <h3>Ingresos</h3>
+                            <table class="grid-table">
+                                <tr>
+                                    <td>Sueldo Base</td>
+                                    <td>$${res.base.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                                ${res.incentives > 0 || res.inc > 0 ? `<tr><td>Incentivos</td><td>$${(res.incentives || res.inc || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>` : ''}
+                                ${res.overtime > 0 || res.ot > 0 ? `<tr><td>Horas Extras</td><td>$${(res.overtime || res.ot || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>` : ''}
+                                ${res.christmas > 0 || res.chr > 0 ? `<tr><td>Navidad</td><td>$${(res.christmas || res.chr || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>` : ''}
+                            </table>
+                        </div>
+                        <div class="grid-section">
+                            <h3>Deducciones</h3>
+                            <table class="grid-table">
+                                ${res.tss > 0 ? `<tr><td>Ret. TSS</td><td>$${res.tss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>` : ''}
+                                ${res.isr > 0 ? `<tr><td>Ret. ISR</td><td>$${res.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>` : ''}
+                                ${res.disc > 0 || res.discounts > 0 ? `<tr><td>Descuentos</td><td>$${(res.disc || res.discounts || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>` : ''}
+                                ${res.tss <= 0 && res.isr <= 0 && (res.disc || 0) <= 0 ? '<tr><td>Sin deducciones</td><td>$0.00</td></tr>' : ''}
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="pay-slip-total">
+                        <div class="total-label">
+                            <span>TOTAL A PAGAR</span>
+                            <span>Neto recibido</span>
+                        </div>
+                        <div class="total-amount">
+                            <span class="currency">DOP</span>
+                            <span class="value">${res.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                    </div>
+
+                    <div class="pay-slip-footer">
+                        <div class="signature-line">FIRMA DEL EMPLEADO</div>
+                        <div>${state.settings.companyName || 'NóminaApp'} · ${year}</div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+        contentArea.innerHTML = html;
+    }, 150);
+};
+window.renderPaySlips = renderPaySlips;
+
+
+// --- Module: Excel Export ---
+const exportPayrollToExcel = (historyIndex = null, activePayrollId = null) => {
+    const isHistorical = historyIndex !== null;
+    let run = null;
+    if (isHistorical) {
+        run = state.payrollHistory[historyIndex];
+    } else if (activePayrollId) {
+        run = (state.activePayrolls || []).find(p => p.id == activePayrollId);
+    }
+
+    if (!run) {
+        alert("No se encontró la nómina para exportar.");
+        return;
+    }
+
+    const results = isHistorical ? run.results : [];
+    if (!isHistorical) {
+        const employees = window.getVisibleEmployees().filter(e => e.active !== false);
+        employees.forEach(emp => {
+            const res = calculateEmployeePayrollData(emp, run);
+            if (res.net > 0.005) {
+                results.push({
+                    ...res,
+                    fullName: `${emp.firstName} ${emp.lastName}`,
+                    idNumber: emp.idNumber,
+                    dept: emp.department
+                });
+            }
+        });
+    }
+
+    if (results.length === 0) {
+        alert("No hay datos para exportar.");
+        return;
+    }
+
+    const data = results.map(r => ({
+        "Empleado": r.fullName.toUpperCase(),
+        "Cédula": r.idNumber || 'N/A',
+        "Departamento": (r.dept || 'GENERAL').toUpperCase(),
+        "Sueldo Base": r.base,
+        "Incentivos": r.incentives || r.inc || 0,
+        "Horas Extras": r.overtime || r.ot || 0,
+        "Navidad": r.christmas || r.chr || 0,
+        "Total Bruto": r.brute,
+        "Ret. TSS": r.tss,
+        "Ret. ISR": r.isr,
+        "Descuentos": r.disc || r.discounts || 0,
+        "Total Neto": r.net
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Nómina");
+
+    // Setting column widths for better Excel presentation
+    const wscols = [
+        { wch: 30 }, // Empleado
+        { wch: 15 }, // Cédula
+        { wch: 20 }, // Dept
+        { wch: 12 }, // Base
+        { wch: 12 }, // Inc
+        { wch: 12 }, // OT
+        { wch: 12 }, // Chr
+        { wch: 15 }, // Brute
+        { wch: 12 }, // TSS
+        { wch: 12 }, // ISR
+        { wch: 12 }, // Disc
+        { wch: 15 }  // Net
+    ];
+    ws['!cols'] = wscols;
+
+    const fileName = `Nomina_${run.payrollName || run.name}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+};
+window.exportPayrollToExcel = exportPayrollToExcel;
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {

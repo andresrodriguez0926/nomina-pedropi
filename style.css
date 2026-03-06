@@ -924,3 +924,212 @@ body.role-editor .admin-only {
         padding-bottom: 5px;
     }
 }
+
+/* --- Pay Slip Styling --- */
+/* --- Pay Slip Styling (Optimized for 4 per Letter Page) --- */
+.pay-slips-container {
+    background: #f8fafc;
+    padding: 20px;
+    min-height: 100vh;
+}
+
+.pay-slip {
+    background: white;
+    width: 105mm;
+    /* Fits 2 across on Letter */
+    height: 135mm;
+    /* Fits 2 down on Letter */
+    margin: 10px;
+    padding: 15px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    color: #1e293b;
+    font-family: 'Inter', sans-serif;
+    border: 1px solid #e2e8f0;
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+    /* For screen view */
+    vertical-align: top;
+}
+
+.pay-slip-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    border-bottom: 2px solid #334155;
+    padding-bottom: 8px;
+}
+
+.pay-slip-company h1 {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.1rem;
+    color: #1e3a8a;
+    text-transform: uppercase;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+.pay-slip-company p {
+    font-size: 0.65rem;
+    color: #64748b;
+    margin: 2px 0 0;
+}
+
+.pay-slip-title {
+    text-align: right;
+}
+
+.pay-slip-title h2 {
+    font-size: 1rem;
+    margin: 0;
+    color: #1e293b;
+}
+
+.pay-slip-title p {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin: 2px 0 0;
+}
+
+.pay-slip-employee-info {
+    display: grid;
+    grid-template-columns: 2fr 1.2fr;
+    grid-template-rows: auto auto;
+    gap: 8px;
+    background: #f1f5f9;
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+}
+
+.info-item label {
+    display: block;
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    color: #64748b;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.info-item span {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.pay-slip-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.grid-section h3 {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #1e3a8a;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 4px;
+    margin-bottom: 8px;
+}
+
+.grid-table td {
+    padding: 4px 0;
+    font-size: 0.75rem;
+    border-bottom: 1px dashed #e2e8f0;
+}
+
+.grid-table td:last-child {
+    text-align: right;
+    font-weight: 600;
+}
+
+.pay-slip-total {
+    background: #1e3a8a;
+    color: white;
+    padding: 12px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.total-label span:first-child {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    opacity: 0.8;
+}
+
+.total-label span:last-child {
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.total-amount .currency {
+    font-size: 0.8rem;
+    opacity: 0.8;
+}
+
+.total-amount .value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    font-family: 'Outfit', sans-serif;
+}
+
+.pay-slip-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+    font-size: 0.65rem;
+    color: #64748b;
+}
+
+.signature-line {
+    border-top: 1px solid #94a3b8;
+    width: 140px;
+    padding-top: 4px;
+    text-align: center;
+}
+
+@media print {
+    @page {
+        size: letter;
+        margin: 0.5cm;
+    }
+
+    body {
+        background: white !important;
+    }
+
+    .pay-slips-container {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: white !important;
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        grid-auto-rows: 135mm !important;
+        gap: 2mm !important;
+    }
+
+    .pay-slip {
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: 1px solid #eee !important;
+        /* Subtle border for cutting guide */
+        page-break-inside: avoid !important;
+    }
+
+    /* Force page break after every 4 slips */
+    .pay-slip:nth-child(4n) {
+        page-break-after: always !important;
+    }
+
+    .btn,
+    .sidebar,
+    .main-header,
+    .no-print {
+        display: none !important;
+    }
+}
