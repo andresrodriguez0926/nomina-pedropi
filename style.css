@@ -309,7 +309,7 @@ h3,
 
 .form-control {
     width: 100%;
-    background: rgba(0, 0, 0, 0.2);
+    background: #0a0a0c;
     border: 1px solid var(--border-color);
     padding: 12px;
     border-radius: var(--radius-md);
@@ -565,8 +565,8 @@ h3,
     width: 100%;
     max-height: 250px;
     overflow-y: auto;
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
+    background: #0a0a0c;
+    border: 1px solid var(--accent-color);
     border-radius: 8px;
     z-index: 1000;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
@@ -623,107 +623,7 @@ h3,
 }
 
 /* Print Styles */
-@media print {
-    @page {
-        margin: 0.5cm;
-        size: landscape;
-    }
 
-    * {
-        box-shadow: none !important;
-        text-shadow: none !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-    }
-
-    .sidebar,
-    .main-header,
-    .header-action button,
-    .nav-header,
-    .no-print,
-    .btn,
-    .hidden-print {
-        display: none !important;
-    }
-
-    /* Reset layout for print */
-    body,
-    html {
-        width: 100% !important;
-        height: auto !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        background: white !important;
-        color: black !important;
-        overflow: visible !important;
-        font-size: 11pt;
-    }
-
-    .app-container,
-    .main-content,
-    #content-area {
-        display: block !important;
-        position: static !important;
-        float: none !important;
-        width: 100% !important;
-        max-width: none !important;
-        min-width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        height: auto !important;
-        overflow: visible !important;
-    }
-
-    .card {
-        border: none !important;
-        padding: 0 !important;
-        background: transparent !important;
-        box-shadow: none !important;
-        width: 100% !important;
-    }
-
-    /* Ensure tables stretch */
-    .data-table {
-        width: 100% !important;
-        max-width: 100% !important;
-        border-collapse: collapse !important;
-        page-break-inside: auto;
-    }
-
-    .data-table th,
-    .data-table td {
-        padding: 6px 4px !important;
-        border-bottom: 1px solid #eee !important;
-        color: black !important;
-    }
-
-    .data-table tfoot td {
-        border-top: 2px solid #555 !important;
-        background: #f9f9f9 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-
-    .text-accent {
-        color: black !important;
-        font-weight: bold !important;
-        margin-top: 20px !important;
-        page-break-after: avoid;
-    }
-
-    .dept-report-section {
-        page-break-inside: auto;
-        margin-bottom: 40px !important;
-    }
-
-    .no-print {
-        display: none !important;
-    }
-
-    .card.mt-4 {
-        page-break-inside: avoid;
-    }
-}
 
 .stats-row {
     display: grid;
@@ -1093,43 +993,250 @@ body.role-editor .admin-only {
     text-align: center;
 }
 
+/* ==========================================================================
+   ULTIMATE PRINT STYLES - Ensures no clipping and proper multi-page flow
+   ========================================================================== */
 @media print {
+
+    /* Reset Page and Root */
     @page {
-        size: letter;
         margin: 0.5cm;
+        size: auto;
+        /* Allow browser to decide or use orientations set by JS */
     }
 
+    html,
     body {
+        height: auto !important;
+        min-height: auto !important;
+        overflow: visible !important;
+        background: white !important;
+        color: black !important;
+        font-size: 10pt;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* Hierarchy Reset - Kill all flex/absolute/fixed that breaks page flows */
+    .app-container,
+    .main-content,
+    #content-area,
+    .content-fade,
+    .print-area,
+    .card {
+        display: block !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: 100% !important;
+        /* Forces expansion */
+        overflow: visible !important;
+        position: static !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        background: white !important;
+        box-shadow: none !important;
+        float: none !important;
+    }
+
+    /* Hide Navigation Elements */
+    .sidebar,
+    .main-header,
+    .no-print,
+    .btn,
+    .multi-select-container,
+    #login-overlay {
+        display: none !important;
+    }
+
+    /* Table Fixes */
+    .data-table,
+    .journal-table,
+    .breakdown-detail-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        page-break-inside: auto !important;
+        background: white !important;
+        color: black !important;
+        margin-top: 10px !important;
+        border: 1px solid #333 !important;
+    }
+
+    .data-table tr,
+    .journal-table tr,
+    .breakdown-detail-table tr {
+        page-break-inside: avoid !important;
+        page-break-after: auto !important;
+    }
+
+    .data-table th,
+    .data-table td,
+    .journal-table th,
+    .journal-table td,
+    .breakdown-detail-table th,
+    .breakdown-detail-table td {
+        border: 1px solid #333 !important;
+        padding: 4px 2px !important;
+        color: black !important;
         background: white !important;
     }
 
+    /* Special rule for pay slips to coexist */
     .pay-slips-container {
-        padding: 0 !important;
-        margin: 0 !important;
-        background: white !important;
         display: grid !important;
         grid-template-columns: 1fr 1fr !important;
         grid-auto-rows: 135mm !important;
         gap: 2mm !important;
+        page-break-before: auto !important;
     }
 
     .pay-slip {
-        margin: 0 !important;
-        box-shadow: none !important;
-        border: 1px solid #eee !important;
-        /* Subtle border for cutting guide */
         page-break-inside: avoid !important;
+        border: 1px solid #eee !important;
     }
 
-    /* Force page break after every 4 slips */
     .pay-slip:nth-child(4n) {
         page-break-after: always !important;
     }
+}
 
-    .btn,
+/** 
+ * MASTER GLOBAL PRINT SYSTEM
+ * These rules ensure that all reports, pay slips, and printable areas
+ * expand correctly horizontally and vertically without clipping.
+ */
+@media print {
+
+    /* Reset and basics */
+    @page {
+        margin: 0.8cm !important;
+        size: auto;
+    }
+
+    /* Force landscape for specific wide reports */
+    .landscape-print {
+        page-break-before: always !important;
+    }
+
+    /* Modern bit: If any element has .landscape-print, suggest landscape to printer */
+    @page {
+        size: auto;
+        /* Default */
+    }
+
+    /* Target specific report containers to ensure they don't clip horizontally */
+    .print-area,
+    .card,
+    .data-table {
+        overflow: visible !important;
+    }
+
+    html,
+    body {
+        height: auto !important;
+        overflow: visible !important;
+        background: #fff !important;
+        color: #000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        font-family: Arial, sans-serif !important;
+    }
+
+
+    /* Force all layout containers to expand and not clip */
+    .app-container,
+    .main-content,
+    #content-area,
+    .content-fade,
+    .print-area,
+    .card,
+    main {
+        position: static !important;
+        display: block !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        transform: none !important;
+    }
+
+    /* Hide non-printable elements */
     .sidebar,
     .main-header,
-    .no-print {
+    .no-print,
+    .btn:not(.print-only),
+    .loading-spinner,
+    .modal-backdrop,
+    .status-box.no-print,
+    .header-action .no-print {
         display: none !important;
+    }
+
+    /* Table Improvements for Print */
+    .data-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        page-break-inside: auto !important;
+        margin-bottom: 20px !important;
+        table-layout: auto !important;
+    }
+
+    .data-table thead {
+        display: table-header-group !important;
+    }
+
+    .data-table tr {
+        page-break-inside: avoid !important;
+        page-break-after: auto !important;
+    }
+
+    .data-table th,
+    .data-table td {
+        border: 1px solid #333 !important;
+        padding: 4px 6px !important;
+        color: #000 !important;
+    }
+
+    /* Specific overrides for very tight reports (Cash Breakdown) */
+    .breakdown-detail-table {
+        font-size: 7.2pt !important;
+        table-layout: fixed !important;
+    }
+
+    .breakdown-detail-table th,
+    .breakdown-detail-table td {
+        padding: 2px 1px !important;
+    }
+
+    /* Pay Slips Paging */
+    .pay-slips-container {
+        display: block !important;
+        height: auto !important;
+    }
+
+    .pay-slip {
+        page-break-inside: avoid !important;
+        margin-bottom: 1.5cm !important;
+        border: 1.5px solid #000 !important;
+        padding: 10px !important;
+    }
+
+    /* Utilities */
+    .text-right {
+        text-align: right !important;
+    }
+
+    .text-center {
+        text-align: center !important;
+    }
+
+    .td-numeric {
+        text-align: right !important;
+        font-family: monospace !important;
     }
 }
