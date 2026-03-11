@@ -2600,23 +2600,27 @@ const renderDailyRegistration = (container) => {
     const regEmpInput = document.getElementById('reg-emp');
     if (regEmpInput) {
         // Validate that typed value matches a datalist option on blur
+        // Use a delay: when clicking a datalist option the browser fires blur BEFORE
+        // updating the input value, so we wait 200ms for the value to be set.
         regEmpInput.onblur = () => {
-            const val = regEmpInput.value.trim();
-            if (!val) return; // empty is OK, it will be caught on save
-            const datalist = document.getElementById('list-emp-search');
-            const options = datalist ? Array.from(datalist.options).map(o => o.value) : [];
-            const isValid = options.includes(val);
-            if (!isValid) {
-                regEmpInput.style.borderColor = 'var(--danger)';
-                regEmpInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.3)';
-                regEmpInput.title = 'Debe seleccionar un empleado válido de la lista';
-                // Refocus so user cannot move to another field
-                setTimeout(() => regEmpInput.focus(), 50);
-            } else {
-                regEmpInput.style.borderColor = '';
-                regEmpInput.style.boxShadow = '';
-                regEmpInput.title = '';
-            }
+            setTimeout(() => {
+                const val = regEmpInput.value.trim();
+                if (!val) return; // empty is OK, it will be caught on save
+                const datalist = document.getElementById('list-emp-search');
+                const options = datalist ? Array.from(datalist.options).map(o => o.value) : [];
+                const isValid = options.includes(val);
+                if (!isValid) {
+                    regEmpInput.style.borderColor = 'var(--danger)';
+                    regEmpInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.3)';
+                    regEmpInput.title = 'Debe seleccionar un empleado válido de la lista';
+                    // Refocus so user cannot move to another field
+                    setTimeout(() => regEmpInput.focus(), 50);
+                } else {
+                    regEmpInput.style.borderColor = '';
+                    regEmpInput.style.boxShadow = '';
+                    regEmpInput.title = '';
+                }
+            }, 200);
         };
 
         regEmpInput.oninput = () => {
