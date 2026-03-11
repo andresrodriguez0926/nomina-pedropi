@@ -2370,7 +2370,7 @@ const renderDailyRegistration = (container) => {
                     <label>Empleado Móvil</label>
                     <input list="list-emp-search" id="reg-emp" class="form-control" style="font-weight: 500;" placeholder="Escriba nombre o Nº de registro..." autocomplete="off">
                     <datalist id="list-emp-search">
-                        ${window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="[${e.regNumber}] ${e.firstName} ${e.lastName}"></option>`).join('')}
+                        ${window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="${`[${e.regNumber}] ${(e.firstName||'')} ${(e.lastName||'')}`.replace(/\\s+/g, ' ').trim()}"></option>`).join('')}
                     </datalist>
                 </div>
             </div>
@@ -2516,7 +2516,7 @@ const renderDailyRegistration = (container) => {
         // 1. Strict Validation: Input must exactly match a generated option
         const validOptions = window.getVisibleEmployees()
             .filter(e => e.type === 'mobile' && e.active !== false)
-            .map(e => `[${e.regNumber}] ${e.firstName} ${e.lastName}`);
+            .map(e => `[${e.regNumber}] ${(e.firstName||'')} ${(e.lastName||'')}`.replace(/\\s+/g, ' ').trim());
         if (!inputVal || !validOptions.includes(inputVal)) {
             if (empInputEl) {
                 empInputEl.style.borderColor = 'var(--danger)';
@@ -2610,7 +2610,7 @@ const renderDailyRegistration = (container) => {
         const datalist = document.getElementById('list-emp-search');
         if (datalist) {
             datalist.innerHTML = filteredEmps.map(e =>
-                `<option value="[${e.regNumber}] ${e.firstName} ${e.lastName}"></option>`
+                `<option value="${`[${e.regNumber}] ${(e.firstName||'')} ${(e.lastName||'')}`.replace(/\\s+/g, ' ').trim()}"></option>`
             ).join('');
         }
         const regEmpInput = document.getElementById('reg-emp');
@@ -2634,7 +2634,7 @@ const renderDailyRegistration = (container) => {
             }
             const options = window.getVisibleEmployees()
                 .filter(e => e.type === 'mobile' && e.active !== false)
-                .map(e => `[${e.regNumber}] ${e.firstName} ${e.lastName}`);
+                .map(e => `[${e.regNumber}] ${(e.firstName||'')} ${(e.lastName||'')}`.replace(/\\s+/g, ' ').trim());
             const isValid = options.includes(val);
             if (isValid) {
                 regEmpInput.style.borderColor = 'var(--success, #22c55e)';
@@ -2672,7 +2672,7 @@ const renderDailyRegistration = (container) => {
             if (!val) return;
             const options = window.getVisibleEmployees()
                 .filter(e => e.type === 'mobile' && e.active !== false)
-                .map(e => `[${e.regNumber}] ${e.firstName} ${e.lastName}`);
+                .map(e => `[${e.regNumber}] ${(e.firstName||'')} ${(e.lastName||'')}`.replace(/\\s+/g, ' ').trim());
             if (!options.includes(val)) {
                 regEmpInput.style.borderColor = 'var(--danger)';
                 regEmpInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.3)';
