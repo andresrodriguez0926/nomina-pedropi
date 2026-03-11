@@ -2513,9 +2513,10 @@ const renderDailyRegistration = (container) => {
         const inputVal = empInputEl ? empInputEl.value.trim() : '';
         const regDate = document.getElementById('reg-date').value;
 
-        // 1. Strict Validation: Input must exactly match a datalist option
-        const datalist = document.getElementById('list-emp-search');
-        const validOptions = datalist ? Array.from(datalist.options).map(o => o.value) : [];
+        // 1. Strict Validation: Input must exactly match a generated option
+        const validOptions = window.getVisibleEmployees()
+            .filter(e => e.type === 'mobile' && e.active !== false)
+            .map(e => `[${e.regNumber}] ${e.firstName} ${e.lastName}`);
         if (!inputVal || !validOptions.includes(inputVal)) {
             if (empInputEl) {
                 empInputEl.style.borderColor = 'var(--danger)';
@@ -2631,8 +2632,9 @@ const renderDailyRegistration = (container) => {
                 regEmpInput.title = '';
                 return;
             }
-            const datalist = document.getElementById('list-emp-search');
-            const options = datalist ? Array.from(datalist.options).map(o => o.value) : [];
+            const options = window.getVisibleEmployees()
+                .filter(e => e.type === 'mobile' && e.active !== false)
+                .map(e => `[${e.regNumber}] ${e.firstName} ${e.lastName}`);
             const isValid = options.includes(val);
             if (isValid) {
                 regEmpInput.style.borderColor = 'var(--success, #22c55e)';
@@ -2668,8 +2670,9 @@ const renderDailyRegistration = (container) => {
         regEmpInput.onblur = () => {
             const val = regEmpInput.value.trim();
             if (!val) return;
-            const datalist = document.getElementById('list-emp-search');
-            const options = datalist ? Array.from(datalist.options).map(o => o.value) : [];
+            const options = window.getVisibleEmployees()
+                .filter(e => e.type === 'mobile' && e.active !== false)
+                .map(e => `[${e.regNumber}] ${e.firstName} ${e.lastName}`);
             if (!options.includes(val)) {
                 regEmpInput.style.borderColor = 'var(--danger)';
                 regEmpInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.3)';
