@@ -2534,12 +2534,22 @@ const renderDailyRegistration = (container) => {
             }
         }
 
-        // Validation: Hire Date
+        // Validation: Hire Date & Employee Existence
         const employee = state.employees.find(e => {
             if (empReg) return String(e.regNumber) === String(empReg);
             return `${e.firstName} ${e.lastName}` === empName;
         });
-        if (employee && employee.hireDate && regDate < employee.hireDate) {
+        
+        if (!employee) {
+            if (empInputEl) {
+                empInputEl.style.borderColor = 'var(--danger)';
+                empInputEl.focus();
+            }
+            alert(`El empleado "${inputVal}" no existe. Debe seleccionar un empleado válido de la lista.`);
+            return;
+        }
+
+        if (employee.hireDate && regDate < employee.hireDate) {
             alert(`No se puede registrar labor antes de la fecha de ingreso del empleado(${employee.hireDate})`);
             return;
         }
