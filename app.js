@@ -2509,8 +2509,22 @@ const renderDailyRegistration = (container) => {
 
     const saveDailyBtn = document.getElementById('save-daily');
     if (saveDailyBtn) saveDailyBtn.onclick = () => {
-        const inputVal = document.getElementById('reg-emp').value;
+        const empInputEl = document.getElementById('reg-emp');
+        const inputVal = empInputEl ? empInputEl.value.trim() : '';
         const regDate = document.getElementById('reg-date').value;
+
+        // Validate employee is from the datalist
+        const datalist = document.getElementById('list-emp-search');
+        const validOptions = datalist ? Array.from(datalist.options).map(o => o.value) : [];
+        if (!inputVal || !validOptions.includes(inputVal)) {
+            if (empInputEl) {
+                empInputEl.style.borderColor = 'var(--danger)';
+                empInputEl.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.3)';
+                empInputEl.focus();
+            }
+            alert('Debe seleccionar un empleado válido de la lista desplegable.');
+            return;
+        }
 
         // Extract regNumber from "[123] Name" format if present
         let empReg = null;
@@ -2599,31 +2613,29 @@ const renderDailyRegistration = (container) => {
 
     const regEmpInput = document.getElementById('reg-emp');
     if (regEmpInput) {
-        // Track whether the current value was confirmed via datalist selection
-        regEmpInput._empIsValid = false;
-
-        // oninput fires while the user types: reset the valid flag and clear error
-        regEmpInput.oninput = () => {
-            regEmpInput._empIsValid = false;
-            regEmpInput.style.borderColor = '';
-            regEmpInput.style.boxShadow = '';
-            regEmpInput.title = '';
-        };
-
-        // onchange fires AFTER the datalist option is applied to the input value
-        regEmpInput.onchange = () => {
+        const checkEmpValidity = () => {
             const val = regEmpInput.value.trim();
-            const datalist = document.getElementById('list-emp-search');
-            const options = datalist ? Array.from(datalist.options).map(o => o.value) : [];
-            regEmpInput._empIsValid = options.includes(val);
-
-            if (regEmpInput._empIsValid) {
+            if (!val) {
+                // Empty: clear any error, no validation needed until save
                 regEmpInput.style.borderColor = '';
                 regEmpInput.style.boxShadow = '';
                 regEmpInput.title = '';
+                return;
+            }
+            const datalist = document.getElementById('list-emp-search');
+            const options = datalist ? Array.from(datalist.options).map(o => o.value) : [];
+            const isValid = options.includes(val);
+            if (isValid) {
+                regEmpInput.style.borderColor = 'var(--success, #22c55e)';
+                regEmpInput.style.boxShadow = '';
+                regEmpInput.title = '';
+            } else {
+                regEmpInput.style.borderColor = 'var(--danger)';
+                regEmpInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.3)';
+                regEmpInput.title = 'Seleccione un empleado válido de la lista';
             }
 
-            // Also filter the log table below
+            // Filter the log table below
             let empFilter = val;
             if (val.includes('[') && val.includes(']')) {
                 empFilter = val.split('] ')[1] || val;
@@ -2639,15 +2651,19 @@ const renderDailyRegistration = (container) => {
             });
         };
 
-        // onblur: only block navigation when there is text but no valid selection
+        // Check on every keystroke AND when datalist selection completes
+        regEmpInput.oninput = checkEmpValidity;
+        regEmpInput.onchange = checkEmpValidity;
+
+        // On blur: only show error (no forced focus — save button is the real gate)
         regEmpInput.onblur = () => {
             const val = regEmpInput.value.trim();
-            if (!val) return; // empty field is fine, save will catch it
-            if (!regEmpInput._empIsValid) {
+            if (!val) return;
+            const datalist = document.getElementById('list-emp-search');
+            const options = datalist ? Array.from(datalist.options).map(o => o.value) : [];
+            if (!options.includes(val)) {
                 regEmpInput.style.borderColor = 'var(--danger)';
                 regEmpInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.3)';
-                regEmpInput.title = 'Debe seleccionar un empleado válido de la lista';
-                setTimeout(() => regEmpInput.focus(), 50);
             }
         };
     }
