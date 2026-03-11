@@ -2513,16 +2513,13 @@ const renderDailyRegistration = (container) => {
         const inputVal = empInputEl ? empInputEl.value.trim() : '';
         const regDate = document.getElementById('reg-date').value;
 
-        // Validate employee is from the datalist
-        const datalist = document.getElementById('list-emp-search');
-        const validOptions = datalist ? Array.from(datalist.options).map(o => o.value) : [];
-        if (!inputVal || !validOptions.includes(inputVal)) {
+        // Basic empty check — real validation is done by state.employees lookup below
+        if (!inputVal) {
             if (empInputEl) {
                 empInputEl.style.borderColor = 'var(--danger)';
-                empInputEl.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.3)';
                 empInputEl.focus();
             }
-            alert('Debe seleccionar un empleado válido de la lista desplegable.');
+            alert('Debe seleccionar un empleado de la lista.');
             return;
         }
 
