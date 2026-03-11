@@ -1,4 +1,4 @@
-﻿/**
+/**
          * Payroll App Core Engine
          * Handles routing, state, and UI rendering
          */
@@ -120,16 +120,19 @@ window.assignSequentialNumbers = () => {
     modules.forEach(m => {
         if (!state[m.key]) return;
         let max = 0;
+        let seenNums = new Set();
         state[m.key].forEach(item => {
             const num = parseInt(item[m.numKey]);
             if (!isNaN(num) && num > max) max = num;
+            if (!isNaN(num)) seenNums.add(num);
         });
 
         state[m.key].forEach(item => {
-            if (!item[m.numKey]) {
+            if (!item[m.numKey] || seenNums.has(item[m.numKey])) {
                 max++;
                 item[m.numKey] = max;
             }
+            seenNums.add(item[m.numKey]);
             if (!item.createdBy) {
                 item.createdBy = m.key === 'payrollHistory' ? 'Sistema (Cierre)' : 'Sistema';
             }
@@ -472,17 +475,27 @@ const renderDashboard = (container) => {
         const rName = window.normalizeName(fullName || '');
         const rId = String(id || '').trim();
 
+        // 1. Try search by Registration Number if the fullName contains "[Reg]" or just search all
+        let regPart = null;
+        if (fullName && fullName.includes('[') && fullName.includes(']')) {
+            const match = fullName.match(/\[(\d+)\]/);
+            if (match) regPart = match[1];
+        }
+
         return state.employees.find(e => {
             const eId = String(e.idNumber || '').trim();
+            const eReg = String(e.regNumber || '').trim();
             const eFullName = window.normalizeName(`${e.firstName} ${e.lastName}`);
 
-            if (rId !== '' && rId === eId) {
-                // Verified ID match
-                if (rName === '' || eFullName === '') return true;
-                // Similarity check to prevent ID collisions
-                return rName.includes(eFullName) || eFullName.includes(rName) || rName.length < 3;
-            }
-            return rName !== '' && (rName === eFullName || rName.includes(eFullName) || eFullName.includes(rName));
+            // Priority 1: Exact Registration Number match
+            if (regPart && eReg === regPart) return true;
+            if (rId !== '' && rId === eReg) return true;
+
+            // Priority 2: Exact Cédula/Passport match
+            if (rId !== '' && rId === eId) return true;
+
+            // Priority 3: EXACT Name match ONLY
+            return rName !== '' && rName === eFullName;
         });
     };
 
@@ -1379,16 +1392,16 @@ const renderEmployees = (container) => {
                                 <td><small>${emp.createdBy || 'Sistema'}</small></td>
                             <td>
                                 <div class="action-group">
-                                    <button class="btn-icon" onclick="quickAddIncentive('${emp.firstName} ${emp.lastName}')" title="Aplicar Incentivo">
+                                    <button class="btn-icon" onclick="quickAddIncentive('[${e.regNumber}] ${e.firstName} ${e.lastName}')" title="Aplicar Incentivo">
                                         <i class="fas fa-gift"></i>
                                     </button>
-                                    <button class="btn-icon" onclick="quickAddOvertime('${emp.firstName} ${emp.lastName}')" title="Horas Extras">
+                                    <button class="btn-icon" onclick="quickAddOvertime('[${e.regNumber}] ${e.firstName} ${e.lastName}')" title="Horas Extras">
                                         <i class="fas fa-clock"></i>
                                     </button>
-                                    <button class="btn-icon" onclick="quickAddDiscount('${emp.firstName} ${emp.lastName}')" title="Registrar Descuento">
+                                    <button class="btn-icon" onclick="quickAddDiscount('[${e.regNumber}] ${e.firstName} ${e.lastName}')" title="Registrar Descuento">
                                         <i class="fas fa-money-bill-wave-alt"></i>
                                     </button>
-                                    <button class="btn-icon" onclick="quickAddChristmasSalary('${emp.firstName} ${emp.lastName}')" title="Salario Navidad">
+                                    <button class="btn-icon" onclick="quickAddChristmasSalary('[${e.regNumber}] ${e.firstName} ${e.lastName}')" title="Salario Navidad">
                                         <i class="fas fa-tree"></i>
                                     </button>
                                     <button class="btn-icon edit" onclick="editEmployee(${index})" title="Editar">
@@ -1860,9 +1873,12 @@ const renderDiscounts = (container) => {
                 <input type="text" id="disc-reason" class="form-control" placeholder="Ej: Préstamo personal">
             </div>
         `, () => {
+            const empName = document.getElementById('disc-emp').value;
+            const employee = state.employees.find(e => `${e.firstName} ${e.lastName}` === empName);
             const d = {
                 id: Date.now() + Math.random().toString(36).substr(2, 9),
-                employeeName: document.getElementById('disc-emp').value,
+                employeeName: empName,
+                empReg: employee ? employee.regNumber : null,
                 totalAmount: document.getElementById('disc-total').value,
                 installment: document.getElementById('disc-installment').value,
                 remainingBalance: document.getElementById('disc-total').value,
@@ -2052,15 +2068,18 @@ const renderOvertime = (container) => {
             const hourlyRate = dailyRate / 8;
             const extraPay = hourlyRate * hours * factor;
 
+            const employee = state.employees.find(e => `${e.firstName} ${e.lastName}` === empName);
             state.overtime.push({
                 id: Date.now().toString(36) + Math.random().toString(36).substring(2),
                 otNumber: state.overtime.length > 0 ? Math.max(0, ...state.overtime.map(x => parseInt(x.otNumber) || 0)) + 1 : 1,
                 date,
                 employeeName: empName,
+                empReg: employee ? employee.regNumber : null,
                 hours,
                 factor,
                 amount: extraPay.toFixed(2),
-                operation: state.settings.payrollAccounts?.overtime || ''
+                operation: state.settings.payrollAccounts?.overtime || '',
+                createdBy: window.globalState.currentUser?.name || 'Desconocido'
             });
 
             saveState();
@@ -2173,9 +2192,12 @@ const renderIncentives = (container) => {
                 <input type="text" id="inc-reason" class="form-control" placeholder="Ej: Bono por meta">
             </div>
         `, () => {
+            const empName = document.getElementById('inc-emp').value;
+            const employee = state.employees.find(e => `${e.firstName} ${e.lastName}` === empName);
             const inc = {
                 date: document.getElementById('inc-date').value,
-                employeeName: document.getElementById('inc-emp').value,
+                employeeName: empName,
+                empReg: employee ? employee.regNumber : null,
                 amount: document.getElementById('inc-amount').value,
                 reason: document.getElementById('inc-reason').value,
                 operation: state.settings.payrollAccounts?.incentives || '',
@@ -2349,7 +2371,10 @@ const renderDailyRegistration = (container) => {
                 </div>
                 <div class="form-group">
                     <label>Empleado Móvil</label>
-                    <input list="list-emp" id="reg-emp" class="form-control" placeholder="Buscar empleado...">
+                    <select id="reg-emp" class="form-control" style="font-weight: 500;">
+                        <option value="">Seleccionar Empleado...</option>
+                        ${window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="[${e.regNumber}] ${e.firstName} ${e.lastName}">[${e.regNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
+                    </select>
                 </div>
             </div>
             <div class="form-row">
@@ -2442,6 +2467,7 @@ const renderDailyRegistration = (container) => {
                         <th style="width: 50px">Nº</th>
                         <th>Fecha</th>
                         <th>Empleado</th>
+                        <th>Reg.</th>
                         <th>Operación</th>
                         <th>Monto</th>
                         <th>TSS</th>
@@ -2455,6 +2481,7 @@ const renderDailyRegistration = (container) => {
                             <td>LOG-${log.logNumber || (index + 1)}</td>
                             <td>${log.date}</td>
                             <td>${log.employee}</td>
+                            <td style="font-weight: 500; font-family: monospace;">${log.empReg || '<span class="text-gray">N/A</span>'}</td>
                             <td>${log.op}</td>
                             <td>$${parseFloat(log.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td>${log.applyTSS === 'si' ? '<span class="status-badge fixed">Sí</span>' : '<span class="status-badge mobile">No</span>'}</td>
@@ -2474,9 +2501,7 @@ const renderDailyRegistration = (container) => {
             </table>
         </div>
 
-        <datalist id="list-emp">
-            ${window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}"></option>`).join('')}
-        </datalist>
+
         <datalist id="list-op">
             ${state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => `<option value="${o.name}"></option>`).join('')}
         </datalist>
@@ -2487,11 +2512,25 @@ const renderDailyRegistration = (container) => {
 
     const saveDailyBtn = document.getElementById('save-daily');
     if (saveDailyBtn) saveDailyBtn.onclick = () => {
-        const empName = document.getElementById('reg-emp').value;
+        const inputVal = document.getElementById('reg-emp').value;
         const regDate = document.getElementById('reg-date').value;
 
+        // Extract regNumber from "[123] Name" format if present
+        let empReg = null;
+        let empName = inputVal;
+        if (inputVal.includes('[') && inputVal.includes(']')) {
+            const match = inputVal.match(/\[(\d+)\]/);
+            if (match) {
+                empReg = match[1];
+                empName = inputVal.split('] ')[1] || inputVal;
+            }
+        }
+
         // Validation: Hire Date
-        const employee = state.employees.find(e => `${e.firstName} ${e.lastName}` === empName);
+        const employee = state.employees.find(e => {
+            if (empReg) return String(e.regNumber) === String(empReg);
+            return `${e.firstName} ${e.lastName}` === empName;
+        });
         if (employee && employee.hireDate && regDate < employee.hireDate) {
             alert(`No se puede registrar labor antes de la fecha de ingreso del empleado(${employee.hireDate})`);
             return;
@@ -2509,6 +2548,7 @@ const renderDailyRegistration = (container) => {
             id: Date.now().toString(36) + Math.random().toString(36).substring(2),
             date: regDate,
             employee: empName,
+            empReg: employee ? employee.regNumber : null,
             op: document.getElementById('reg-op').value,
             act: document.getElementById('reg-act').value,
             amount: document.getElementById('reg-amount').value,
@@ -2520,7 +2560,12 @@ const renderDailyRegistration = (container) => {
             if (!activePayroll.dailyLogs) activePayroll.dailyLogs = [];
 
             // Check for duplicates
-            const isDuplicate = activePayroll.dailyLogs.find(l => l.employee === log.employee && l.date === log.date);
+            const isDuplicate = activePayroll.dailyLogs.find(l => {
+                if (log.empReg && l.empReg) {
+                    return String(l.empReg) === String(log.empReg) && l.date === log.date;
+                }
+                return l.employee === log.employee && l.date === log.date;
+            });
             if (isDuplicate) {
                 alert(`Atención: El empleado ${log.employee} ya tiene un salario digitado para el día ${log.date}.`);
                 return;
@@ -2540,10 +2585,10 @@ const renderDailyRegistration = (container) => {
         const filteredEmps = window.getVisibleEmployees().filter(e =>
             e.type === 'mobile' && e.active !== false && (selectedDept === 'all' || e.department === selectedDept)
         );
-        const listEmp = document.getElementById('list-emp');
+        const listEmp = document.getElementById('reg-emp');
         if (listEmp) {
-            listEmp.innerHTML = filteredEmps.map(e =>
-                `<option value="${e.firstName} ${e.lastName}"></option>`
+            listEmp.innerHTML = '<option value="">Seleccionar Empleado...</option>' + filteredEmps.map(e =>
+                `<option value="[${e.regNumber}] ${e.firstName} ${e.lastName}">[${e.regNumber}] ${e.firstName} ${e.lastName}</option>`
             ).join('');
         }
         const regEmpInput = document.getElementById('reg-emp');
@@ -2556,13 +2601,19 @@ const renderDailyRegistration = (container) => {
 
     const regEmpInput = document.getElementById('reg-emp');
     if (regEmpInput) {
-        regEmpInput.oninput = () => {
-            const filter = regEmpInput.value.toLowerCase().trim();
+        regEmpInput.onchange = () => {
+            const val = regEmpInput.value;
+            let empFilter = val;
+            if (val.includes('[') && val.includes(']')) {
+                empFilter = val.split('] ')[1] || val;
+            }
+            const filter = empFilter.toLowerCase().trim();
             const rows = document.querySelectorAll('#daily-logs-tbody tr');
             rows.forEach(row => {
                 if (row.cells.length > 2) {
                     const empName = row.cells[2].textContent.toLowerCase();
-                    row.style.display = empName.includes(filter) ? '' : 'none';
+                    const empReg = row.cells[3].textContent.toLowerCase();
+                    row.style.display = (empName.includes(filter) || empReg.includes(filter)) ? '' : 'none';
                 }
             });
         };
@@ -2687,7 +2738,7 @@ window.renderBulkTable = () => {
         }
 
         return `
-            <tr data-emp="${fullName}" class="${hasLog ? 'duplicate-row' : ''}">
+            <tr data-emp="${fullName}" data-reg="${e.regNumber || ''}" class="${hasLog ? 'duplicate-row' : ''}">
                         <td style="font-weight: 500;">
                             ${fullName}
                             ${hasLog ? '<br><small class="text-danger"><i class="fas fa-exclamation-triangle"></i> Ya tiene registro hoy</small>' : ''}
@@ -2759,6 +2810,7 @@ window.saveBulkLogs = () => {
 
     rows.forEach(row => {
         const emp = row.getAttribute('data-emp');
+        const empReg = row.getAttribute('data-reg');
         if (!emp) return; // Skip placeholder
 
         const op = row.querySelector('.bulk-op').value;
@@ -2768,7 +2820,7 @@ window.saveBulkLogs = () => {
 
         if (emp && amt) {
             // Final check for duplicates in state
-            const exists = (activePayroll.dailyLogs || []).some(l => l.employee === emp && l.date === date);
+            const exists = (activePayroll.dailyLogs || []).some(l => (l.empReg && empReg ? l.empReg == empReg : l.employee === emp) && l.date === date);
             if (exists) {
                 duplicates++;
             } else {
@@ -2776,6 +2828,7 @@ window.saveBulkLogs = () => {
                     id: Date.now().toString(36) + Math.random().toString(36).substring(2),
                     date,
                     employee: emp,
+                    empReg: empReg,
                     op,
                     act,
                     amount: amt,
@@ -2957,9 +3010,10 @@ const renderClosing = (container) => {
                         snapshot.results.forEach(res => {
                             if (res.disc > 0) {
                                 const empLoans = state.discounts.filter(d => {
+                                    if (d.empReg && res.regNumber) return String(d.empReg) === String(res.regNumber);
                                     const dName = normalizeName(d.employeeName);
                                     const resName = normalizeName(res.fullName);
-                                    return dName.includes(resName) || resName.includes(dName);
+                                    return dName === resName;
                                 });
                                 let remainingToDeduct = res.disc;
                                 res.loanDeductions = []; // Track which loans were hit
@@ -3300,7 +3354,13 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
         if (!filterOps.includes(log.op)) return;
 
         // Filter by Department and Access
-        const empAccess = state.employees.find(e => `${e.firstName} ${e.lastName}` === log.employee);
+        const logName = normalizeName(log.employee);
+        const empAccess = state.employees.find(e => {
+            if (log.empReg && e.regNumber) {
+                return String(log.empReg) === String(e.regNumber);
+            }
+            return normalizeName(`${e.firstName} ${e.lastName}`) === logName;
+        });
         if (empAccess && !window.hasDepartmentAccess(empAccess.department)) return;
 
         if (filterDept && filterDept !== 'all') {
@@ -3403,6 +3463,7 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                                     <th>Empleado</th>
                                     <th>Actividad</th>
                                     ${dateHeaders.map(h => `<th class="text-center" style="width: 40px">${h.day}<br><small style="font-size: 0.6rem">${h.date.split('-')[2]}</small></th>`).join('')}
+                                    <th class="text-center" style="width: 40px">Días</th>
                                     <th class="text-right" style="font-weight: bold">Suma</th>
                                 </tr>
                             </thead>
@@ -3414,13 +3475,18 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                 let rowTotal = 0;
                 html += `<tr><td>${emp}</td><td>${act}</td>`;
 
+                let daysWorked = 0;
+                let daysHtml = '';
                 dates.forEach(d => {
                     const val = grouped[op][emp][act][d] || 0;
+                    if (val > 0) daysWorked++;
                     rowTotal += val;
                     opDailyTotals[d] += val;
                     grandTotalByDate[d] += val;
-                    html += `<td class="text-center">${val > 0 ? val.toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`;
+                    daysHtml += `<td class="text-center">${val > 0 ? val.toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`;
                 });
+
+                html += `${daysHtml}<td class="text-center" style="font-weight: bold">${daysWorked}</td>`;
 
                 opTotal += rowTotal;
                 grandTotal += rowTotal;
@@ -3434,6 +3500,7 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                                 <tr>
                                     <td colspan="2" class="text-right">SUBTOTAL ${op} :</td>
                                     ${dates.map(d => `<td class="text-center">${opDailyTotals[d] > 0 ? opDailyTotals[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
+                                    <td></td>
                                     <td class="text-right">$${opTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                 </tr>
                             </tfoot>
@@ -3458,6 +3525,7 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                                 <tr style="font-weight: bold; background: rgba(0,0,0,0.02);">
                                     <td colspan="2" class="text-right">TOTAL ACUMULADO :</td>
                                     ${dates.map(d => `<td class="text-center">${grandTotalByDate[d] > 0 ? grandTotalByDate[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
+                                    <td></td>
                                     <td class="text-right" style="font-size: 1.1rem; color: var(--primary);">$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                 </tr>
                              </tbody>
@@ -3525,9 +3593,10 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
     logs.forEach(log => {
         const logName = normalizeName(log.employee);
         const emp = state.employees.find(e => {
-            const eFirst = normalizeName(e.firstName);
-            const eLast = normalizeName(e.lastName);
-            return logName.includes(eFirst) && logName.includes(eLast);
+            if (log.empReg && e.regNumber) {
+                return String(log.empReg) === String(e.regNumber);
+            }
+            return normalizeName(`${e.firstName} ${e.lastName}`) === logName;
         });
         const dept = emp ? (emp.department || 'Sin clasificar') : 'Sin clasificar';
 
@@ -3598,6 +3667,7 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
                                 <tr>
                                     <th>Empleado</th>
                                     ${dateHeaders.map(h => `<th class="text-center" style="width: 40px">${h.day}<br><small style="font-size: 0.6rem">${h.date.split('-')[2]}</small></th>`).join('')}
+                                    <th class="text-center" style="width: 40px">Días</th>
                                     <th class="text-right" style="font-weight: bold">Suma</th>
                                 </tr>
                             </thead>
@@ -3608,13 +3678,18 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
             let rowTotal = 0;
             html += `<tr><td>${empName}</td>`;
 
+            let daysWorked = 0;
+            let daysHtml = '';
             dates.forEach(d => {
                 const val = grouped[dept][empName][d] || 0;
+                if (val > 0) daysWorked++;
                 rowTotal += val;
                 deptDailyTotals[d] += val;
                 grandTotalByDate[d] += val;
-                html += `<td class="text-center">${val > 0 ? val.toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`;
+                daysHtml += `<td class="text-center">${val > 0 ? val.toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`;
             });
+
+            html += `${daysHtml}<td class="text-center" style="font-weight: bold">${daysWorked}</td>`;
 
             deptTotal += rowTotal;
             grandTotal += rowTotal;
@@ -3627,6 +3702,7 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
                                 <tr>
                                     <td class="text-right">SUBTOTAL ${dept} :</td>
                                     ${dates.map(d => `<td class="text-center">${deptDailyTotals[d] > 0 ? deptDailyTotals[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
+                                    <td></td>
                                     <td class="text-right">$${deptTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                 </tr>
                             </tfoot>
@@ -3651,6 +3727,7 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
                                 <tr style="font-weight: bold; background: rgba(0,0,0,0.02);">
                                     <td class="text-right">TOTAL ACUMULADO :</td>
                                     ${dates.map(d => `<td class="text-center">${grandTotalByDate[d] > 0 ? grandTotalByDate[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
+                                    <td></td>
                                     <td class="text-right" style="font-size: 1.1rem; color: var(--primary);">$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                 </tr>
                              </tbody>
@@ -3694,8 +3771,19 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
     const logs = activePayroll?.dailyLogs || [];
     const empLogs = logs.filter(l => {
-        const logName = normalizeMatch(l.employee);
-        return logName.includes(empFirst) && logName.includes(empLast);
+        const logName = window.normalizeName(l.employee);
+        const nameMatches = (logName === empFullName);
+        const nameSimilar = logName.includes(empFullName) || empFullName.includes(logName);
+
+        if (l.empReg && emp.regNumber) {
+            if (String(l.empReg) === String(emp.regNumber)) {
+                // Prevent recycled ID vulnerability: don't match if name is completely alien
+                if (!nameSimilar && logName !== '') return false;
+                return true;
+            }
+            return false;
+        }
+        return nameMatches;
     });
 
     const eType = (emp.type || '').toLowerCase();
@@ -3782,18 +3870,21 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
     }
 
     inc = (state.incentives || []).filter(i => {
+        if (i.empReg && emp.regNumber) return String(i.empReg) === String(emp.regNumber) && filterByPeriod(i);
         const iName = normalizeMatch(i.employeeName);
-        return iName.includes(empFirst) && iName.includes(empLast) && filterByPeriod(i);
+        return iName === empFullNameMatch && filterByPeriod(i);
     }).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
 
     ot = (state.overtime || []).filter(o => {
+        if (o.empReg && emp.regNumber) return String(o.empReg) === String(emp.regNumber) && filterByPeriod(o);
         const oName = normalizeMatch(o.employeeName);
-        return oName.includes(empFirst) && oName.includes(empLast) && filterByPeriod(o);
+        return oName === empFullNameMatch && filterByPeriod(o);
     }).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
 
     disc = (state.discounts || []).filter(d => {
+        if (d.empReg && emp.regNumber) return String(d.empReg) === String(emp.regNumber) && parseFloat(d.remainingBalance) > 0;
         const dName = normalizeMatch(d.employeeName);
-        return dName.includes(empFirst) && dName.includes(empLast) && parseFloat(d.remainingBalance) > 0;
+        return dName === empFullNameMatch && parseFloat(d.remainingBalance) > 0;
     }).reduce((acc, d) => {
         const installment = parseFloat(d.installment) || 0;
         const balance = parseFloat(d.remainingBalance) || 0;
@@ -3842,7 +3933,10 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
         }
     }
 
-    chr = (state.christmasSalary || []).filter(c => normalizeName(c.employeeName) === empFullNameMatch && filterByPeriod(c)).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
+    chr = (state.christmasSalary || []).filter(c => {
+        if (c.empReg && emp.regNumber) return String(c.empReg) === String(emp.regNumber) && filterByPeriod(c);
+        return normalizeName(c.employeeName) === empFullNameMatch && filterByPeriod(c);
+    }).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
 
     brute = base + inc + ot + chr + vacationPay;
 
@@ -3906,7 +4000,12 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
     const eTypeMob = (emp.type || '').toLowerCase();
     if (eTypeMob.includes('mobile') || eTypeMob.includes('movil')) {
         const logsMob = activePayroll?.dailyLogs || [];
-        const empLogsMob = logsMob.filter(l => window.normalizeName(l.employee) === empFullName);
+        const empLogsMob = logsMob.filter(l => {
+            if (l.empReg && emp.regNumber) {
+                return String(l.empReg) === String(emp.regNumber);
+            }
+            return window.normalizeName(l.employee) === empFullName;
+        });
         const distinctDates = [...new Set(empLogsMob.map(l => l.date))];
         daysPaid = distinctDates.length;
     }
@@ -4274,9 +4373,10 @@ const renderReports = (container) => {
                 const orphanList = allLogs.filter(l => {
                     const lName = window.normalizeName(l.employee);
                     return !emps.some(e => {
-                        const eFirst = window.normalizeName(e.firstName);
-                        const eLast = window.normalizeName(e.lastName);
-                        return lName.includes(eFirst) || lName.includes(eLast);
+                        if (l.empReg && e.regNumber) {
+                            return String(l.empReg) === String(e.regNumber);
+                        }
+                        return window.normalizeName(`${e.firstName} ${e.lastName}`) === lName;
                     });
                 });
 
@@ -4611,7 +4711,21 @@ const renderPayrollEntry = (container) => {
                 const key = `${emp.operation || 'Sin Cuenta'}| ${emp.activity || '-'} `;
                 debits[key] = (debits[key] || 0) + data.base;
             } else {
-                const logs = (run.dailyLogs || []).filter(l => (l.employee || '').trim().toLowerCase() === empFullName.trim().toLowerCase());
+                const normalizedEmpName = window.normalizeName(empFullName);
+                const logs = (run.dailyLogs || []).filter(l => {
+                    const logName = window.normalizeName(l.employee);
+                    const nameMatches = (logName === normalizedEmpName);
+                    const nameSimilar = logName.includes(normalizedEmpName) || normalizedEmpName.includes(logName);
+
+                    if (l.empReg && emp.regNumber) {
+                        if (String(l.empReg) === String(emp.regNumber)) {
+                            if (!nameSimilar && logName !== '') return false;
+                            return true;
+                        }
+                        return false;
+                    }
+                    return nameMatches;
+                });
                 logs.forEach(l => {
                     const key = `${l.op || 'Sin Cuenta'}| ${l.act || '-'} `;
                     debits[key] = (debits[key] || 0) + (parseFloat(l.amount) || 0);
@@ -5120,15 +5234,18 @@ const renderChristmasSalary = (container) => {
 
         const payments = selected.map(idx => {
             const data = christmasData[idx];
+            const emp = state.employees.find(e => `${e.firstName} ${e.lastName}` === data.name);
             const amtElem = container.querySelector(`.chr-manual-amount[data-index="${idx}"]`);
             const amt = parseFloat(amtElem.value) || 0;
             return {
                 employeeName: data.name,
+                empReg: emp ? emp.regNumber : null,
                 amount: amt,
                 date: new Date().toISOString().split('T')[0],
                 periodStart: data.startDate,
                 periodEnd: data.endDate,
-                reason: `Regalía Pascual`
+                reason: `Regalía Pascual`,
+                createdBy: window.globalState.currentUser?.name || 'Desconocido'
             };
         });
 
@@ -5484,10 +5601,22 @@ window.quickAddIncentive = (employeeName) => {
                 <input type="text" id="inc-reason" class="form-control" placeholder="Ej: Bono por meta">
             </div>
         `, () => {
+        // Extract regNumber
+        let empReg = null;
+        let empNameFinal = document.getElementById('inc-emp').value;
+        if (empNameFinal.includes('[') && empNameFinal.includes(']')) {
+            const match = empNameFinal.match(/\[(\d+)\]/);
+            if (match) {
+                empReg = match[1];
+                empNameFinal = empNameFinal.split('] ')[1] || empNameFinal;
+            }
+        }
+
         const inc = {
             id: Date.now().toString(36) + Math.random().toString(36).substring(2),
             date: document.getElementById('inc-date').value,
-            employeeName: document.getElementById('inc-emp').value,
+            employeeName: empNameFinal,
+            empReg: empReg,
             amount: document.getElementById('inc-amount').value,
             reason: document.getElementById('inc-reason').value,
             operation: state.settings.payrollAccounts?.incentives || ''
@@ -5510,7 +5639,20 @@ window.quickAddIncentive = (employeeName) => {
 };
 
 window.quickAddOvertime = (employeeName) => {
-    const employee = state.employees.find(e => `${e.firstName} ${e.lastName} ` === employeeName);
+    let empReg = null;
+    let empNameFinal = employeeName;
+    if (employeeName.includes('[') && employeeName.includes(']')) {
+        const match = employeeName.match(/\[(\d+)\]/);
+        if (match) {
+            empReg = match[1];
+            empNameFinal = employeeName.split('] ')[1] || employeeName;
+        }
+    }
+
+    const employee = state.employees.find(e => {
+        if (empReg) return String(e.regNumber) === String(empReg);
+        return `${e.firstName} ${e.lastName} ` === empNameFinal;
+    });
     if (!employee || employee.type !== 'fixed') {
         alert('Solo empleados fijos aplican para horas extras automáticas.');
         return;
@@ -5553,11 +5695,13 @@ window.quickAddOvertime = (employeeName) => {
             state.overtime.push({
                 id: Date.now().toString(36) + Math.random().toString(36).substring(2),
                 date,
-                employeeName,
+                employeeName: empNameFinal,
+                empReg: empReg,
                 hours,
                 factor,
                 amount: extraPay.toFixed(2),
-                operation: state.settings.payrollAccounts?.overtime || ''
+                operation: state.settings.payrollAccounts?.overtime || '',
+                createdBy: window.globalState.currentUser?.name || 'Desconocido'
             });
             saveState();
             renderSection('employees');
@@ -5568,6 +5712,15 @@ window.quickAddOvertime = (employeeName) => {
 };
 
 window.quickAddDiscount = (employeeName) => {
+    let empReg = null;
+    let empNameFinal = employeeName;
+    if (employeeName.includes('[') && employeeName.includes(']')) {
+        const match = employeeName.match(/\[(\d+)\]/);
+        if (match) {
+            empReg = match[1];
+            empNameFinal = employeeName.split('] ')[1] || employeeName;
+        }
+    }
     showModal('Crear Descuento', `
             < div class="form-group" >
                 <label>Empleado</label>
@@ -5584,10 +5737,12 @@ window.quickAddDiscount = (employeeName) => {
         `, () => {
         const d = {
             id: Date.now().toString(36) + Math.random().toString(36).substring(2),
-            employeeName: document.getElementById('disc-emp').value,
+            employeeName: empNameFinal,
+            empReg: empReg,
             amount: document.getElementById('disc-amount').value,
             reason: document.getElementById('disc-reason').value,
-            operation: state.settings.payrollAccounts?.discounts || ''
+            operation: state.settings.payrollAccounts?.discounts || '',
+            createdBy: window.globalState.currentUser?.name || 'Desconocido'
         };
         if (d.employeeName && d.amount) {
             state.discounts.push(d);
@@ -5600,6 +5755,15 @@ window.quickAddDiscount = (employeeName) => {
 };
 
 window.quickAddChristmasSalary = (employeeName) => {
+    let empReg = null;
+    let empNameFinal = employeeName;
+    if (employeeName.includes('[') && employeeName.includes(']')) {
+        const match = employeeName.match(/\[(\d+)\]/);
+        if (match) {
+            empReg = match[1];
+            empNameFinal = employeeName.split('] ')[1] || employeeName;
+        }
+    }
     showModal('Salario de Navidad', `
             < div class="form-group" >
                 <label>Empleado</label>
@@ -5618,10 +5782,13 @@ window.quickAddChristmasSalary = (employeeName) => {
         const date = document.getElementById('chr-date').value;
         if (amount && date) {
             state.christmasSalary.push({
-                employeeName,
+                id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                employeeName: empNameFinal,
+                empReg: empReg,
                 amount,
                 date,
-                operation: state.settings.payrollAccounts?.christmas || ''
+                operation: state.settings.payrollAccounts?.christmas || '',
+                createdBy: window.globalState.currentUser?.name || 'Desconocido'
             });
             saveState();
             renderSection('employees');
@@ -6885,7 +7052,7 @@ document.addEventListener('DOMContentLoaded', () => {
         globalSearch.addEventListener('input', (e) => {
             state.globalSearchQuery = e.target.value;
             // Re-render current section if it depends on getVisibleEmployees
-            if (['employees', 'isr', 'dashboard'].includes(state.currentSection)) {
+            if (['employees', 'isr', 'dashboard', 'daily-registration', 'reports', 'payroll-entry'].includes(state.currentSection)) {
                 renderSection(state.currentSection);
             }
         });
