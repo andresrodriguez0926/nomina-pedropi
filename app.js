@@ -665,9 +665,6 @@ const renderDashboard = (container) => {
                     <button class="btn btn-secondary w-100" onclick="importLocalData()" title="Pegar datos de otra PC aquí" style="font-size: 0.85rem; padding: 6px;">
                         <i class="fas fa-file-import"></i> Importar Datos
                     </button>
-                    <button class="btn btn-danger admin-only w-100" onclick="wipeProductionDatabase()" title="Borrar Todos los Datos" style="font-size: 0.85rem; padding: 6px;">
-                        <i class="fas fa-trash"></i> Limpiar Sistema
-                    </button>
                 </div>
             </div>
             
