@@ -2599,6 +2599,32 @@ const renderDailyRegistration = (container) => {
 
     const regEmpInput = document.getElementById('reg-emp');
     if (regEmpInput) {
+        // Validate that typed value matches a datalist option on blur
+        regEmpInput.onblur = () => {
+            const val = regEmpInput.value.trim();
+            if (!val) return; // empty is OK, it will be caught on save
+            const datalist = document.getElementById('list-emp-search');
+            const options = datalist ? Array.from(datalist.options).map(o => o.value) : [];
+            const isValid = options.includes(val);
+            if (!isValid) {
+                regEmpInput.style.borderColor = 'var(--danger)';
+                regEmpInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.3)';
+                regEmpInput.title = 'Debe seleccionar un empleado válido de la lista';
+                // Refocus so user cannot move to another field
+                setTimeout(() => regEmpInput.focus(), 50);
+            } else {
+                regEmpInput.style.borderColor = '';
+                regEmpInput.style.boxShadow = '';
+                regEmpInput.title = '';
+            }
+        };
+
+        regEmpInput.oninput = () => {
+            // Clear error styling while typing
+            regEmpInput.style.borderColor = '';
+            regEmpInput.style.boxShadow = '';
+        };
+
         regEmpInput.onchange = () => {
             const val = regEmpInput.value;
             let empFilter = val;
