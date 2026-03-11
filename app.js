@@ -2368,10 +2368,10 @@ const renderDailyRegistration = (container) => {
                 </div>
                 <div class="form-group">
                     <label>Empleado Móvil</label>
-                    <select id="reg-emp" class="form-control" style="font-weight: 500;">
-                        <option value="">Seleccionar Empleado...</option>
-                        ${window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="[${e.regNumber}] ${e.firstName} ${e.lastName}">[${e.regNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
-                    </select>
+                    <input list="list-emp-search" id="reg-emp" class="form-control" style="font-weight: 500;" placeholder="Escriba nombre o Nº de registro..." autocomplete="off">
+                    <datalist id="list-emp-search">
+                        ${window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="[${e.regNumber}] ${e.firstName} ${e.lastName}"></option>`).join('')}
+                    </datalist>
                 </div>
             </div>
             <div class="form-row">
@@ -2582,10 +2582,11 @@ const renderDailyRegistration = (container) => {
         const filteredEmps = window.getVisibleEmployees().filter(e =>
             e.type === 'mobile' && e.active !== false && (selectedDept === 'all' || e.department === selectedDept)
         );
-        const listEmp = document.getElementById('reg-emp');
-        if (listEmp) {
-            listEmp.innerHTML = '<option value="">Seleccionar Empleado...</option>' + filteredEmps.map(e =>
-                `<option value="[${e.regNumber}] ${e.firstName} ${e.lastName}">[${e.regNumber}] ${e.firstName} ${e.lastName}</option>`
+        // Update the datalist for the searchable input
+        const datalist = document.getElementById('list-emp-search');
+        if (datalist) {
+            datalist.innerHTML = filteredEmps.map(e =>
+                `<option value="[${e.regNumber}] ${e.firstName} ${e.lastName}"></option>`
             ).join('');
         }
         const regEmpInput = document.getElementById('reg-emp');
