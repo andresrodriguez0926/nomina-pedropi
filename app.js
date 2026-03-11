@@ -1389,16 +1389,16 @@ const renderEmployees = (container) => {
                                 <td><small>${emp.createdBy || 'Sistema'}</small></td>
                             <td>
                                 <div class="action-group">
-                                    <button class="btn-icon" onclick="quickAddIncentive('[${e.regNumber}] ${e.firstName} ${e.lastName}')" title="Aplicar Incentivo">
+                                    <button class="btn-icon" onclick="quickAddIncentive('[${emp.regNumber}] ${emp.firstName} ${emp.lastName}')" title="Aplicar Incentivo">
                                         <i class="fas fa-gift"></i>
                                     </button>
-                                    <button class="btn-icon" onclick="quickAddOvertime('[${e.regNumber}] ${e.firstName} ${e.lastName}')" title="Horas Extras">
+                                    <button class="btn-icon" onclick="quickAddOvertime('[${emp.regNumber}] ${emp.firstName} ${emp.lastName}')" title="Horas Extras">
                                         <i class="fas fa-clock"></i>
                                     </button>
-                                    <button class="btn-icon" onclick="quickAddDiscount('[${e.regNumber}] ${e.firstName} ${e.lastName}')" title="Registrar Descuento">
+                                    <button class="btn-icon" onclick="quickAddDiscount('[${emp.regNumber}] ${emp.firstName} ${emp.lastName}')" title="Registrar Descuento">
                                         <i class="fas fa-money-bill-wave-alt"></i>
                                     </button>
-                                    <button class="btn-icon" onclick="quickAddChristmasSalary('[${e.regNumber}] ${e.firstName} ${e.lastName}')" title="Salario Navidad">
+                                    <button class="btn-icon" onclick="quickAddChristmasSalary('[${emp.regNumber}] ${emp.firstName} ${emp.lastName}')" title="Salario Navidad">
                                         <i class="fas fa-tree"></i>
                                     </button>
                                     <button class="btn-icon edit" onclick="editEmployee(${index})" title="Editar">
