@@ -2510,6 +2510,13 @@ const renderDailyRegistration = (container) => {
     const saveDailyBtn = document.getElementById('save-daily');
     if (saveDailyBtn) saveDailyBtn.onclick = () => {
         const empInputEl = document.getElementById('reg-emp');
+        const opInputEl = document.getElementById('reg-op');
+        const actInputEl = document.getElementById('reg-act');
+
+        if (empInputEl) empInputEl.style.borderColor = '';
+        if (opInputEl) opInputEl.style.borderColor = '';
+        if (actInputEl) actInputEl.style.borderColor = '';
+
         const inputVal = empInputEl ? empInputEl.value.trim() : '';
         const regDate = document.getElementById('reg-date').value;
 
@@ -2565,13 +2572,37 @@ const renderDailyRegistration = (container) => {
             return;
         }
 
+        const opVal = opInputEl ? opInputEl.value.trim() : '';
+        const actVal = actInputEl ? actInputEl.value.trim() : '';
+
+        const validOps = state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => o.name);
+        const validActs = state.activities.map(a => a.name);
+
+        if (opVal && !validOps.includes(opVal)) {
+            if (opInputEl) {
+                opInputEl.style.borderColor = 'var(--danger)';
+                opInputEl.focus();
+            }
+            alert('Debe seleccionar una operación válida de la lista desplegable.');
+            return;
+        }
+
+        if (actVal && !validActs.includes(actVal)) {
+            if (actInputEl) {
+                actInputEl.style.borderColor = 'var(--danger)';
+                actInputEl.focus();
+            }
+            alert('Debe seleccionar una actividad válida de la lista desplegable.');
+            return;
+        }
+
         const log = {
             id: Date.now().toString(36) + Math.random().toString(36).substring(2),
             date: regDate,
             employee: empName,
             empReg: employee ? employee.regNumber : null,
-            op: document.getElementById('reg-op').value,
-            act: document.getElementById('reg-act').value,
+            op: opVal,
+            act: actVal,
             amount: document.getElementById('reg-amount').value,
             applyTSS: document.getElementById('reg-tss').value,
             createdBy: window.globalState.currentUser?.name || 'Desconocido'
@@ -2869,36 +2900,65 @@ window.saveBulkLogs = () => {
     const logsToAdd = [];
     let duplicates = 0;
 
-    rows.forEach(row => {
-        const emp = row.getAttribute('data-emp');
-        const empReg = row.getAttribute('data-reg');
-        if (!emp) return; // Skip placeholder
+    const validOps = state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => o.name);
+    const validActs = state.activities.map(a => a.name);
 
-        const op = row.querySelector('.bulk-op').value;
-        const act = row.querySelector('.bulk-act').value;
-        const amt = row.querySelector('.bulk-amt').value;
-        const tss = row.querySelector('.bulk-tss').value;
+    try {
+        rows.forEach(row => {
+            const emp = row.getAttribute('data-emp');
+            const empReg = row.getAttribute('data-reg');
+            if (!emp) return; // Skip placeholder
 
-        if (emp && amt) {
-            // Final check for duplicates in state
-            const exists = (activePayroll.dailyLogs || []).some(l => (l.empReg && empReg ? l.empReg == empReg : l.employee === emp) && l.date === date);
-            if (exists) {
-                duplicates++;
-            } else {
-                logsToAdd.push({
-                    id: Date.now().toString(36) + Math.random().toString(36).substring(2),
-                    date,
-                    employee: emp,
-                    empReg: empReg,
-                    op,
-                    act,
-                    amount: amt,
-                    applyTSS: tss,
-                    createdBy: window.globalState.currentUser?.name || 'Desconocido'
-                });
+            const opInput = row.querySelector('.bulk-op');
+            const actInput = row.querySelector('.bulk-act');
+            
+            // Reset border colors
+            opInput.style.borderColor = '';
+            actInput.style.borderColor = '';
+
+            const op = opInput.value.trim();
+            const act = actInput.value.trim();
+            const amt = row.querySelector('.bulk-amt').value;
+            const tss = row.querySelector('.bulk-tss').value;
+
+            // Strict Validation for Operation and Activity
+            if (op && !validOps.includes(op)) {
+                opInput.style.borderColor = 'var(--danger)';
+                opInput.focus();
+                alert(`La operación "${op}" para el empleado ${emp} no es válida. Debe seleccionarla de la lista.`);
+                throw new Error('Validation failed');
             }
-        }
-    });
+            if (act && !validActs.includes(act)) {
+                actInput.style.borderColor = 'var(--danger)';
+                actInput.focus();
+                alert(`La actividad "${act}" para el empleado ${emp} no es válida. Debe seleccionarla de la lista.`);
+                throw new Error('Validation failed');
+            }
+
+            if (emp && amt) {
+                // Final check for duplicates in state
+                const exists = (activePayroll.dailyLogs || []).some(l => (l.empReg && empReg ? l.empReg == empReg : l.employee === emp) && l.date === date);
+                if (exists) {
+                    duplicates++;
+                } else {
+                    logsToAdd.push({
+                        id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                        date,
+                        employee: emp,
+                        empReg: empReg,
+                        op,
+                        act,
+                        amount: amt,
+                        applyTSS: tss,
+                        createdBy: window.globalState.currentUser?.name || 'Desconocido'
+                    });
+                }
+            }
+        });
+    } catch (e) {
+        if (e.message === 'Validation failed') return;
+        throw e;
+    }
 
     if (logsToAdd.length === 0) {
         alert("No hay registros válidos para guardar o todos son duplicados.");
