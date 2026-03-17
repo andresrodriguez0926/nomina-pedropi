@@ -2599,13 +2599,13 @@ const renderDailyRegistration = (container) => {
         const log = {
             id: Date.now().toString(36) + Math.random().toString(36).substring(2),
             date: regDate,
-            employee: empName,
+            employee: empName.trim(),
             empReg: employee ? employee.regNumber : null,
-            op: opVal,
-            act: actVal,
+            op: opVal.trim(),
+            act: actVal.trim(),
             amount: document.getElementById('reg-amount').value,
             applyTSS: document.getElementById('reg-tss').value,
-            createdBy: window.globalState.currentUser?.name || 'Desconocido'
+            createdBy: window.globalState.globalUser ? window.globalState.globalUser.name : (window.globalState.currentUser?.name || 'Desconocido')
         };
 
         if (log.employee && log.amount) {
@@ -3489,11 +3489,15 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
             if (dept !== filterDept) return;
         }
 
-        if (!grouped[log.op]) grouped[log.op] = {};
-        if (!grouped[log.op][log.employee]) grouped[log.op][log.employee] = {};
-        if (!grouped[log.op][log.employee][log.act]) grouped[log.op][log.employee][log.act] = {};
+        const empReg = log.empReg;
+        const empName = (log.employee || '').trim();
+        const empKey = empReg ? `REG_${empReg}` : `NAME_${window.normalizeName(empName)}`;
 
-        grouped[log.op][log.employee][log.act][log.date] = (grouped[log.op][log.employee][log.act][log.date] || 0) + parseFloat(log.amount);
+        if (!grouped[log.op]) grouped[log.op] = {};
+        if (!grouped[log.op][empKey]) grouped[log.op][empKey] = { name: empName, activities: {} };
+        if (!grouped[log.op][empKey].activities[log.act]) grouped[log.op][empKey].activities[log.act] = {};
+
+        grouped[log.op][empKey].activities[log.act][log.date] = (grouped[log.op][empKey].activities[log.act][log.date] || 0) + parseFloat(log.amount);
     });
 
     const contentArea = document.getElementById('content-area');
@@ -3591,15 +3595,16 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                             <tbody>
                                 `;
 
-        Object.keys(grouped[op]).sort().forEach(emp => {
-            Object.keys(grouped[op][emp]).sort().forEach(act => {
+        Object.keys(grouped[op]).sort((a, b) => grouped[op][a].name.localeCompare(grouped[op][b].name)).forEach(empKey => {
+            const empData = grouped[op][empKey];
+            Object.keys(empData.activities).sort().forEach(act => {
                 let rowTotal = 0;
-                html += `<tr><td>${emp}</td><td>${act}</td>`;
+                html += `<tr><td>${empData.name}</td><td>${act}</td>`;
 
                 let daysWorked = 0;
                 let daysHtml = '';
                 dates.forEach(d => {
-                    const val = grouped[op][emp][act][d] || 0;
+                    const val = empData.activities[act][d] || 0;
                     if (val > 0) daysWorked++;
                     rowTotal += val;
                     opDailyTotals[d] += val;
@@ -3727,10 +3732,14 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
         // Filter by selected Department
         if (filterDept && filterDept !== 'all' && dept !== filterDept) return;
 
-        if (!grouped[dept]) grouped[dept] = {};
-        if (!grouped[dept][log.employee]) grouped[dept][log.employee] = {};
+        const empReg = log.empReg;
+        const empName = (log.employee || '').trim();
+        const empKey = empReg ? `REG_${empReg}` : `NAME_${window.normalizeName(empName)}`;
 
-        grouped[dept][log.employee][log.date] = (grouped[dept][log.employee][log.date] || 0) + parseFloat(log.amount);
+        if (!grouped[dept]) grouped[dept] = {};
+        if (!grouped[dept][empKey]) grouped[dept][empKey] = { name: empName, dates: {} };
+
+        grouped[dept][empKey].dates[log.date] = (grouped[dept][empKey].dates[log.date] || 0) + parseFloat(log.amount);
     });
 
     const contentArea = document.getElementById('content-area');
@@ -3795,14 +3804,15 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
                             <tbody>
                                 `;
 
-        Object.keys(grouped[dept]).sort().forEach(empName => {
+        Object.keys(grouped[dept]).sort((a, b) => grouped[dept][a].name.localeCompare(grouped[dept][b].name)).forEach(empKey => {
+            const empData = grouped[dept][empKey];
             let rowTotal = 0;
-            html += `<tr><td>${empName}</td>`;
+            html += `<tr><td>${empData.name}</td>`;
 
             let daysWorked = 0;
             let daysHtml = '';
             dates.forEach(d => {
-                const val = grouped[dept][empName][d] || 0;
+                const val = empData.dates[d] || 0;
                 if (val > 0) daysWorked++;
                 rowTotal += val;
                 deptDailyTotals[d] += val;
@@ -4319,7 +4329,7 @@ const renderReports = (container) => {
                         if (window.reportOnlyWithPayment && res.net <= 0.005) return '';
 
                         deptBase += res.base; deptIncentives += res.inc; deptOvertime += res.ot; deptChristmas += res.chr;
-                        deptBrute += res.brute; deptTSS += res.tss; deptISR += res.isr; deptDiscounts += res.disc; deptNet += res.net;
+                        deptBrute += (parseFloat(res.brute) || 0); deptTSS += res.tss; deptISR += res.isr; deptDiscounts += res.disc; deptNet += res.net;
 
                         const vacRow = res.vacations > 0 ? `
                         <tr style="font-size: 0.8rem; background: rgba(var(--accent-rgb), 0.03);">
@@ -4337,7 +4347,7 @@ const renderReports = (container) => {
                             <td class="td-numeric">$${res.inc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric">$${res.ot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric">$${res.chr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            <td class="td-numeric" style="font-weight: bold">$${res.brute.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="td-numeric" style="font-weight: bold">$${(parseFloat(res.brute) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric">$${res.tss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric">$${res.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric" style="color: var(--danger)">$${res.disc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -5053,9 +5063,12 @@ const renderPayrollEntry = (container) => {
                     if (emp.type === 'fixed') {
                         rows.push({ name: empFullName, acc: getAccNum(emp.operation || 'Sin Cuenta'), act: getActVal(emp.activity || '-'), amt: data.base });
                     } else {
-                        const logs = (run.dailyLogs || []).filter(l => (l.employee || '').trim().toLowerCase() === empFullName.trim().toLowerCase());
+                        const logs = (run.dailyLogs || []).filter(l => {
+                            if (l.empReg && emp.regNumber && String(l.empReg) === String(emp.regNumber)) return true;
+                            return (l.employee || '').trim().toLowerCase() === empFullName.trim().toLowerCase();
+                        });
                         logs.forEach(l => {
-                            rows.push({ name: l.employee, acc: getAccNum(l.op), act: getActVal(l.act), amt: parseFloat(l.amount) });
+                            rows.push({ name: l.employee.trim(), acc: getAccNum(l.op), act: getActVal(l.act), amt: parseFloat(l.amount) });
                         });
                     }
                     if (data.inc > 0) rows.push({ name: empFullName, acc: getAccNum(state.settings.payrollAccounts?.incentives || 'Incentivos'), act: '-', amt: data.inc });
@@ -5434,7 +5447,10 @@ window.editDailyLog = (index) => {
                     <div class="form-group">
                         <label>Empleado</label>
                         <select id="edit-reg-emp" class="form-control">
-                            ${window.getVisibleEmployees().filter(e => e.type === 'mobile').map(e => `<option value="${e.firstName} ${e.lastName}" ${log.employee === (e.firstName + ' ' + e.lastName) ? 'selected' : ''}>${e.firstName} ${e.lastName}</option>`).join('')}
+                            ${window.getVisibleEmployees().filter(e => e.type === 'mobile').map(e => `
+                                <option value="${e.firstName} ${e.lastName}" ${window.normalizeName(log.employee) === window.normalizeName(e.firstName + ' ' + e.lastName) ? 'selected' : ''}>
+                                    ${e.firstName} ${e.lastName}
+                                </option>`).join('')}
                         </select>
                     </div>
                 </div >
@@ -5476,6 +5492,12 @@ window.editDailyLog = (index) => {
         };
 
         if (updatedLog.employee && updatedLog.amount) {
+            const employee = state.employees.find(e => `${e.firstName} ${e.lastName}` === updatedLog.employee);
+            updatedLog.employee = updatedLog.employee.trim();
+            updatedLog.empReg = employee ? employee.regNumber : (log.empReg || null);
+            updatedLog.op = updatedLog.op.trim();
+            updatedLog.act = updatedLog.act.trim();
+            
             activePayroll.dailyLogs[index] = { ...log, ...updatedLog };
             saveState();
             renderSection('daily-registration');
@@ -6500,7 +6522,7 @@ const renderVacations = (container) => {
                     <label>Buscar Empleado (Sólo Activos)</label>
                     <input list="vac-emp-list" id="vac-emp-search" class="form-control" placeholder="Escriba nombre o cédula...">
                     <datalist id="vac-emp-list">
-                        ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${e.idNumber}">[${e.idNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
+                        ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}">[${e.idNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
                     </datalist>
                 </div>
                 <div class="form-group">
@@ -6633,7 +6655,20 @@ const renderVacations = (container) => {
         const spd = salary / 23.83;
         const totalPay = spd * days;
 
-        document.getElementById('vac-salary').value = salary;
+        const salaryInput = document.getElementById('vac-salary');
+        salaryInput.value = salary;
+        
+        // Si es empleado móvil, dejar editar el salario
+        if (emp.type === 'mobile') {
+            salaryInput.readOnly = false;
+            salaryInput.style.backgroundColor = 'var(--bg-color)';
+            salaryInput.style.border = '1px solid var(--accent-color)';
+        } else {
+            salaryInput.readOnly = true;
+            salaryInput.style.backgroundColor = 'transparent';
+            salaryInput.style.border = '1px solid var(--border-color)';
+        }
+
         document.getElementById('vac-years').value = yearsWorked;
         document.getElementById('vac-days').value = days;
         document.getElementById('vac-amount').value = totalPay > 0 ? totalPay.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00';
@@ -6643,6 +6678,22 @@ const renderVacations = (container) => {
         };
 
         detailsSection.style.display = 'block';
+    });
+
+    // Recalcular si el usuario cambia el salario manualmente (para móviles)
+    document.getElementById('vac-salary').addEventListener('input', (e) => {
+        if (!currentVacEmp) return;
+        
+        const newSalary = parseFloat(e.target.value) || 0;
+        const days = parseInt(document.getElementById('vac-days').value) || 0;
+        const spd = newSalary / 23.83;
+        const totalPay = spd * days;
+
+        document.getElementById('vac-amount').value = totalPay > 0 ? totalPay.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00';
+        
+        currentVacCalc.salary = newSalary;
+        currentVacCalc.spd = spd;
+        currentVacCalc.totalPay = totalPay;
     });
 
     vacType.addEventListener('change', (e) => {
