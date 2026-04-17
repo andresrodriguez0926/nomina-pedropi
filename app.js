@@ -535,8 +535,31 @@ const renderDashboard = (container) => {
 
     // Helper to extract data from a historical run
     const processHistoricalRun = (run) => {
+        const hasLogs = run.dailyLogs && run.dailyLogs.length > 0;
+        const processedMobileIds = new Set();
+        
+        // 1. Process Daily Logs (Mobile activity-specific costs) - mirror active payroll logic
+        if (hasLogs) {
+            run.dailyLogs.forEach(log => {
+                const emp = findEmployeeRobust('', log.employee);
+                if (emp && !window.hasDepartmentAccess(emp.department)) return;
+
+                const amount = parseFloat(log.amount) || 0;
+                // log.act and log.op are filled when the user enters the daily log
+                const actName = (log.act && log.act.trim()) ? log.act.trim() : (emp ? emp.activity : 'Sin Actividad');
+                const opName = (log.op && log.op.trim()) ? log.op.trim() : (emp ? emp.operation : 'Sin Operación');
+
+                processCost(opName, actName, amount);
+
+                if (emp) processedMobileIds.add(emp.idNumber);
+            });
+        }
+
         if (run.results) {
             run.results.forEach(res => {
+                // If it has logs, avoid double-counting mobile employees just like in active runs
+                if (hasLogs && res.type === 'mobile') return;
+
                 // 1. Use Snapshot if available (frozen category at closing time)
                 let actName = res.activity;
                 let opName = res.operation;
