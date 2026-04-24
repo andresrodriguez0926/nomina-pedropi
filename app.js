@@ -436,6 +436,79 @@ window.importLocalData = () => {
     }
 };
 
+// --- Global Data Helpers ---
+window.findEmployeeRobust = (id, fullName) => {
+    const rName = window.normalizeName(fullName || '');
+    const rId = String(id || '').trim();
+    let regPart = null;
+    if (fullName && fullName.includes('[') && fullName.includes(']')) {
+        const match = fullName.match(/\[(\d+)\]/);
+        if (match) regPart = match[1];
+    }
+    return state.employees.find(e => {
+        const eId = String(e.idNumber || '').trim();
+        const eReg = String(e.regNumber || '').trim();
+        const eFullName = window.normalizeName(`${e.firstName} ${e.lastName}`);
+        if (regPart && eReg === regPart) return true;
+        if (rId !== '' && rId === eReg) return true;
+        if (rId !== '' && rId === eId) return true;
+        return rName !== '' && rName === eFullName;
+    });
+};
+
+window.getPayrollOpStats = (payroll) => {
+    const opStats = {};
+    const activityExpenses = {};
+    const processCost = (opName, actName, amount) => {
+        if (!amount || amount <= 0) return;
+        const op = opName || 'Sin Operación';
+        const act = actName || 'Sin Actividad';
+        if (!opStats[op]) opStats[op] = { total: 0, activities: {} };
+        if (!opStats[op].activities[act]) opStats[op].activities[act] = 0;
+        opStats[op].total += amount;
+        opStats[op].activities[act] += amount;
+        if (!activityExpenses[act]) activityExpenses[act] = 0;
+        activityExpenses[act] += amount;
+    };
+
+    const hasLogs = payroll.dailyLogs && payroll.dailyLogs.length > 0;
+    if (payroll.dailyLogs) {
+        payroll.dailyLogs.forEach(log => {
+            if (log.status === 'anulado') return;
+            const emp = window.findEmployeeRobust('', log.employee);
+            if (emp && !window.hasDepartmentAccess(emp.department)) return;
+            const amount = parseFloat(log.amount) || 0;
+            const actName = (log.act && log.act.trim()) ? log.act.trim() : (emp ? emp.activity : 'Sin Actividad');
+            const opName = (log.op && log.op.trim()) ? log.op.trim() : (emp ? emp.operation : 'Sin Operación');
+            processCost(opName, actName, amount);
+        });
+    }
+
+    if (payroll.results) {
+        payroll.results.forEach(res => {
+            if (hasLogs && res.type === 'mobile') return;
+            let actName = res.activity;
+            let opName = res.operation;
+            if (!actName || !opName) {
+                const emp = window.findEmployeeRobust(res.idNumber, res.fullName);
+                if (emp && !window.hasDepartmentAccess(emp.department)) return;
+                if (!actName) actName = emp ? emp.activity : 'Sin Actividad';
+                if (!opName) opName = emp ? emp.operation : 'Sin Operación';
+            }
+            processCost(opName, actName, parseFloat(res.brute) || 0);
+        });
+    } else if (payroll.startDate) {
+        window.getVisibleEmployees().filter(e => e.active !== false && e.type !== 'mobile').forEach(emp => {
+            const res = calculateEmployeePayrollData(emp, payroll);
+            const totalBrute = parseFloat(res.brute) || 0;
+            if (totalBrute > 0.01) {
+                processCost(emp.operation, emp.activity, totalBrute);
+            }
+        });
+    }
+    return { opStats, activityExpenses };
+};
+
 // --- Module: Dashboard ---
 const renderDashboard = (container) => {
     // --- Data Extraction for Charts ---
@@ -457,163 +530,37 @@ const renderDashboard = (container) => {
     const monthlyData = sortedMonths.map(m => monthlyExpenses[m]);
     const activityExpenses = {};
     const opStats = {};
-    const processCost = (opName, actName, amount) => {
-        if (amount === 0) return;
-        const op = opName || 'Sin Operación';
-        const act = actName || 'Sin Actividad';
-        if (!opStats[op]) opStats[op] = { total: 0, activities: {} };
-        if (!opStats[op].activities[act]) opStats[op].activities[act] = 0;
-        opStats[op].total += amount;
-        opStats[op].activities[act] += amount;
-
-        if (!activityExpenses[act]) activityExpenses[act] = 0;
-        activityExpenses[act] += amount;
-    };
-
-    // Helper for infallible employee matching
-    const findEmployeeRobust = (id, fullName) => {
-        const rName = window.normalizeName(fullName || '');
-        const rId = String(id || '').trim();
-
-        // 1. Try search by Registration Number if the fullName contains "[Reg]" or just search all
-        let regPart = null;
-        if (fullName && fullName.includes('[') && fullName.includes(']')) {
-            const match = fullName.match(/\[(\d+)\]/);
-            if (match) regPart = match[1];
-        }
-
-        return state.employees.find(e => {
-            const eId = String(e.idNumber || '').trim();
-            const eReg = String(e.regNumber || '').trim();
-            const eFullName = window.normalizeName(`${e.firstName} ${e.lastName}`);
-
-            // Priority 1: Exact Registration Number match
-            if (regPart && eReg === regPart) return true;
-            if (rId !== '' && rId === eReg) return true;
-
-            // Priority 2: Exact Cédula/Passport match
-            if (rId !== '' && rId === eId) return true;
-
-            // Priority 3: EXACT Name match ONLY
-            return rName !== '' && rName === eFullName;
+    const mergeStats = (stats) => {
+        Object.keys(stats.opStats).forEach(op => {
+            if (!opStats[op]) opStats[op] = { total: 0, activities: {} };
+            opStats[op].total += stats.opStats[op].total;
+            Object.keys(stats.opStats[op].activities).forEach(act => {
+                if (!opStats[op].activities[act]) opStats[op].activities[act] = 0;
+                opStats[op].activities[act] += stats.opStats[op].activities[act];
+            });
+        });
+        Object.keys(stats.activityExpenses).forEach(act => {
+            if (!activityExpenses[act]) activityExpenses[act] = 0;
+            activityExpenses[act] += stats.activityExpenses[act];
         });
     };
-
-    // Helper to extract data from a payroll object (active)
-    const processActivePayroll = (payroll) => {
-        // Track mobile employees that already have logs — don't double-count their fixed salary
-        const processedMobileIds = new Set();
-
-        // 1. Process Daily Logs (Mobile activity-specific costs — log.act IS the ground truth)
-        if (payroll.dailyLogs) {
-            payroll.dailyLogs.forEach(log => {
-                const emp = findEmployeeRobust('', log.employee);
-                if (emp && !window.hasDepartmentAccess(emp.department)) return;
-
-                const amount = parseFloat(log.amount) || 0;
-                // log.act and log.op are filled when the user enters the daily log
-                // Use emp.activity as FALLBACK only when log.act is truly empty
-                const actName = (log.act && log.act.trim()) ? log.act.trim() : (emp ? emp.activity : null);
-                const opName = (log.op && log.op.trim()) ? log.op.trim() : (emp ? emp.operation : null);
-
-                processCost(opName, actName, amount);
-
-                if (emp) processedMobileIds.add(emp.idNumber);
-            });
-        }
-
-        // 2. Fixed Employees: Add their computed salary using their default activity
-        // (Incentives + OT + Vacation + Base — anything calculateEmployeePayrollData gives us)
-        window.getVisibleEmployees().filter(e => e.active !== false && e.type !== 'mobile').forEach(emp => {
-            const res = calculateEmployeePayrollData(emp, payroll);
-            const totalBrute = parseFloat(res.brute) || 0;
-            if (totalBrute > 0.01) {
-                processCost(emp.operation, emp.activity, totalBrute);
-            }
-        });
-    };
-
-    // Helper to extract data from a historical run
-    const processHistoricalRun = (run) => {
-        const hasLogs = run.dailyLogs && run.dailyLogs.length > 0;
-        const processedMobileIds = new Set();
-        
-        // 1. Process Daily Logs (Mobile activity-specific costs) - mirror active payroll logic
-        if (hasLogs) {
-            run.dailyLogs.forEach(log => {
-                const emp = findEmployeeRobust('', log.employee);
-                if (emp && !window.hasDepartmentAccess(emp.department)) return;
-
-                const amount = parseFloat(log.amount) || 0;
-                // log.act and log.op are filled when the user enters the daily log
-                const actName = (log.act && log.act.trim()) ? log.act.trim() : (emp ? emp.activity : 'Sin Actividad');
-                const opName = (log.op && log.op.trim()) ? log.op.trim() : (emp ? emp.operation : 'Sin Operación');
-
-                processCost(opName, actName, amount);
-
-                if (emp) processedMobileIds.add(emp.idNumber);
-            });
-        }
-
-        if (run.results) {
-            run.results.forEach(res => {
-                // If it has logs, avoid double-counting mobile employees just like in active runs
-                if (hasLogs && res.type === 'mobile') return;
-
-                // 1. Use Snapshot if available (frozen category at closing time)
-                let actName = res.activity;
-                let opName = res.operation;
-
-                // 2. Fallback to robust matching for older records
-                if (!actName || !opName) {
-                    const emp = findEmployeeRobust(res.idNumber, res.fullName);
-                    if (emp && !window.hasDepartmentAccess(emp.department)) return;
-
-                    if (!actName) actName = emp ? emp.activity : 'Sin Actividad';
-                    if (!opName) opName = emp ? emp.operation : 'Sin Operación';
-                }
-
-                processCost(opName, actName, parseFloat(res.brute) || 0);
-            });
-        }
-    };
-
-    // --- Add Maintenance Tools ---
-    const adminTools = `
-        <div class="card mt-4 no-print" style="border: 1px dashed var(--warning); background: rgba(245, 158, 11, 0.05);">
-            <h3 style="color: var(--warning); margin-bottom: 15px;"><i class="fas fa-tools"></i> Mantenimiento de Datos</h3>
-            <p style="margin-bottom: 15px; font-size: 0.9rem;">Si nota duplicados o faltantes causados por errores de sincronización previos, utilice estas herramientas:</p>
-            <div style="display: flex; gap: 10px;">
-                <button class="btn" style="background: var(--warning); color: white;" onclick="window.cleanupGhostPayrolls()">
-                    <i class="fas fa-broom"></i> Eliminar Nóminas Abiertas Vacias
-                </button>
-                <button class="btn" style="background: var(--danger); color: white;" onclick="window.forceMasterReload()">
-                    <i class="fas fa-sync-alt"></i> Reiniciar desde la Nube (Limpieza Profunda)
-                </button>
-            </div>
-        </div>
-    `;
 
     if (window.dashboardPayrollFilter === undefined) {
         const best = window.getBestActivePayroll();
         window.dashboardPayrollFilter = best ? 'active_' + best.id : 'all';
     }
-
     const selectedPayrollValue = window.dashboardPayrollFilter;
 
     if (selectedPayrollValue === 'all') {
-        // Show aggregate of ALL active payrolls
-        if (state.activePayrolls && state.activePayrolls.length > 0) {
-            state.activePayrolls.forEach(p => processActivePayroll(p));
-        }
+        (state.activePayrolls || []).forEach(p => mergeStats(window.getPayrollOpStats(p)));
     } else if (selectedPayrollValue.startsWith('active_')) {
         const pid = selectedPayrollValue.replace('active_', '');
-        const payroll = state.activePayrolls.find(p => String(p.id) === pid);
-        if (payroll) processActivePayroll(payroll);
+        const p = (state.activePayrolls || []).find(x => String(x.id) === pid);
+        if (p) mergeStats(window.getPayrollOpStats(p));
     } else if (selectedPayrollValue.startsWith('history_')) {
         const hIdx = parseInt(selectedPayrollValue.replace('history_', ''));
         const run = state.payrollHistory[hIdx];
-        if (run) processHistoricalRun(run);
+        if (run) mergeStats(window.getPayrollOpStats(run));
     }
 
     const sortedActivities = Object.keys(activityExpenses).sort((a, b) => activityExpenses[b] - activityExpenses[a]);
@@ -703,53 +650,104 @@ const renderDashboard = (container) => {
             </div>
             
             ${reportHtml}
+            
+            ${state.currentUser && state.currentUser.role === 'admin' ? `
+                <div class="card mt-4 no-print" style="border: 1px dashed var(--warning); background: rgba(245, 158, 11, 0.05); grid-column: 1 / -1;">
+                    <h3 style="color: var(--warning); margin-bottom: 15px;"><i class="fas fa-tools"></i> Mantenimiento de Datos</h3>
+                    <p style="margin-bottom: 15px; font-size: 0.9rem;">Si nota duplicados o faltantes causados por errores de sincronización previos, utilice estas herramientas:</p>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn" style="background: var(--warning); color: white;" onclick="window.cleanupGhostPayrolls()">
+                            <i class="fas fa-broom"></i> Eliminar Nóminas Abiertas Vacías
+                        </button>
+                        <button class="btn" style="background: var(--danger); color: white;" onclick="window.forceMasterReload()">
+                            <i class="fas fa-sync-alt"></i> Reiniciar desde la Nube (Limpieza Profunda)
+                        </button>
+                    </div>
+                </div>
+            ` : ''}
         </div>
     `;
 
     window.renderOpComparison = () => {
         const card = document.getElementById('op-comparison-card');
         if (!card) return;
-        const stats = window.dashboardOpStats;
-        const ops = Object.keys(stats).sort();
 
-        if (ops.length === 0) {
-            card.innerHTML = '<p class="text-center text-gray" style="padding: 20px;">No hay datos de operaciones.</p>';
-            return;
-        }
+        // Use dashboard filter as default if not overridden in this section
+        if (!window.dashboardComparisonP1) window.comparisonP1 = window.dashboardPayrollFilter;
+        else window.comparisonP1 = window.dashboardComparisonP1;
 
-        if (!window.dashboardOp1 && ops.length > 0) window.dashboardOp1 = ops[0];
-        if (!window.dashboardOp2 && ops.length > 1) window.dashboardOp2 = ops[1];
-        if (!window.dashboardOp2 && ops.length === 1) window.dashboardOp2 = ops[0];
+        if (!window.dashboardComparisonP2) window.comparisonP2 = window.dashboardPayrollFilter;
+        else window.comparisonP2 = window.dashboardComparisonP2;
 
-        // Make sure selected ops exist
-        if (!stats[window.dashboardOp1]) window.dashboardOp1 = ops[0];
-        if (!stats[window.dashboardOp2]) window.dashboardOp2 = ops[0];
+        const getPayrollFromVal = (val) => {
+            if (val.startsWith('active_')) return state.activePayrolls.find(p => 'active_'+p.id === val);
+            if (val.startsWith('history_')) return state.payrollHistory[parseInt(val.replace('history_', ''))];
+            return null;
+        };
+
+        const p1 = getPayrollFromVal(window.comparisonP1);
+        const p2 = getPayrollFromVal(window.comparisonP2);
+
+        // Calculate stats for both (or use pre-merged if both are the same and match dashboard filter)
+        let stats1, stats2;
+        if (window.comparisonP1 === window.dashboardPayrollFilter) stats1 = window.dashboardOpStats;
+        else if (p1) stats1 = window.getPayrollOpStats(p1).opStats;
+        else stats1 = {};
+
+        if (window.comparisonP2 === window.dashboardPayrollFilter) stats2 = window.dashboardOpStats;
+        else if (p2) stats2 = window.getPayrollOpStats(p2).opStats;
+        else stats2 = {};
+
+        const ops1 = Object.keys(stats1).sort();
+        const ops2 = Object.keys(stats2).sort();
+
+        // Operation selections
+        if (!window.dashboardOp1 && ops1.length > 0) window.dashboardOp1 = ops1[0];
+        if (!window.dashboardOp2 && ops2.length > 0) window.dashboardOp2 = ops1.includes(window.dashboardOp1) && ops2.includes(window.dashboardOp1) ? window.dashboardOp1 : (ops2.length > 1 ? ops2[1] : ops2[0]);
 
         let op1 = window.dashboardOp1;
         let op2 = window.dashboardOp2;
 
         const actMap = {};
-        if (stats[op1]) {
-            Object.keys(stats[op1].activities).forEach(act => actMap[act] = true);
-        }
-        if (stats[op2]) {
-            Object.keys(stats[op2].activities).forEach(act => actMap[act] = true);
-        }
-
+        if (stats1[op1]) Object.keys(stats1[op1].activities).forEach(act => actMap[act] = true);
+        if (stats2[op2]) Object.keys(stats2[op2].activities).forEach(act => actMap[act] = true);
         const allActs = Object.keys(actMap).sort();
 
+        // Prepare payroll options HTML
+        const payrollOptions = (val) => {
+            const activeOptions = (state.activePayrolls || []).map(p => `<option value="active_${p.id}" ${val === 'active_'+p.id ? 'selected' : ''}>[Abierta] ${p.name}</option>`).join('');
+            const historyOptions = (state.payrollHistory || []).map((p, idx) => `<option value="history_${idx}" ${val === 'history_'+idx ? 'selected' : ''}>[Cerrada] ${p.payrollName || p.name} (${p.periodEnd || p.date})</option>`).join('');
+            return `<option value="all">Todas las Abiertas</option>${activeOptions}${historyOptions}`;
+        };
+
         let html = `
-                    <div class="header-action mb-3" style="border:none; flex-wrap: wrap;">
-                        <h3 style="font-size: 1.1rem; color: var(--gray); margin: 0;">Comparativa de Operaciones</h3>
-                        <div style="display: flex; gap: 15px; align-items: center;" class="no-print">
-                            <select class="form-control" style="width: auto;" onchange="window.dashboardOp1 = this.value; window.renderOpComparison()">
-                                ${ops.map(o => `<option value="${o}" ${o === op1 ? 'selected' : ''}>${o}</option>`).join('')}
-                            </select>
-                            <span style="font-weight: bold; color: var(--gray);">VS</span>
-                            <select class="form-control" style="width: auto;" onchange="window.dashboardOp2 = this.value; window.renderOpComparison()">
-                                ${ops.map(o => `<option value="${o}" ${o === op2 ? 'selected' : ''}>${o}</option>`).join('')}
-                            </select>
-                            <button class="btn btn-secondary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+                    <div class="header-action mb-3" style="border:none; flex-wrap: wrap; gap: 20px;">
+                        <h3 style="font-size: 1.1rem; color: var(--gray); margin: 0;">Comparativa Multi-Nómina</h3>
+                        
+                        <div style="display: flex; gap: 10px; align-items: center; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px;" class="no-print">
+                            <div style="display: flex; flex-direction: column; gap: 5px;">
+                                <small style="color: var(--primary);">Nómina 1</small>
+                                <select class="form-control" style="width: 200px; font-size: 0.85rem;" onchange="window.dashboardComparisonP1 = this.value; window.renderOpComparison()">
+                                    ${payrollOptions(window.comparisonP1)}
+                                </select>
+                                <select class="form-control" style="width: 200px; font-size: 0.85rem; font-weight: bold;" onchange="window.dashboardOp1 = this.value; window.renderOpComparison()">
+                                    ${ops1.map(o => `<option value="${o}" ${o === op1 ? 'selected' : ''}>${o}</option>`).join('')}
+                                </select>
+                            </div>
+
+                            <span style="font-weight: bold; color: var(--gray); margin-top: 20px;">VS</span>
+
+                            <div style="display: flex; flex-direction: column; gap: 5px;">
+                                <small style="color: var(--accent-color);">Nómina 2</small>
+                                <select class="form-control" style="width: 200px; font-size: 0.85rem;" onchange="window.dashboardComparisonP2 = this.value; window.renderOpComparison()">
+                                    ${payrollOptions(window.comparisonP2)}
+                                </select>
+                                <select class="form-control" style="width: 200px; font-size: 0.85rem; font-weight: bold;" onchange="window.dashboardOp2 = this.value; window.renderOpComparison()">
+                                    ${ops2.map(o => `<option value="${o}" ${o === op2 ? 'selected' : ''}>${o}</option>`).join('')}
+                                </select>
+                            </div>
+                            
+                            <button class="btn btn-secondary" onclick="window.print()" style="align-self: flex-end;"><i class="fas fa-print"></i></button>
                         </div>
                     </div>
                     
@@ -758,8 +756,8 @@ const renderDashboard = (container) => {
                             <thead>
                                 <tr>
                                     <th>Actividad</th>
-                                    <th class="text-right" style="color: var(--primary);">${op1}</th>
-                                    <th class="text-right" style="color: var(--accent-color);">${op2}</th>
+                                    <th class="text-right" style="color: var(--primary);"><small>${p1 ? (p1.payrollName || p1.name) : 'Nómina 1'}</small><br>${op1}</th>
+                                    <th class="text-right" style="color: var(--accent-color);"><small>${p2 ? (p2.payrollName || p2.name) : 'Nómina 2'}</small><br>${op2}</th>
                                     <th class="text-right">Diferencia</th>
                                 </tr>
                             </thead>
@@ -767,15 +765,11 @@ const renderDashboard = (container) => {
                 `;
 
         let tot1 = 0, tot2 = 0, totDiff = 0;
-
         allActs.forEach(act => {
-            const val1 = (stats[op1] && stats[op1].activities[act]) ? stats[op1].activities[act] : 0;
-            const val2 = (stats[op2] && stats[op2].activities[act]) ? stats[op2].activities[act] : 0;
+            const val1 = (stats1[op1] && stats1[op1].activities[act]) ? stats1[op1].activities[act] : 0;
+            const val2 = (stats2[op2] && stats2[op2].activities[act]) ? stats2[op2].activities[act] : 0;
             const diff = val1 - val2;
-
-            tot1 += val1;
-            tot2 += val2;
-            totDiff += diff;
+            tot1 += val1; tot2 += val2; totDiff += diff;
 
             html += `
                         <tr>
@@ -804,7 +798,6 @@ const renderDashboard = (container) => {
                         </table>
                     </div>
                 `;
-
         card.innerHTML = html;
     };
 
@@ -2295,7 +2288,7 @@ const renderPayrollRuns = (container) => {
                                     <h3>${payroll.name}</h3>
                                     <p>Periodo: ${payroll.periodType}</p>
                                     <p>Inicio: ${payroll.startDate}</p>
-                                    <p><small>${payroll.dailyLogs ? payroll.dailyLogs.length : 0} registros activos</small></p>
+                                    <p><small>${payroll.dailyLogs ? payroll.dailyLogs.filter(l => l.status !== 'anulado').length : 0} registros activos</small></p>
                                 </div>
                             `).join('')}
                         </div>
@@ -2496,26 +2489,30 @@ const renderDailyRegistration = (container) => {
                     </tr>
                 </thead>
                 <tbody id="daily-logs-tbody">
-                    ${(activePayroll.dailyLogs || []).map((log, index) => `
-                        <tr>
+                    ${(activePayroll.dailyLogs || []).map((log, index) => {
+                        const isAnnulled = log.status === 'anulado';
+                        return `
+                        <tr style="${isAnnulled ? 'text-decoration: line-through; color: #888; opacity: 0.7; background-color: rgba(0,0,0,0.05);' : ''}">
                             <td>LOG-${log.logNumber || (index + 1)}</td>
                             <td>${log.date}</td>
-                            <td>${log.employee}</td>
+                            <td>${log.employee} ${isAnnulled ? '<strong>(ANULADO)</strong>' : ''}</td>
                             <td style="font-weight: 500; font-family: monospace;">${log.empReg || '<span class="text-gray">N/A</span>'}</td>
                             <td>${log.op}</td>
                             <td>$${parseFloat(log.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td>${log.applyTSS === 'si' ? '<span class="status-badge fixed">Sí</span>' : '<span class="status-badge mobile">No</span>'}</td>
                             <td><small>${log.createdBy || 'Sistema'}</small></td>
                             <td>
-                                <button class="btn-icon edit" onclick="editDailyLog(${index})">
+                                ${!isAnnulled ? `
+                                <button class="btn-icon edit" onclick="editDailyLog(${index})" title="Editar">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn-icon delete admin-only" onclick="deleteDailyLog(${index})">
-                                    <i class="fas fa-trash"></i>
+                                <button class="btn-icon delete admin-only" onclick="annulDailyLog(${index})" title="Anular">
+                                    <i class="fas fa-ban"></i>
                                 </button>
+                                ` : '<span class="text-gray" style="font-size: 0.8rem;">Anulado</span>'}
                             </td>
                         </tr>
-                    `).join('')}
+                    `}).join('')}
                     ${(!activePayroll.dailyLogs || activePayroll.dailyLogs.length === 0) ? '<tr><td colspan="8" style="text-align:center">No hay registros diarios</td></tr>' : ''}
                 </tbody>
             </table>
@@ -3034,7 +3031,7 @@ const renderClosing = (container) => {
                 <div style="border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.2); flex-wrap: wrap; gap: 15px;">
                     <div>
                         <h3 style="margin: 0; color: var(--text-main);">${payroll.name}</h3>
-                        <p style="margin: 5px 0 0 0; color: var(--text-light); font-size: 0.9em;">Periodo: ${payroll.periodType} | Inicio: ${payroll.startDate} | Registros: ${payroll.dailyLogs ? payroll.dailyLogs.length : 0}</p>
+                        <p style="margin: 5px 0 0 0; color: var(--text-light); font-size: 0.9em;">Periodo: ${payroll.periodType} | Inicio: ${payroll.startDate} | Registros: ${payroll.dailyLogs ? payroll.dailyLogs.filter(l => l.status !== 'anulado').length : 0}</p>
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <button class="btn btn-danger close-payroll-btn" data-id="${payroll.id}">
@@ -3925,6 +3922,7 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
     const logs = activePayroll?.dailyLogs || [];
     const empLogs = logs.filter(l => {
+        if (l.status === 'anulado') return false;
         const logName = window.normalizeName(l.employee);
         const nameMatches = (logName === empFullName);
         const nameSimilar = logName.includes(empFullName) || empFullName.includes(logName);
@@ -4184,8 +4182,8 @@ const renderReports = (container) => {
         let selectedPayroll = (state.activePayrolls || []).find(p => String(p.id) === String(window.currentReportPayrollId));
 
         // Aggressive Auto-Switch: If current selected is empty and there's one with data, switch to it.
-        if (selectedPayroll && (!selectedPayroll.dailyLogs || selectedPayroll.dailyLogs.length === 0)) {
-            const bestWithData = (state.activePayrolls || []).find(p => p.dailyLogs && p.dailyLogs.length > 0);
+        if (selectedPayroll && (!selectedPayroll.dailyLogs || selectedPayroll.dailyLogs.filter(l => l.status !== 'anulado').length === 0)) {
+            const bestWithData = (state.activePayrolls || []).find(p => p.dailyLogs && p.dailyLogs.filter(l => l.status !== 'anulado').length > 0);
             if (bestWithData && String(bestWithData.id) !== String(selectedPayroll.id)) {
                 console.log(`[REPORTS] Switched from empty payroll ${selectedPayroll.id} to non-empty ${bestWithData.id}`);
                 selectedPayroll = bestWithData;
@@ -4867,6 +4865,7 @@ const renderPayrollEntry = (container) => {
             } else {
                 const normalizedEmpName = window.normalizeName(empFullName);
                 const logs = (run.dailyLogs || []).filter(l => {
+                    if (l.status === 'anulado') return false;
                     const logName = window.normalizeName(l.employee);
                     const nameMatches = (logName === normalizedEmpName);
                     const nameSimilar = logName.includes(normalizedEmpName) || normalizedEmpName.includes(logName);
@@ -5062,6 +5061,7 @@ const renderPayrollEntry = (container) => {
                     }
                 });
                 (run.dailyLogs || []).forEach(l => {
+                    if (l.status === 'anulado') return;
                     const empCheck = state.employees.find(e => `${e.firstName} ${e.lastName}` === l.employee);
                     if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
                     rows.push({
@@ -5087,6 +5087,7 @@ const renderPayrollEntry = (container) => {
                         rows.push({ name: empFullName, acc: getAccNum(emp.operation || 'Sin Cuenta'), act: getActVal(emp.activity || '-'), amt: data.base });
                     } else {
                         const logs = (run.dailyLogs || []).filter(l => {
+                            if (l.status === 'anulado') return false;
                             if (l.empReg && emp.regNumber && String(l.empReg) === String(emp.regNumber)) return true;
                             return (l.employee || '').trim().toLowerCase() === empFullName.trim().toLowerCase();
                         });
@@ -5530,10 +5531,13 @@ window.editDailyLog = (index) => {
     });
 };
 
-window.deleteDailyLog = (index) => {
-    if (confirm('¿Seguro que desea eliminar este registro diario?')) {
+window.annulDailyLog = (index) => {
+    if (confirm('¿Seguro que desea anular este registro diario?')) {
         const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
-        activePayroll.dailyLogs.splice(index, 1);
+        const log = activePayroll.dailyLogs[index];
+        log.status = 'anulado';
+        log.annulledAt = new Date().toISOString();
+        log.annulledBy = state.currentUser ? state.currentUser.name : 'Sistema';
         saveState();
         renderSection('daily-registration');
     }
