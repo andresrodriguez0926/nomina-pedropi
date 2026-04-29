@@ -2498,7 +2498,7 @@ const renderDailyRegistration = (container) => {
                             <td>${log.employee} ${isAnnulled ? '<strong>(ANULADO)</strong>' : ''}</td>
                             <td style="font-weight: 500; font-family: monospace;">${log.empReg || '<span class="text-gray">N/A</span>'}</td>
                             <td>${log.op}</td>
-                            <td>$${parseFloat(log.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td>$${(isAnnulled ? 0 : parseFloat(log.amount)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td>${log.applyTSS === 'si' ? '<span class="status-badge fixed">Sí</span>' : '<span class="status-badge mobile">No</span>'}</td>
                             <td><small>${log.createdBy || 'Sistema'}</small></td>
                             <td>
@@ -3491,6 +3491,7 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
     // Group by Operation -> Employee -> Activity
     const grouped = {};
     logs.forEach(log => {
+        if (log.status === 'anulado') return;
         // Filter by Operation
         if (!filterOps.includes(log.op)) return;
 
@@ -3737,6 +3738,7 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
     // Group by Department -> Employee
     const grouped = {};
     logs.forEach(log => {
+        if (log.status === 'anulado') return;
         const logName = normalizeName(log.employee);
         const emp = state.employees.find(e => {
             if (log.empReg && e.regNumber) {
@@ -4824,6 +4826,7 @@ const renderPayrollEntry = (container) => {
         // Mobile: Only if dailyLogs were saved
         const logs = run.dailyLogs || [];
         logs.forEach(l => {
+            if (l.status === 'anulado') return;
             const empCheck = state.employees.find(e => `${e.firstName} ${e.lastName}` === l.employee);
             if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
             const key = `${l.op || 'Sin Cuenta'}| ${l.act || '-'} `;
@@ -5536,6 +5539,8 @@ window.annulDailyLog = (index) => {
         const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
         const log = activePayroll.dailyLogs[index];
         log.status = 'anulado';
+        if (log.amount !== undefined) log.originalAmount = log.amount;
+        log.amount = 0;
         log.annulledAt = new Date().toISOString();
         log.annulledBy = state.currentUser ? state.currentUser.name : 'Sistema';
         saveState();
