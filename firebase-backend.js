@@ -362,26 +362,24 @@ if (typeof firebase !== 'undefined') {
                                                     const mergedLogs = [...cloudLogs];
                                                     const cloudLogIds = new Set(cloudLogs.map(l => String(l.id)).filter(Boolean));
 
-                                                    // 1. Preserve local logs not yet in cloud
+                                                    // 1. Preserve local logs not yet in cloud and respect local annulments
                                                     localLogs.forEach(localLog => {
                                                         const localLogIdStr = String(localLog.id);
-                                                        if (localLog.id && !cloudLogIds.has(localLogIdStr) && !lastCloudLogIds.has(localLogIdStr)) {
+                                                        if (localLog.id && !cloudLogIds.has(localLogIdStr)) {
                                                             mergedLogs.push(localLog);
+                                                        } else if (localLog.id) {
+                                                            // Si existe en ambos lados, respetamos la anulación si se hizo localmente
+                                                            const cloudLog = mergedLogs.find(l => String(l.id) === localLogIdStr);
+                                                            if (cloudLog && localLog.status === 'anulado' && cloudLog.status !== 'anulado') {
+                                                                cloudLog.status = 'anulado';
+                                                                cloudLog.amount = 0;
+                                                                if (localLog.annulledAt) cloudLog.annulledAt = localLog.annulledAt;
+                                                                if (localLog.annulledBy) cloudLog.annulledBy = localLog.annulledBy;
+                                                            }
                                                         }
                                                     });
 
-                                                    // 2. Filter out logs we deleted locally
-                                                    cloudPayroll.dailyLogs = mergedLogs.filter(log => {
-                                                        if (!log.id) return true;
-                                                        const logIdStr = String(log.id);
-                                                        const inLocalLogs = localLogs.find(l => String(l.id) === logIdStr);
-                                                        const wasInCloud = lastCloudLogIds.has(logIdStr);
-                                                        if (!inLocalLogs && wasInCloud) {
-                                                            console.log(`[SYNC] Preventing reappearance of deleted log: ${logIdStr}`);
-                                                            return false;
-                                                        }
-                                                        return true;
-                                                    });
+                                                    cloudPayroll.dailyLogs = mergedLogs;
                                                 }
                                             });
                                         }
@@ -562,8 +560,61 @@ if (typeof firebase !== 'undefined') {
 
             if (Object.keys(updates).length > 0) {
                 console.log("[FIREBASE SAVE] Updates detected for modules:", Object.keys(updates));
-                // We use merge: true so Firebase ONLY replaces these specific top-level keys
-                await db.collection('payroll').doc('globalState').set(updates, { merge: true });
+                
+                const docRef = db.collection('payroll').doc('globalState');
+
+                // Usar transacción para evitar sobrescribir datos de otros usuarios
+                await db.runTransaction(async (transaction) => {
+                    const doc = await transaction.get(docRef);
+                    if (!doc.exists) {
+                        transaction.set(docRef, updates);
+                        return;
+                    }
+                    
+                    const cloudData = doc.data();
+                    const finalUpdates = { ...updates };
+
+                    // Fusión Segura de activePayrolls (Evitar pérdida de registros diarios por concurrencia)
+                    if (updates.activePayrolls && cloudData.activePayrolls) {
+                        const mergedActivePayrolls = [];
+                        
+                        updates.activePayrolls.forEach(localPayroll => {
+                            const cloudPayroll = cloudData.activePayrolls.find(p => String(p.id) === String(localPayroll.id));
+                            if (!cloudPayroll) {
+                                mergedActivePayrolls.push(localPayroll);
+                            } else {
+                                // Combinar logs diarios de la nube con los locales
+                                const localLogs = localPayroll.dailyLogs || [];
+                                const cloudLogs = cloudPayroll.dailyLogs || [];
+                                
+                                const mergedLogs = [...cloudLogs];
+                                const cloudLogIds = new Set(cloudLogs.map(l => String(l.id)).filter(Boolean));
+                                
+                                localLogs.forEach(localLog => {
+                                    const localLogIdStr = String(localLog.id);
+                                    if (localLog.id && !cloudLogIds.has(localLogIdStr)) {
+                                        mergedLogs.push(localLog);
+                                    } else if (localLog.id) {
+                                        const cloudLog = mergedLogs.find(l => String(l.id) === localLogIdStr);
+                                        if (cloudLog && localLog.status === 'anulado' && cloudLog.status !== 'anulado') {
+                                            cloudLog.status = 'anulado';
+                                            cloudLog.amount = 0;
+                                            if (localLog.annulledAt) cloudLog.annulledAt = localLog.annulledAt;
+                                            if (localLog.annulledBy) cloudLog.annulledBy = localLog.annulledBy;
+                                        }
+                                    }
+                                });
+                                
+                                localPayroll.dailyLogs = mergedLogs;
+                                mergedActivePayrolls.push(localPayroll);
+                            }
+                        });
+                        
+                        finalUpdates.activePayrolls = mergedActivePayrolls;
+                    }
+
+                    transaction.set(docRef, finalUpdates, { merge: true });
+                });
 
                 // Update our baseline so we don't resave unless changed again
                 if (!window._lastCloudState) window._lastCloudState = {};
