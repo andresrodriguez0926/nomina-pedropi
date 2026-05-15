@@ -595,8 +595,19 @@ if (typeof firebase !== 'undefined') {
                                     if (localLog.id && !cloudLogIds.has(localLogIdStr)) {
                                         mergedLogs.push(localLog);
                                     } else if (localLog.id) {
-                                        const cloudLog = mergedLogs.find(l => String(l.id) === localLogIdStr);
-                                        if (cloudLog && localLog.status === 'anulado' && cloudLog.status !== 'anulado') {
+                                        const cloudLogIndex = mergedLogs.findIndex(l => String(l.id) === localLogIdStr);
+                                        const cloudLog = mergedLogs[cloudLogIndex];
+                                        
+                                        const localCount = localLog.modifyCount || 0;
+                                        const cloudCount = cloudLog.modifyCount || 0;
+                                        const localTime = localLog.modifiedAt || localLog.createdAt || "";
+                                        const cloudTime = cloudLog.modifiedAt || cloudLog.createdAt || "";
+                                        
+                                        if (localCount > cloudCount || (localCount === cloudCount && localTime > cloudTime)) {
+                                            // La versión local tiene modificaciones más recientes
+                                            mergedLogs[cloudLogIndex] = { ...cloudLog, ...localLog };
+                                        } else if (cloudLog && localLog.status === 'anulado' && cloudLog.status !== 'anulado') {
+                                            // Fallback: si no hubo modificación registrada pero localmente se anuló, respetar la anulación
                                             cloudLog.status = 'anulado';
                                             cloudLog.amount = 0;
                                             if (localLog.annulledAt) cloudLog.annulledAt = localLog.annulledAt;

@@ -2625,7 +2625,11 @@ const renderDailyRegistration = (container) => {
             act: actVal.trim(),
             amount: document.getElementById('reg-amount').value,
             applyTSS: document.getElementById('reg-tss').value,
-            createdBy: window.globalState.globalUser ? window.globalState.globalUser.name : (window.globalState.currentUser?.name || 'Desconocido')
+            createdAt: new Date().toISOString(),
+            createdBy: window.globalState.globalUser ? window.globalState.globalUser.name : (window.globalState.currentUser?.name || 'Desconocido'),
+            modifiedAt: null,
+            modifiedBy: null,
+            modifyCount: 0
         };
 
         if (log.employee && log.amount) {
@@ -5524,6 +5528,11 @@ window.editDailyLog = (index) => {
             updatedLog.empReg = employee ? employee.regNumber : (log.empReg || null);
             updatedLog.op = updatedLog.op.trim();
             updatedLog.act = updatedLog.act.trim();
+            
+            // Audit Trail
+            updatedLog.modifiedAt = new Date().toISOString();
+            updatedLog.modifiedBy = window.globalState.globalUser ? window.globalState.globalUser.name : (window.globalState.currentUser?.name || 'Desconocido');
+            updatedLog.modifyCount = (log.modifyCount || 0) + 1;
             
             activePayroll.dailyLogs[index] = { ...log, ...updatedLog };
             saveState();
