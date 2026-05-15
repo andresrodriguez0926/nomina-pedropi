@@ -5721,6 +5721,33 @@ window.editOperation = (index) => {
         const useInAccounting = document.getElementById('edit-op-use-acc').checked;
         const useInLabor = document.getElementById('edit-op-use-labor').checked;
         if (name && account) {
+            const oldName = op.name;
+            if (oldName && oldName !== name) {
+                // Cascade update operation name
+                if (state.employees) {
+                    state.employees.forEach(emp => {
+                        if (emp.operation === oldName) emp.operation = name;
+                    });
+                }
+                const updateLogsAndResults = (payrolls) => {
+                    if (!payrolls) return;
+                    payrolls.forEach(p => {
+                        if (p.dailyLogs) {
+                            p.dailyLogs.forEach(log => {
+                                if (log.op === oldName) log.op = name;
+                            });
+                        }
+                        if (p.results) {
+                            p.results.forEach(res => {
+                                if (res.operation === oldName) res.operation = name;
+                            });
+                        }
+                    });
+                };
+                updateLogsAndResults(state.activePayrolls);
+                updateLogsAndResults(state.payrollHistory);
+            }
+
             state.operations[index] = { ...op, name, account, useInAccounting, useInLabor };
             saveState();
             renderSection('operations');
@@ -5749,6 +5776,33 @@ window.editActivity = (index) => {
         const value = document.getElementById('edit-act-value').value;
         const dailySalary = document.getElementById('edit-act-daily-salary').value;
         if (name) {
+            const oldName = act.name;
+            if (oldName && oldName !== name) {
+                // Cascade update activity name
+                if (state.employees) {
+                    state.employees.forEach(emp => {
+                        if (emp.activity === oldName) emp.activity = name;
+                    });
+                }
+                const updateLogsAndResults = (payrolls) => {
+                    if (!payrolls) return;
+                    payrolls.forEach(p => {
+                        if (p.dailyLogs) {
+                            p.dailyLogs.forEach(log => {
+                                if (log.act === oldName) log.act = name;
+                            });
+                        }
+                        if (p.results) {
+                            p.results.forEach(res => {
+                                if (res.activity === oldName) res.activity = name;
+                            });
+                        }
+                    });
+                };
+                updateLogsAndResults(state.activePayrolls);
+                updateLogsAndResults(state.payrollHistory);
+            }
+
             state.activities[index] = { ...act, name, value: parseFloat(value) || 0, dailySalary: parseFloat(dailySalary) || 0 };
             saveState();
             renderSection('activities');
