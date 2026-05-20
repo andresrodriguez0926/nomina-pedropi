@@ -2840,9 +2840,9 @@ window.renderBulkTable = () => {
     }
 
     tbody.innerHTML = emps.map(e => {
-        const fullName = `${e.firstName} ${e.lastName}`;
+        const fullName = `${e.firstName || ''} ${e.lastName || ''}`.replace(/\s+/g, ' ').trim();
         const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
-        const hasLog = (activePayroll.dailyLogs || []).some(l => l.employee === fullName && l.date === date);
+        const hasLog = (activePayroll.dailyLogs || []).some(l => (l.empReg && e.regNumber ? String(l.empReg) === String(e.regNumber) : l.employee === fullName) && l.date === date);
 
         // Get pre-selected activity amount
         let defaultAmount = '';
