@@ -2442,6 +2442,9 @@ const renderDailyRegistration = (container) => {
                             <option value="si">Sí</option>
                         </select>
                         <button class="btn btn-secondary" onclick="applyBatchToAll()">Aplicar</button>
+                        <button class="btn btn-danger" onclick="window.removeSelectedBulkRows()" title="Quitar empleados seleccionados del lote" style="margin-left: 10px;">
+                            <i class="fas fa-trash-alt"></i> Quitar Seleccionados
+                        </button>
                     </div>
                 </div>
             </div>
@@ -2450,6 +2453,9 @@ const renderDailyRegistration = (container) => {
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 40px; text-align: center;">
+                                <input type="checkbox" id="bulk-select-all" onclick="window.toggleAllBulkRows(this.checked)" title="Seleccionar todos">
+                            </th>
                             <th>Trabajador</th>
                             <th>Operación</th>
                             <th>Actividad</th>
@@ -2459,7 +2465,7 @@ const renderDailyRegistration = (container) => {
                         </tr>
                     </thead>
                     <tbody id="bulk-tbody">
-                        <tr><td colspan="6" style="text-align:center" class="text-gray">Seleccione un departamento para cargar los empleados</td></tr>
+                        <tr><td colspan="7" style="text-align:center" class="text-gray">Seleccione un departamento para cargar los empleados</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -2829,13 +2835,13 @@ window.renderBulkTable = () => {
     const tbody = document.getElementById('bulk-tbody');
 
     if (!dept) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center" class="text-gray">Seleccione un departamento</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center" class="text-gray">Seleccione un departamento</td></tr>';
         return;
     }
 
     const emps = window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false && e.department === dept);
     if (emps.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center" class="text-gray">No hay empleados móviles en este departamento</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center" class="text-gray">No hay empleados móviles en este departamento</td></tr>';
         return;
     }
 
@@ -2855,6 +2861,9 @@ window.renderBulkTable = () => {
 
         return `
             <tr data-emp="${fullName}" data-reg="${e.regNumber || ''}" class="${hasLog ? 'duplicate-row' : ''}">
+                        <td style="text-align: center;">
+                            <input type="checkbox" class="bulk-row-checkbox">
+                        </td>
                         <td style="font-weight: 500;">
                             ${fullName}
                             ${hasLog ? '<br><small class="text-danger"><i class="fas fa-exclamation-triangle"></i> Ya tiene registro hoy</small>' : ''}
@@ -2885,6 +2894,28 @@ window.updateRowAmount = (input) => {
     const activity = state.activities.find(a => a.name === actName);
     if (activity && activity.dailySalary) {
         amtInput.value = activity.dailySalary;
+    }
+};
+
+window.toggleAllBulkRows = (checked) => {
+    document.querySelectorAll('.bulk-row-checkbox').forEach(cb => {
+        cb.checked = checked;
+    });
+};
+
+window.removeSelectedBulkRows = () => {
+    const rows = document.querySelectorAll('#bulk-tbody tr');
+    let removed = 0;
+    rows.forEach(row => {
+        const cb = row.querySelector('.bulk-row-checkbox');
+        if (cb && cb.checked) {
+            row.remove();
+            removed++;
+        }
+    });
+    if (removed > 0) {
+        const selectAllCb = document.getElementById('bulk-select-all');
+        if (selectAllCb) selectAllCb.checked = false;
     }
 };
 
