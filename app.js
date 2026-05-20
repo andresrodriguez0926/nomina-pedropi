@@ -3502,7 +3502,7 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
     filterOps = window.currentMobileFilterOps;
     filterDept = window.currentMobileFilterDept;
 
-    const bounds = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds();
+    const bounds = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds(run.id);
     if (!bounds || !bounds.min || !bounds.max) {
         alert("No hay un periodo definido para esta nómina.");
         return;
@@ -3749,7 +3749,7 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
     if (filterDept !== null) window.currentMobileEmpDeptFilterDept = filterDept;
     filterDept = window.currentMobileEmpDeptFilterDept;
 
-    const bounds = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds();
+    const bounds = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds(run.id);
     if (!bounds || !bounds.min || !bounds.max) {
         alert("No hay un periodo definido para esta nómina.");
         return;
