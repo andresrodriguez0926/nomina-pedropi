@@ -806,7 +806,9 @@ const renderDashboard = (container) => {
         card.innerHTML = html;
     };
 
-    setTimeout(() => {
+    if (window.dashboardChartTimeout) clearTimeout(window.dashboardChartTimeout);
+    
+    window.dashboardChartTimeout = setTimeout(() => {
         try {
             window.renderOpComparison();
             const currencyTooltip = {
@@ -838,7 +840,10 @@ const renderDashboard = (container) => {
 
             const monthlyCanvas = document.getElementById('monthlyChart');
             if (monthlyCanvas && monthlyData.length > 0) {
-                new Chart(monthlyCanvas, {
+                if (window.myMonthlyChart) {
+                    window.myMonthlyChart.destroy();
+                }
+                window.myMonthlyChart = new Chart(monthlyCanvas, {
                     type: 'line',
                     data: {
                         labels: monthlyLabels,
@@ -854,7 +859,10 @@ const renderDashboard = (container) => {
 
             const activityCanvas = document.getElementById('activityChart');
             if (activityCanvas && activityDataSeries.length > 0) {
-                new Chart(activityCanvas, {
+                if (window.myActivityChart) {
+                    window.myActivityChart.destroy();
+                }
+                window.myActivityChart = new Chart(activityCanvas, {
                     type: 'bar',
                     data: {
                         labels: activityLabels,

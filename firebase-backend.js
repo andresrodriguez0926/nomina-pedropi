@@ -238,6 +238,16 @@ if (typeof firebase !== 'undefined') {
     window.loadStateFromFirebase = () => {
         console.log("Listening for real-time changes from Firebase...");
 
+        let syncRenderTimeout = null;
+        const requestSyncRender = (section) => {
+            if (syncRenderTimeout) clearTimeout(syncRenderTimeout);
+            syncRenderTimeout = setTimeout(() => {
+                if (window.globalState && window.globalState.currentSection === section) {
+                    window.renderSection(section);
+                }
+            }, 800); // 800ms debounce to let all rapid snapshots (cache + server + history) settle
+        };
+
         const docRef = db.collection('payroll').doc('globalState');
 
         docRef.onSnapshot((doc) => {
@@ -443,13 +453,13 @@ if (typeof firebase !== 'undefined') {
                         // Because `renderSection` is destructive, we will trigger a safe table re-render if it exists.
                         const tbody = document.getElementById('daily-logs-tbody');
                         if (tbody && window.globalState.currentSection === 'daily-registration') {
-                            window.renderSection('daily-registration');
+                            requestSyncRender('daily-registration');
                         } else {
-                            window.renderSection(window.globalState.currentSection);
+                            requestSyncRender(window.globalState.currentSection);
                         }
                     } else if (window.globalState.currentSection !== 'reports') {
                         // Skip auto-refresh for 'reports' to keep them static while viewing
-                        window.renderSection(window.globalState.currentSection);
+                        requestSyncRender(window.globalState.currentSection);
                     }
                 }
             } else {
@@ -477,7 +487,7 @@ if (typeof firebase !== 'undefined') {
 
             // If we are currently looking at the users page, trigger a re-render
             if (window.globalState.currentSection === 'users') {
-                window.renderSection('users');
+                requestSyncRender('users');
             }
         });
 
@@ -492,7 +502,9 @@ if (typeof firebase !== 'undefined') {
 
             // If we are in specific sections that depend on history, re-render
             if (window.globalState.currentSection === 'closing' || window.globalState.currentSection === 'dashboard') {
-                window.renderSection(window.globalState.currentSection);
+                if (!isInitialLoad) {
+                    requestSyncRender(window.globalState.currentSection);
+                }
             }
         });
     };
