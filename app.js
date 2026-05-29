@@ -24,6 +24,7 @@ const state = {
     activities: JSON.parse(localStorage.getItem('payroll_activities') || '[]'),
     employees: JSON.parse(localStorage.getItem('payroll_employees') || '[]'),
     periods: JSON.parse(localStorage.getItem('payroll_periods') || '[]'),
+    banks: JSON.parse(localStorage.getItem('payroll_banks') || '[]'),
     activePayrolls: (() => {
         const stored = localStorage.getItem('payroll_active');
         if (!stored || stored === 'null') return [];
@@ -364,6 +365,7 @@ window.renderSection = (sectionId) => {
             case 'operations': renderOperations(contentArea); break;
             case 'activities': renderActivities(contentArea); break;
             case 'employees': renderEmployees(contentArea); break;
+            case 'banks': renderBanks(contentArea); break;
             case 'tss': renderTSS(contentArea); break;
             case 'periods': renderPeriods(contentArea); break;
             case 'discounts': renderDiscounts(contentArea); break;
@@ -395,6 +397,7 @@ window.exportLocalData = () => {
         activities: state.activities,
         employees: state.employees,
         periods: state.periods,
+        banks: state.banks,
         activePayrolls: state.activePayrolls,
         discounts: state.discounts,
         incentives: state.incentives,
@@ -421,6 +424,7 @@ window.importLocalData = () => {
         state.activities = dump.activities || [];
         state.employees = dump.employees || [];
         state.periods = dump.periods || [];
+        state.banks = dump.banks || [];
         state.activePayrolls = dump.activePayrolls || (dump.activePayroll ? [dump.activePayroll] : []);
         state.discounts = dump.discounts || [];
         state.incentives = dump.incentives || [];
@@ -1126,6 +1130,68 @@ window.deleteUser = (uid) => {
     }
 };
 
+// --- Module: Banks ---
+const renderBanks = (container) => {
+    container.innerHTML = `
+        <div class="header-action">
+            <h1>Bancos</h1>
+            <button class="btn btn-primary admin-only" id="add-bank-btn">
+                <i class="fas fa-plus"></i> Nuevo Banco
+            </button>
+        </div>
+        <div class="card mt-4">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 50px">Nº</th>
+                        <th>Nombre</th>
+                        <th>Registrado por</th>
+                        <th style="width: 100px">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="bank-table-body">
+                    ${state.banks.map((bank, index) => `
+                        <tr>
+                            <td>B-${bank.bankNumber || (index + 1)}</td>
+                            <td>${bank.name}</td>
+                            <td><small>${bank.createdBy || 'Sistema'}</small></td>
+                            <td>
+                                <button class="btn-icon delete admin-only" onclick="deleteItem('banks', ${index})">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                    ${state.banks.length === 0 ? '<tr><td colspan="4" style="text-align:center">No hay bancos registrados</td></tr>' : ''}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    document.getElementById('add-bank-btn').onclick = () => {
+        showModal('Nuevo Banco', `
+            <div class="form-group">
+                <label>Nombre del Banco</label>
+                <input type="text" id="bank-name" class="form-control" placeholder="Ej: Banco Popular">
+            </div>
+        `, () => {
+            const name = document.getElementById('bank-name').value;
+            if (name) {
+                const nextNum = state.banks.length > 0 ? Math.max(0, ...state.banks.map(b => parseInt(b.bankNumber) || 0)) + 1 : 1;
+                state.banks.push({
+                    id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    name,
+                    bankNumber: nextNum,
+                    createdBy: window.globalState.currentUser?.name || 'Desconocido'
+                });
+                saveState();
+                renderSection('banks');
+                hideModal();
+            }
+        });
+    };
+};
+
 // --- Module: Departments ---
 const renderDepartments = (container) => {
     container.innerHTML = `
@@ -1518,6 +1584,19 @@ const renderEmployees = (container) => {
                     </select>
                 </div>
             </div>
+            <div class="form-row" id="bank-info-row" style="display: none;">
+                <div class="form-group">
+                    <label>Banco</label>
+                    <select id="emp-bank" class="form-control">
+                        <option value="">Seleccionar...</option>
+                        ${state.banks.map(b => `<option value="${b.name}">${b.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Número de Cuenta</label>
+                    <input type="text" id="emp-account-number" class="form-control">
+                </div>
+            </div>
             <div class="form-group">
                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                     <input type="checkbox" id="emp-active" checked> Empleado Activo (Aparece en Nómina)
@@ -1544,6 +1623,8 @@ const renderEmployees = (container) => {
                 operation: document.getElementById('emp-op').value,
                 activity: document.getElementById('emp-act').value,
                 paymentMethod: document.getElementById('emp-payment-method').value,
+                bankName: document.getElementById('emp-bank').value,
+                accountNumber: document.getElementById('emp-account-number').value,
                 active: document.getElementById('emp-active').checked,
                 applyISR: document.getElementById('emp-isr').checked,
                 createdBy: window.globalState.currentUser?.name || 'Desconocido'
@@ -1556,6 +1637,13 @@ const renderEmployees = (container) => {
                 renderSection('employees');
                 hideModal();
             }
+        });
+
+        // Conditional payment method logic
+        const pMethodSelect = document.getElementById('emp-payment-method');
+        const bankInfoRow = document.getElementById('bank-info-row');
+        pMethodSelect.addEventListener('change', () => {
+            bankInfoRow.style.display = pMethodSelect.value === 'transfer' ? 'flex' : 'none';
         });
 
         // Conditional salary field logic
@@ -4315,6 +4403,9 @@ const renderReports = (container) => {
                 <button class="btn btn-info" onclick="window.renderMobileEmployeeDeptReport(null, null, window.currentReportPayrollId)">
                     <i class="fas fa-users"></i> Detalle por Depto/Empleado
                 </button>
+                <button class="btn btn-info" onclick="window.renderTransferReport(window.currentReportPayrollId, window.currentReportFilter)" style="background-color: #8b5cf6;">
+                    <i class="fas fa-university"></i> Reporte Transferencias
+                </button>
                 <button class="btn btn-primary" onclick="window.renderPaySlips(null, window.currentReportPayrollId, window.currentReportFilter)">
                     <i class="fas fa-file-invoice-dollar"></i> Imprimir Volantes
                 </button>
@@ -4629,6 +4720,115 @@ window.selectAllReportDepts = (select) => {
         window.currentReportFilter = [];
     }
     renderSection('reports');
+};
+
+window.renderTransferReport = (payrollId, filterDepts) => {
+    const container = document.getElementById('content-area');
+    const selectedPayroll = (state.activePayrolls || []).find(p => String(p.id) === String(payrollId));
+    
+    if (!selectedPayroll) {
+        alert("Seleccione una nómina activa primero.");
+        return;
+    }
+
+    let reportHtml = `
+        <div class="header-action no-print">
+            <h1>Reporte de Pagos por Transferencia</h1>
+            <div>
+                <button class="btn btn-secondary" onclick="renderSection('reports')">
+                    <i class="fas fa-arrow-left"></i> Volver
+                </button>
+                <button class="btn btn-primary" onclick="window.print()">
+                    <i class="fas fa-print"></i> Imprimir
+                </button>
+            </div>
+        </div>
+        <div class="card mt-4 print-area">
+            <h2 style="text-align: center; margin-bottom: 5px;">Reporte de Pagos por Transferencia</h2>
+            <p style="text-align: center; font-weight: 500; color: var(--gray); margin-bottom: 20px;">
+                Nómina: ${selectedPayroll.name}
+            </p>
+    `;
+
+    let totalTransfer = 0;
+    const filteredDepts = state.departments.filter(d => filterDepts.includes(d.name));
+
+    filteredDepts.forEach(dept => {
+        const deptName = (dept.name || '').trim().toLowerCase();
+        const deptEmps = window.getVisibleEmployees().filter(e => {
+            const eDept = (e.department || '').trim().toLowerCase();
+            return eDept === deptName && e.active !== false && e.paymentMethod === 'transfer';
+        });
+
+        if (deptEmps.length === 0) return;
+
+        let deptTotal = 0;
+        let rows = '';
+
+        deptEmps.forEach(emp => {
+            const res = calculateEmployeePayrollData(emp, selectedPayroll);
+            if (window.reportOnlyWithPayment && res.net <= 0.005) return;
+
+            deptTotal += res.net;
+            totalTransfer += res.net;
+
+            rows += `
+                <tr>
+                    <td>${emp.regNumber || '-'}</td>
+                    <td>${emp.firstName} ${emp.lastName}</td>
+                    <td>${emp.idNumber || '-'}</td>
+                    <td>${emp.bankName || '-'}</td>
+                    <td>${emp.accountNumber || '-'}</td>
+                    <td class="td-numeric" style="font-weight: bold;">$${res.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+            `;
+        });
+
+        if (rows) {
+            reportHtml += `
+                <h3 style="margin-top: 30px; margin-bottom: 10px; color: var(--accent-color); border-bottom: 2px solid var(--accent-color); padding-bottom: 5px;">
+                    Departamento: ${dept.name}
+                </h3>
+                <table class="data-table" style="table-layout: fixed; width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 8%;">Nº Emp.</th>
+                            <th style="width: 30%;">Nombre Completo</th>
+                            <th style="width: 15%;">Cédula</th>
+                            <th style="width: 17%;">Banco</th>
+                            <th style="width: 15%;">Cuenta</th>
+                            <th class="text-right" style="width: 15%;">Total a Cobrar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                    <tfoot style="display: table-row-group; font-weight: bold; border-top: 2px solid #ddd;">
+                        <tr>
+                            <td colspan="5" class="text-right">SUBTOTAL ${dept.name}:</td>
+                            <td class="td-numeric">$${deptTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            `;
+        }
+    });
+
+    if (totalTransfer === 0) {
+        reportHtml += `<p style="text-align: center; margin-top: 30px;">No hay empleados con pago por transferencia en los departamentos seleccionados que tengan cobro en esta nómina.</p>`;
+    } else {
+        reportHtml += `
+            <div style="margin-top: 30px; text-align: right; padding: 15px; background: var(--glass-bg); border-radius: 8px; border: 2px solid var(--accent-color);">
+                <span style="font-size: 1.2rem; font-weight: bold; color: var(--gray);">TOTAL GENERAL TRANSFERENCIAS: </span>
+                <span style="font-size: 1.5rem; font-weight: bold; color: var(--success); margin-left: 10px;">
+                    $${totalTransfer.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+            </div>
+        `;
+    }
+
+    reportHtml += `</div>`;
+    container.innerHTML = reportHtml;
 };
 
 // --- Module: Employee Record (Historical Earnings) ---
@@ -5673,6 +5873,19 @@ window.editEmployee = (index) => {
                         </select>
                     </div>
                 </div>
+                <div class="form-row" id="edit-bank-info-row" style="display: ${emp.paymentMethod === 'transfer' ? 'flex' : 'none'};">
+                    <div class="form-group">
+                        <label>Banco</label>
+                        <select id="edit-emp-bank" class="form-control">
+                            <option value="">Seleccionar...</option>
+                            ${state.banks.map(b => `<option value="${b.name}" ${emp.bankName === b.name ? 'selected' : ''}>${b.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Número de Cuenta</label>
+                        <input type="text" id="edit-emp-account-number" class="form-control" value="${emp.accountNumber || ''}">
+                    </div>
+                </div>
                 <div class="form-group">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                         <input type="checkbox" id="edit-emp-active" ${emp.active !== false ? 'checked' : ''}> Empleado Activo (Aparece en Nómina)
@@ -5698,6 +5911,8 @@ window.editEmployee = (index) => {
             operation: document.getElementById('edit-emp-op').value,
             activity: document.getElementById('edit-emp-act').value,
             paymentMethod: document.getElementById('edit-emp-payment-method').value,
+            bankName: document.getElementById('edit-emp-bank').value,
+            accountNumber: document.getElementById('edit-emp-account-number').value,
             active: document.getElementById('edit-emp-active').checked,
             applyISR: document.getElementById('edit-emp-isr').checked
         };
@@ -5716,6 +5931,13 @@ window.editEmployee = (index) => {
         salaryInput.disabled = (typeSelect.value === 'mobile');
         if (salaryInput.disabled) salaryInput.value = '';
     };
+
+    // Conditional payment method logic
+    const editPMethodSelect = document.getElementById('edit-emp-payment-method');
+    const editBankInfoRow = document.getElementById('edit-bank-info-row');
+    editPMethodSelect.addEventListener('change', () => {
+        editBankInfoRow.style.display = editPMethodSelect.value === 'transfer' ? 'flex' : 'none';
+    });
 };
 
 window.toggleEmployeeStatus = (index) => {
