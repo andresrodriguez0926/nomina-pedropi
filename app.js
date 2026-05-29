@@ -374,6 +374,7 @@ window.renderSection = (sectionId) => {
             case 'daily-registration': renderDailyRegistration(contentArea); break;
             case 'closing': renderClosing(contentArea); break;
             case 'reports': renderReports(contentArea); break;
+            case 'payroll-comparison': renderPayrollComparison(contentArea); break;
             case 'employee-record': renderEmployeeRecord(contentArea); break;
             case 'payroll-entry': renderPayrollEntry(contentArea); break;
             case 'benefits': renderBenefits(contentArea); break;
@@ -1956,7 +1957,7 @@ const renderDiscounts = (container) => {
             const newInstallment = parseFloat(newInstallmentStr);
 
             if (newTotal < paidAmount) {
-                alert(`Transacción denegada. El empleado ya ha pagado $\${paidAmount.toFixed(2)}. La deuda total no puede ser menor a lo que ya se cobró.`);
+                alert(`Transacción denegada. El empleado ya ha pagado $${paidAmount.toFixed(2)}. La deuda total no puede ser menor a lo que ya se cobró.`);
                 return;
             }
 
@@ -7339,6 +7340,224 @@ const exportPayrollToExcel = (historyIndex = null, activePayrollId = null) => {
 };
 window.exportPayrollToExcel = exportPayrollToExcel;
 
+// --- Module: Payroll Comparison ---
+window.comparisonNomina1 = window.comparisonNomina1 || null;
+window.comparisonNomina2 = window.comparisonNomina2 || null;
+
+const renderPayrollComparison = (container) => {
+    let html = `
+        <div class="header-action">
+            <h1>Comparación de Nóminas</h1>
+        </div>
+        <div class="card mt-4 no-print" style="background: var(--glass-bg);">
+            <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                <div class="form-group" style="flex: 1; min-width: 250px;">
+                    <label>Nómina 1 (Base)</label>
+                    <select class="form-control" onchange="window.comparisonNomina1 = this.value; renderSection('payroll-comparison')">
+                        <option value="">Seleccione una nómina...</option>
+                        <optgroup label="Nóminas Activas">
+                            ${(state.activePayrolls || []).map(p => `<option value="active_${p.id}" ${window.comparisonNomina1 === 'active_' + p.id ? 'selected' : ''}>[Activa] ${p.name} (${p.periodType})</option>`).join('')}
+                        </optgroup>
+                        ${(state.payrollHistory || []).length > 0 ? `
+                        <optgroup label="Histórico">
+                            ${(state.payrollHistory || []).slice().reverse().map((p, idx) => {
+                                const realIdx = state.payrollHistory.length - 1 - idx;
+                                return `<option value="history_${realIdx}" ${window.comparisonNomina1 === 'history_' + realIdx ? 'selected' : ''}>[Cerrada] ${p.payrollName || p.name} (${p.periodEnd || p.date})</option>`
+                            }).join('')}
+                        </optgroup>
+                        ` : ''}
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 250px;">
+                    <label>Nómina 2 (A Comparar)</label>
+                    <select class="form-control" onchange="window.comparisonNomina2 = this.value; renderSection('payroll-comparison')">
+                        <option value="">Seleccione una nómina...</option>
+                        <optgroup label="Nóminas Activas">
+                            ${(state.activePayrolls || []).map(p => `<option value="active_${p.id}" ${window.comparisonNomina2 === 'active_' + p.id ? 'selected' : ''}>[Activa] ${p.name} (${p.periodType})</option>`).join('')}
+                        </optgroup>
+                        ${(state.payrollHistory || []).length > 0 ? `
+                        <optgroup label="Histórico">
+                            ${(state.payrollHistory || []).slice().reverse().map((p, idx) => {
+                                const realIdx = state.payrollHistory.length - 1 - idx;
+                                return `<option value="history_${realIdx}" ${window.comparisonNomina2 === 'history_' + realIdx ? 'selected' : ''}>[Cerrada] ${p.payrollName || p.name} (${p.periodEnd || p.date})</option>`
+                            }).join('')}
+                        </optgroup>
+                        ` : ''}
+                    </select>
+                </div>
+                <div style="display: flex; align-items: flex-end; padding-bottom: 5px;">
+                    <button class="btn btn-primary" onclick="window.print()" style="height: 42px;">
+                        <i class="fas fa-print"></i> Imprimir Reporte
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    if (!window.comparisonNomina1 || !window.comparisonNomina2) {
+        html += `<div class="card mt-4 text-center"><p class="text-gray">Seleccione dos nóminas para comparar.</p></div>`;
+        container.innerHTML = html;
+        return;
+    }
+
+    // Process selection
+    const getPayrollData = (val) => {
+        let name = '';
+        let results = [];
+        if (val.startsWith('active_')) {
+            const id = val.replace('active_', '');
+            const p = state.activePayrolls.find(x => String(x.id) === id);
+            if (p) {
+                name = `[Activa] ${p.name}`;
+                results = window.getVisibleEmployees().filter(e => e && e.active !== false).map(emp => {
+                    const res = calculateEmployeePayrollData(emp, p);
+                    return {
+                        idNumber: emp.idNumber,
+                        fullName: window.normalizeName(`${emp.firstName} ${emp.lastName}`),
+                        dept: emp.department,
+                        net: res.net || 0,
+                        brute: res.brute || 0
+                    };
+                });
+            }
+        } else if (val.startsWith('history_')) {
+            const idx = parseInt(val.replace('history_', ''));
+            const p = state.payrollHistory[idx];
+            if (p) {
+                name = `[Cerrada] ${p.payrollName || p.name}`;
+                results = (p.results || []).map(r => ({
+                    idNumber: r.idNumber,
+                    fullName: window.normalizeName(r.fullName),
+                    dept: r.dept,
+                    net: r.net || 0,
+                    brute: r.brute || 0
+                }));
+            }
+        }
+        return { name, results };
+    };
+
+    const data1 = getPayrollData(window.comparisonNomina1);
+    const data2 = getPayrollData(window.comparisonNomina2);
+
+    if (!data1.name || !data2.name) {
+         html += `<div class="card mt-4 text-center"><p class="text-gray">Error cargando una de las nóminas.</p></div>`;
+         container.innerHTML = html;
+         return;
+    }
+
+    // Group data by Department
+    const deptTotals1 = {};
+    const deptTotals2 = {};
+
+    data1.results.forEach(r => {
+        const d = r.dept && r.dept !== '-' ? r.dept : 'Sin Departamento';
+        deptTotals1[d] = (deptTotals1[d] || 0) + (r.net || 0);
+    });
+
+    data2.results.forEach(r => {
+        const d = r.dept && r.dept !== '-' ? r.dept : 'Sin Departamento';
+        deptTotals2[d] = (deptTotals2[d] || 0) + (r.net || 0);
+    });
+
+    const allDepts = new Set([...Object.keys(deptTotals1), ...Object.keys(deptTotals2)]);
+
+    const rows = [];
+    let totalN1 = 0;
+    let totalN2 = 0;
+
+    allDepts.forEach(dept => {
+        const net1 = deptTotals1[dept] || 0;
+        const net2 = deptTotals2[dept] || 0;
+        const diff = net2 - net1;
+        const variation = net1 === 0 ? (net2 > 0 ? 100 : 0) : (diff / net1) * 100;
+
+        totalN1 += net1;
+        totalN2 += net2;
+
+        if (net1 > 0 || net2 > 0) {
+            rows.push({
+                dept,
+                net1,
+                net2,
+                diff,
+                variation
+            });
+        }
+    });
+
+    rows.sort((a, b) => a.dept.localeCompare(b.dept));
+
+    const totalDiff = totalN2 - totalN1;
+    const totalVariation = totalN1 === 0 ? (totalN2 > 0 ? 100 : 0) : (totalDiff / totalN1) * 100;
+
+    html += `
+        <div class="card mt-4 print-area">
+            <h2 style="text-align: center; margin-bottom: 20px;">Reporte Comparativo: ${data1.name} vs ${data2.name}</h2>
+            
+            <div class="stats-row mb-4">
+                <div class="stat-card">
+                    <span class="stat-label">Total ${data1.name}</span>
+                    <span class="stat-value">$${totalN1.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Total ${data2.name}</span>
+                    <span class="stat-value">$${totalN2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div class="stat-card" style="border-left: 4px solid ${totalDiff > 0 ? 'var(--danger)' : (totalDiff < 0 ? 'var(--success)' : 'var(--gray)')}">
+                    <span class="stat-label">Variación General</span>
+                    <span class="stat-value" style="color: ${totalDiff > 0 ? 'var(--danger)' : (totalDiff < 0 ? 'var(--success)' : 'inherit')}">
+                        ${totalDiff > 0 ? '+' : ''}$${totalDiff.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 
+                        <small style="font-size: 0.9rem">(${totalVariation > 0 ? '+' : ''}${totalVariation.toFixed(2)}%)</small>
+                    </span>
+                </div>
+            </div>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Departamento</th>
+                        <th class="text-right">Neto ${data1.name}</th>
+                        <th class="text-right">Neto ${data2.name}</th>
+                        <th class="text-right">Diferencia ($)</th>
+                        <th class="text-right">Variación (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows.map(r => `
+                        <tr>
+                            <td style="font-weight: bold">${r.dept}</td>
+                            <td class="text-right">$${r.net1.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="text-right">$${r.net2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="text-right" style="color: ${r.diff > 0 ? 'var(--danger)' : (r.diff < 0 ? 'var(--success)' : 'inherit')}; font-weight: bold;">
+                                ${r.diff > 0 ? '+' : ''}$${r.diff.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td class="text-right" style="color: ${r.variation > 0 ? 'var(--danger)' : (r.variation < 0 ? 'var(--success)' : 'inherit')}; font-weight: bold;">
+                                ${r.variation > 0 ? '+' : ''}${r.variation.toFixed(2)}%
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+                <tfoot style="display: table-row-group; font-weight: bold; border-top: 2px solid #333;">
+                    <tr>
+                        <td class="text-right">TOTALES:</td>
+                        <td class="text-right">$${totalN1.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td class="text-right">$${totalN2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td class="text-right" style="color: ${totalDiff > 0 ? 'var(--danger)' : (totalDiff < 0 ? 'var(--success)' : 'inherit')}">
+                            ${totalDiff > 0 ? '+' : ''}$${totalDiff.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td class="text-right" style="color: ${totalVariation > 0 ? 'var(--danger)' : (totalVariation < 0 ? 'var(--success)' : 'inherit')}">
+                            ${totalVariation > 0 ? '+' : ''}${totalVariation.toFixed(2)}%
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    `;
+    container.innerHTML = html;
+};
+window.renderPayrollComparison = renderPayrollComparison;
+
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
     initRouter();
@@ -7395,3 +7614,4 @@ window.addEventListener('appinstalled', (event) => {
     deferredPrompt = null;
     if (installBtn) installBtn.style.display = 'none';
 });
+
