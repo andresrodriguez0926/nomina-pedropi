@@ -4016,12 +4016,20 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
 
     let grandTotal = 0;
     const grandTotalByDate = {};
-    dates.forEach(d => grandTotalByDate[d] = 0);
+    const grandWorkersByDate = {};
+    dates.forEach(d => {
+        grandTotalByDate[d] = 0;
+        grandWorkersByDate[d] = new Set();
+    });
 
     Object.keys(grouped).sort().forEach(dept => {
         let deptTotal = 0;
         const deptDailyTotals = {};
-        dates.forEach(d => deptDailyTotals[d] = 0);
+        const deptDailyWorkers = {};
+        dates.forEach(d => {
+            deptDailyTotals[d] = 0;
+            deptDailyWorkers[d] = new Set();
+        });
 
         html += `
                     <div class="mb-5">
@@ -4047,7 +4055,11 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
             let daysHtml = '';
             dates.forEach(d => {
                 const val = empData.dates[d] || 0;
-                if (val > 0) daysWorked++;
+                if (val > 0) {
+                    daysWorked++;
+                    deptDailyWorkers[d].add(empKey);
+                    grandWorkersByDate[d].add(empKey);
+                }
                 rowTotal += val;
                 deptDailyTotals[d] += val;
                 grandTotalByDate[d] += val;
@@ -4069,6 +4081,12 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
                                     ${dates.map(d => `<td class="text-center">${deptDailyTotals[d] > 0 ? deptDailyTotals[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
                                     <td></td>
                                     <td class="text-right">$${deptTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                                <tr style="color: var(--primary);">
+                                    <td class="text-right" style="font-size: 0.8rem;">CANT. TRABAJADORES :</td>
+                                    ${dates.map(d => `<td class="text-center" style="font-size: 0.8rem;">${deptDailyWorkers[d].size > 0 ? deptDailyWorkers[d].size : '-'}</td>`).join('')}
+                                    <td></td>
+                                    <td></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -4094,6 +4112,12 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
                                     ${dates.map(d => `<td class="text-center">${grandTotalByDate[d] > 0 ? grandTotalByDate[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
                                     <td></td>
                                     <td class="text-right" style="font-size: 1.1rem; color: var(--primary);">$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                                <tr style="font-weight: bold; background: rgba(0,0,0,0.02); color: var(--primary);">
+                                    <td class="text-right" style="font-size: 0.85rem;">TRABAJADORES (TOTAL) :</td>
+                                    ${dates.map(d => `<td class="text-center" style="font-size: 0.85rem;">${grandWorkersByDate[d].size > 0 ? grandWorkersByDate[d].size : '-'}</td>`).join('')}
+                                    <td></td>
+                                    <td></td>
                                 </tr>
                              </tbody>
                         </table>
