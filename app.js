@@ -1548,6 +1548,13 @@ const renderEmployees = (container) => {
                     </select>
                 </div>
             </div>
+            <div class="form-group" id="emp-tss-calc-group">
+                <label>Cálculo de TSS</label>
+                <select id="emp-calc-tss" class="form-control">
+                    <option value="auto">Automático</option>
+                    <option value="manual">No calcular (Manual)</option>
+                </select>
+            </div>
             <div class="form-group">
                 <label>Salario a Ganar</label>
                 <input type="number" id="emp-salary" class="form-control" placeholder="0.00">
@@ -1615,6 +1622,10 @@ const renderEmployees = (container) => {
                     <input type="checkbox" id="emp-isr" checked> Aplicar Retención de ISR (Impuesto Sobre la Renta)
                 </label>
             </div>
+            <div class="form-group" id="emp-fixed-isr-group" style="display: none; margin-left: 20px;">
+                <label>Monto Fijo a Retener (Dejar en blanco para no retener nada)</label>
+                <input type="number" id="emp-fixed-isr" class="form-control" placeholder="0.00">
+            </div>
         `, () => {
             const emp = {
                 id: 'emp_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
@@ -1635,6 +1646,8 @@ const renderEmployees = (container) => {
                 accountNumber: document.getElementById('emp-account-number').value,
                 active: document.getElementById('emp-active').checked,
                 applyISR: document.getElementById('emp-isr').checked,
+                calcTSS: document.getElementById('emp-calc-tss') ? document.getElementById('emp-calc-tss').value === 'auto' : true,
+                fixedISR: document.getElementById('emp-fixed-isr') ? parseFloat(document.getElementById('emp-fixed-isr').value) : null,
                 createdBy: window.globalState.currentUser?.name || 'Desconocido'
             };
 
@@ -1657,10 +1670,22 @@ const renderEmployees = (container) => {
         // Conditional salary field logic
         const typeSelect = document.getElementById('emp-type');
         const salaryInput = document.getElementById('emp-salary');
+        const isrCheckbox = document.getElementById('emp-isr');
+        const fixedIsrGroup = document.getElementById('emp-fixed-isr-group');
+        if (isrCheckbox && fixedIsrGroup) {
+            isrCheckbox.onchange = () => {
+                fixedIsrGroup.style.display = isrCheckbox.checked ? 'none' : 'block';
+            };
+            isrCheckbox.onchange(); // trigger initially
+        }
+
+        const tssCalcGroup = document.getElementById('emp-tss-calc-group');
         typeSelect.onchange = () => {
             salaryInput.disabled = (typeSelect.value === 'mobile');
             if (salaryInput.disabled) salaryInput.value = '';
+            if (tssCalcGroup) tssCalcGroup.style.display = typeSelect.value === 'fixed' ? 'block' : 'none';
         };
+        typeSelect.onchange(); // trigger initially
     };
 };
 
@@ -4155,6 +4180,10 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
         }
     }
 
+    if (isFixed && emp.calcTSS === false) {
+        tss = 0;
+    }
+
     inc = (state.incentives || []).filter(i => {
         if (i.empReg && emp.regNumber) return String(i.empReg) === String(emp.regNumber) && filterByPeriod(i);
         const iName = normalizeMatch(i.employeeName);
@@ -4239,7 +4268,11 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
     // --- ISR Progressive Projection Logic ---
     isr = 0;
-    if (currentTaxableIncome > 0 && bounds && emp.applyISR !== false) {
+    if (emp.applyISR === false) {
+        if (emp.fixedISR && !isNaN(parseFloat(emp.fixedISR)) && parseFloat(emp.fixedISR) > 0) {
+            isr = parseFloat(emp.fixedISR);
+        }
+    } else if (currentTaxableIncome > 0 && bounds) {
         const currentMonth = bounds.min.substring(0, 7); // YYYY-MM
         let accumulatedTaxable = 0;
         let accumulatedISR = 0;
@@ -4276,7 +4309,7 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
         isr = Math.max(0, taxDueSoFar - accumulatedISR);
     } else {
-        isr = (emp.applyISR !== false) ? calculateMonthlyISR(currentTaxableIncome) : 0;
+        isr = calculateMonthlyISR(currentTaxableIncome);
     }
 
     net = brute - tss - disc - isr;
@@ -5837,6 +5870,13 @@ window.editEmployee = (index) => {
                         </select>
                     </div>
                 </div>
+                <div class="form-group" id="edit-emp-tss-calc-group" style="display: ${emp.type === 'fixed' ? 'block' : 'none'};">
+                    <label>Cálculo de TSS</label>
+                    <select id="edit-emp-calc-tss" class="form-control">
+                        <option value="auto" ${emp.calcTSS !== false ? 'selected' : ''}>Automático</option>
+                        <option value="manual" ${emp.calcTSS === false ? 'selected' : ''}>No calcular (Manual)</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     <label>Salario a Ganar</label>
                     <input type="number" id="edit-emp-salary" class="form-control" value="${emp.salary}" ${emp.type === 'mobile' ? 'disabled' : ''}>
@@ -5904,6 +5944,10 @@ window.editEmployee = (index) => {
                         <input type="checkbox" id="edit-emp-isr" ${emp.applyISR !== false ? 'checked' : ''}> Aplicar Retención de ISR (Impuesto Sobre la Renta)
                     </label>
                 </div>
+                <div class="form-group" id="edit-emp-fixed-isr-group" style="display: ${emp.applyISR !== false ? 'none' : 'block'}; margin-left: 20px;">
+                    <label>Monto Fijo a Retener (Dejar en blanco para no retener nada)</label>
+                    <input type="number" id="edit-emp-fixed-isr" class="form-control" placeholder="0.00" value="${emp.fixedISR || ''}">
+                </div>
         `, () => {
         const updatedEmp = {
             regNumber: document.getElementById('edit-emp-reg').value,
@@ -5922,7 +5966,9 @@ window.editEmployee = (index) => {
             bankName: document.getElementById('edit-emp-bank').value,
             accountNumber: document.getElementById('edit-emp-account-number').value,
             active: document.getElementById('edit-emp-active').checked,
-            applyISR: document.getElementById('edit-emp-isr').checked
+            applyISR: document.getElementById('edit-emp-isr').checked,
+            calcTSS: document.getElementById('edit-emp-calc-tss') ? document.getElementById('edit-emp-calc-tss').value === 'auto' : true,
+            fixedISR: document.getElementById('edit-emp-fixed-isr') ? parseFloat(document.getElementById('edit-emp-fixed-isr').value) : null
         };
 
         if (updatedEmp.firstName && updatedEmp.idNumber) {
@@ -5935,9 +5981,19 @@ window.editEmployee = (index) => {
 
     const typeSelect = document.getElementById('edit-emp-type');
     const salaryInput = document.getElementById('edit-emp-salary');
+    const editIsrCheckbox = document.getElementById('edit-emp-isr');
+    const editFixedIsrGroup = document.getElementById('edit-emp-fixed-isr-group');
+    if (editIsrCheckbox && editFixedIsrGroup) {
+        editIsrCheckbox.onchange = () => {
+            editFixedIsrGroup.style.display = editIsrCheckbox.checked ? 'none' : 'block';
+        };
+    }
+
+    const editTssCalcGroup = document.getElementById('edit-emp-tss-calc-group');
     typeSelect.onchange = () => {
         salaryInput.disabled = (typeSelect.value === 'mobile');
         if (salaryInput.disabled) salaryInput.value = '';
+        if (editTssCalcGroup) editTssCalcGroup.style.display = typeSelect.value === 'fixed' ? 'block' : 'none';
     };
 
     // Conditional payment method logic
