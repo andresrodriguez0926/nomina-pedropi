@@ -3781,12 +3781,20 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
 
     let grandTotal = 0;
     const grandTotalByDate = {};
-    dates.forEach(d => grandTotalByDate[d] = 0);
+    const grandWorkersByDate = {};
+    dates.forEach(d => {
+        grandTotalByDate[d] = 0;
+        grandWorkersByDate[d] = new Set();
+    });
 
     Object.keys(grouped).sort().forEach(op => {
         let opTotal = 0;
         const opDailyTotals = {};
-        dates.forEach(d => opDailyTotals[d] = 0);
+        const opDailyWorkers = {};
+        dates.forEach(d => {
+            opDailyTotals[d] = 0;
+            opDailyWorkers[d] = new Set();
+        });
 
         html += `
                     <div class="mb-5">
@@ -3814,7 +3822,11 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                 let daysHtml = '';
                 dates.forEach(d => {
                     const val = empData.activities[act][d] || 0;
-                    if (val > 0) daysWorked++;
+                    if (val > 0) {
+                        daysWorked++;
+                        opDailyWorkers[d].add(empKey);
+                        grandWorkersByDate[d].add(empKey);
+                    }
                     rowTotal += val;
                     opDailyTotals[d] += val;
                     grandTotalByDate[d] += val;
@@ -3837,6 +3849,12 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                                     ${dates.map(d => `<td class="text-center">${opDailyTotals[d] > 0 ? opDailyTotals[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
                                     <td></td>
                                     <td class="text-right">$${opTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                                <tr style="color: var(--primary);">
+                                    <td colspan="2" class="text-right" style="font-size: 0.8rem;">CANT. TRABAJADORES :</td>
+                                    ${dates.map(d => `<td class="text-center" style="font-size: 0.8rem;">${opDailyWorkers[d].size > 0 ? opDailyWorkers[d].size : '-'}</td>`).join('')}
+                                    <td></td>
+                                    <td></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -3862,6 +3880,12 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                                     ${dates.map(d => `<td class="text-center">${grandTotalByDate[d] > 0 ? grandTotalByDate[d].toLocaleString('en-US', { minimumFractionDigits: 0 }) : '-'}</td>`).join('')}
                                     <td></td>
                                     <td class="text-right" style="font-size: 1.1rem; color: var(--primary);">$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                                <tr style="font-weight: bold; background: rgba(0,0,0,0.02); color: var(--primary);">
+                                    <td colspan="2" class="text-right" style="font-size: 0.85rem;">TRABAJADORES (TOTAL) :</td>
+                                    ${dates.map(d => `<td class="text-center" style="font-size: 0.85rem;">${grandWorkersByDate[d].size > 0 ? grandWorkersByDate[d].size : '-'}</td>`).join('')}
+                                    <td></td>
+                                    <td></td>
                                 </tr>
                              </tbody>
                         </table>
