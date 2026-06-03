@@ -2981,7 +2981,14 @@ window.renderBulkTable = () => {
         return;
     }
 
-    const emps = window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false && e.department === dept);
+    const emps = window.getVisibleEmployees()
+        .filter(e => e.type === 'mobile' && e.active !== false && e.department === dept)
+        .sort((a, b) => {
+            const nameA = `${a.firstName || ''} ${a.lastName || ''}`.trim().toLowerCase();
+            const nameB = `${b.firstName || ''} ${b.lastName || ''}`.trim().toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+
     if (emps.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center" class="text-gray">No hay empleados móviles en este departamento</td></tr>';
         return;
@@ -3450,7 +3457,11 @@ window.viewHistoricalPayroll = (index) => {
     let totalGenBrute = 0, totalGenTSS = 0, totalGenISR = 0, totalGenDiscounts = 0, totalGenNet = 0;
 
     Object.keys(depts).forEach(deptName => {
-        const deptEmps = depts[deptName];
+        const deptEmps = depts[deptName].sort((a, b) => {
+            const nameA = (a.fullName || '').trim().toLowerCase();
+            const nameB = (b.fullName || '').trim().toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
         let deptBase = 0, deptInc = 0, deptOT = 0, deptChr = 0, deptBrute = 0;
         let deptTSS = 0, deptISR = 0, deptDisc = 0, deptNet = 0;
 
@@ -4517,6 +4528,10 @@ const renderReports = (container) => {
                     const deptEmps = window.getVisibleEmployees().filter(e => {
                         const eDept = (e.department || '').trim().toLowerCase();
                         return eDept === deptName && e.active !== false;
+                    }).sort((a, b) => {
+                        const nameA = `${a.firstName || ''} ${a.lastName || ''}`.trim().toLowerCase();
+                        const nameB = `${b.firstName || ''} ${b.lastName || ''}`.trim().toLowerCase();
+                        return nameA.localeCompare(nameB);
                     });
 
                     if (deptEmps.length === 0) return;
