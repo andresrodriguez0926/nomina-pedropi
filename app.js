@@ -1699,9 +1699,15 @@ const renderTSS = (container) => {
                             <label>Nombre de la Empresa</label>
                             <input type="text" id="company-name" class="form-control" value="${state.settings.companyName || 'NóminaApp'}">
                         </div>
-                        <div class="form-group">
-                            <label>Tasa de Retención Seguro (%)</label>
-                            <input type="number" id="tss-rate" class="form-control" value="${(state.settings.tss_rate || 0.0591) * 100}">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Seguro Familiar de Salud (SFS) (%)</label>
+                                <input type="number" id="sfs-rate" class="form-control" value="${(state.settings.sfs_rate || 0.0304) * 100}" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label>Fondo de Pensiones (AFP) (%)</label>
+                                <input type="number" id="afp-rate" class="form-control" value="${(state.settings.afp_rate || 0.0287) * 100}" step="0.01">
+                            </div>
                         </div>
                         
                         <h3 class="mt-4 mb-2">Cuentas Contables por Defecto</h3>
@@ -1736,10 +1742,17 @@ const renderTSS = (container) => {
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Cuenta para Retención TSS (Crédito)</label>
-                            <select id="acc-tss" class="form-control">
+                            <label>Cuenta para Retención SFS (Crédito)</label>
+                            <select id="acc-sfs" class="form-control">
                                 <option value="">Seleccionar...</option>
-                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.tss === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.sfs === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Cuenta para Retención AFP (Crédito)</label>
+                            <select id="acc-afp" class="form-control">
+                                <option value="">Seleccionar...</option>
+                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.afp === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
@@ -1790,13 +1803,20 @@ const renderTSS = (container) => {
 
     document.getElementById('save-settings').onclick = () => {
         state.settings.companyName = document.getElementById('company-name').value;
-        state.settings.tss_rate = parseFloat(document.getElementById('tss-rate').value) / 100;
+        const sfsRate = parseFloat(document.getElementById('sfs-rate').value) / 100;
+        const afpRate = parseFloat(document.getElementById('afp-rate').value) / 100;
+        state.settings.sfs_rate = sfsRate;
+        state.settings.afp_rate = afpRate;
+        state.settings.tss_rate = sfsRate + afpRate; // Keep for backward compatibility
+        
         state.settings.payrollAccounts = {
             incentives: document.getElementById('acc-inc').value,
             overtime: document.getElementById('acc-ot').value,
             discounts: document.getElementById('acc-disc').value,
             christmas: document.getElementById('acc-chr').value,
-            tss: document.getElementById('acc-tss').value,
+            tss: document.getElementById('acc-sfs').value, // Fallback
+            sfs: document.getElementById('acc-sfs').value,
+            afp: document.getElementById('acc-afp').value,
             isr: document.getElementById('acc-isr').value,
             payable: document.getElementById('acc-payable').value
         };
@@ -5268,15 +5288,33 @@ const renderPayrollEntry = (container) => {
                                     `;
     }).join('')}
 
-                                ${totalCredits.tss > 0 ? `
+                                ${totalCredits.tss > 0 ? (() => {
+                                    const sfsRate = state.settings.sfs_rate || 0.0304;
+                                    const afpRate = state.settings.afp_rate || 0.0287;
+                                    const totalRate = sfsRate + afpRate;
+                                    const sfsRatio = totalRate > 0 ? (sfsRate / totalRate) : (0.0304 / 0.0591);
+                                    const afpRatio = totalRate > 0 ? (afpRate / totalRate) : (0.0287 / 0.0591);
+                                    
+                                    const sfsAmt = totalCredits.tss * sfsRatio;
+                                    const afpAmt = totalCredits.tss * afpRatio;
+                                    
+                                    return `
                                     <tr>
-                                        <td>RETENCION TSS</td>
-                                        <td>${getAccNum(state.settings.payrollAccounts?.tss) || 'Pendiente Config.'}</td>
+                                        <td>RETENCION SFS</td>
+                                        <td>${getAccNum(state.settings.payrollAccounts?.sfs) || 'Pendiente Config.'}</td>
                                         <td class="activity-col"></td>
                                         <td class="amount-col"></td>
-                                        <td class="amount-col">$${totalCredits.tss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td class="amount-col">$${sfsAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     </tr>
-                                ` : ''}
+                                    <tr>
+                                        <td>RETENCION AFP</td>
+                                        <td>${getAccNum(state.settings.payrollAccounts?.afp) || 'Pendiente Config.'}</td>
+                                        <td class="activity-col"></td>
+                                        <td class="amount-col"></td>
+                                        <td class="amount-col">$${afpAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                    `;
+                                })() : ''}
 
                                 ${totalCredits.isr > 0 ? `
                                     <tr>
