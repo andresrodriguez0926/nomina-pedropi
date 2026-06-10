@@ -1261,8 +1261,16 @@ const renderDepartments = (container) => {
         });
     };
 };
-
 // --- Module: Operations ---
+
+window.toggleOperationStatus = (index) => {
+    if (state.operations[index]) {
+        state.operations[index].active = state.operations[index].active === false ? true : false;
+        saveState();
+        renderSection('operations');
+    }
+};
+
 const renderOperations = (container) => {
     container.innerHTML = `
         <div class="header-action">
@@ -1280,6 +1288,7 @@ const renderOperations = (container) => {
                         <th>Cuenta Contable</th>
                         <th>Propósito</th>
                         <th>Registrado por</th>
+                        <th>Estado</th>
                         <th style="width: 100px">Acciones</th>
                     </tr>
                 </thead>
@@ -1296,7 +1305,11 @@ const renderOperations = (container) => {
                                 </div>
                             </td>
                             <td><small>${op.createdBy || 'Sistema'}</small></td>
+                            <td>${op.active === false ? '<span class="status-badge mobile" style="background:#ef4444;">Inactiva</span>' : '<span class="status-badge fixed" style="background:#22c55e;">Activa</span>'}</td>
                             <td>
+                                <button class="btn-icon" onclick="window.toggleOperationStatus(${index})" title="Activar/Desactivar">
+                                    <i class="fas fa-power-off" style="color: ${op.active === false ? '#9ca3af' : '#22c55e'};"></i>
+                                </button>
                                 <button class="btn-icon edit" onclick="editOperation(${index})">
                                     <i class="fas fa-edit"></i>
                                 </button>
@@ -1306,7 +1319,7 @@ const renderOperations = (container) => {
                             </td>
                         </tr>
                     `).join('')}
-                    ${state.operations.length === 0 ? '<tr><td colspan="5" style="text-align:center">No hay operaciones registradas</td></tr>' : ''}
+                    ${state.operations.length === 0 ? '<tr><td colspan="7" style="text-align:center">No hay operaciones registradas</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -1579,7 +1592,7 @@ const renderEmployees = (container) => {
                     <label>Operación Defecto</label>
                     <select id="emp-op" class="form-control">
                         <option value="">Seleccionar...</option>
-                        ${state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => `<option value="${o.name}">${o.name}</option>`).join('')}
+                        ${state.operations.filter(o => o.active !== false && (o.useInLabor === undefined || o.useInLabor)).map(o => `<option value="${o.name}">${o.name}</option>`).join('')}
                     </select>
                 </div>
             </div>
@@ -1717,56 +1730,56 @@ const renderTSS = (container) => {
                             <label>Cuenta para Cuadre de Incentivos</label>
                             <select id="acc-inc" class="form-control">
                                 <option value="">Seleccionar...</option>
-                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.incentives === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                                ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.incentives === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Cuenta para Horas Extras</label>
                             <select id="acc-ot" class="form-control">
                                 <option value="">Seleccionar...</option>
-                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.overtime === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                                ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.overtime === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Cuenta para Descuentos / Cuentas por Cobrar</label>
                             <select id="acc-disc" class="form-control">
                                 <option value="">Seleccionar...</option>
-                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.discounts === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                                ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.discounts === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Cuenta para Salario de Navidad</label>
                             <select id="acc-chr" class="form-control">
                                 <option value="">Seleccionar...</option>
-                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.christmas === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                                ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.christmas === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Cuenta para Retención SFS (Crédito)</label>
                             <select id="acc-sfs" class="form-control">
                                 <option value="">Seleccionar...</option>
-                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.sfs === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                                ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.sfs === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Cuenta para Retención AFP (Crédito)</label>
                             <select id="acc-afp" class="form-control">
                                 <option value="">Seleccionar...</option>
-                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.afp === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                                ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.afp === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Cuenta para Retención ISR (Crédito)</label>
                             <select id="acc-isr" class="form-control">
                                 <option value="">Seleccionar...</option>
-                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.isr === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                                ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.isr === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Cuenta para Nómina por Pagar (Neto - Crédito)</label>
                             <select id="acc-payable" class="form-control">
                                 <option value="">Seleccionar...</option>
-                                ${state.operations.filter(o => o.useInAccounting === undefined || o.useInAccounting).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.payable === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                                ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.payable === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         
@@ -2413,6 +2426,162 @@ const getNextDateSuggestion = (periodName) => {
     return new Date().toISOString().split('T')[0];
 };
 
+window.openPrintManualModal = (payrollId) => {
+    const departments = window.globalState?.departments || state.departments || [];
+    showModal('Imprimir Planilla Manual', `
+        <div class="form-group">
+            <label>Seleccione el Departamento a Imprimir</label>
+            <select id="print-dept-select" class="form-control">
+                <option value="all">Todos los Departamentos (Por Separado)</option>
+                ${departments.map(d => `<option value="${d.name}">${d.name}</option>`).join('')}
+            </select>
+        </div>
+    `, () => {
+        const dept = document.getElementById('print-dept-select').value;
+        window.printManualSheet(payrollId, dept);
+        hideModal();
+    });
+};
+
+window.printManualSheet = (payrollId, deptFilter = 'all') => {
+    const run = (state.activePayrolls || []).find(p => p.id === payrollId);
+    if (!run) return;
+
+    const bounds = getPayrollBounds(payrollId);
+    
+    let columns = [];
+    const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    
+    if (bounds && bounds.min && bounds.max) {
+        let current = new Date(bounds.min + 'T00:00:00');
+        const end = new Date(bounds.max + 'T00:00:00');
+        const numDays = Math.round((end - current) / (1000 * 60 * 60 * 24)) + 1;
+        
+        for (let i = 0; i < numDays; i++) {
+            columns.push(dayNames[current.getDay()] + ' ' + current.getDate());
+            current.setDate(current.getDate() + 1);
+        }
+    } else {
+        columns = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+    }
+    columns.push("Total");
+
+    const thHtml = columns.map(c => `<th style="text-align:center; border: 1px solid #ccc; padding: 5px; font-size: 0.8rem;">${c}</th>`).join('');
+
+    let allEmployees = window.getVisibleEmployees().filter(e => e.active !== false);
+    if (deptFilter !== 'all') {
+        allEmployees = allEmployees.filter(e => e.department === deptFilter);
+    }
+
+    // Generate Legend for Operations
+    const operations = (window.globalState?.operations || state.operations || []).filter(o => o.active !== false && (o.useInLabor === undefined || o.useInLabor));
+    const legendItems = operations.map((op, idx) => `<b>OP${idx + 1}</b> = ${op.name}`);
+    const legendHtml = operations.length > 0 ? `
+        <div style="margin-top: 15px; font-size: 0.75rem; border: 1px solid #ddd; padding: 8px; background: #fdfdfd; border-radius: 4px; color: black; page-break-inside: avoid;">
+            <strong>Abreviaturas de Operaciones (Op):</strong><br>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px;">
+                ${legendItems.map(item => `<span>${item}</span>`).join('<span style="color:#ccc;">|</span>')}
+            </div>
+        </div>
+    ` : '';
+
+    // Group by department
+    const grouped = {};
+    allEmployees.forEach(emp => {
+        const dept = emp.department || 'Sin Departamento';
+        if (!grouped[dept]) grouped[dept] = [];
+        grouped[dept].push(emp);
+    });
+
+    const deptNames = Object.keys(grouped).sort();
+
+    let contentHtml = '';
+
+    deptNames.forEach((dept, deptIndex) => {
+        const employees = grouped[dept];
+        // Sort by type (mobile first) then by name
+        employees.sort((a, b) => {
+            if (a.type !== b.type) return a.type === 'mobile' ? -1 : 1;
+            return a.firstName.localeCompare(b.firstName);
+        });
+
+        const rowsHtml = employees.map((emp, i) => {
+            let tdHtml = columns.map(c => {
+                if (c === 'Total') {
+                    return `<td style="border: 1px solid #ccc; padding: 10px;"></td>`;
+                }
+                return `
+                    <td style="border: 1px solid #ccc; padding: 0; vertical-align: top;">
+                        <div style="height: 18px; border-bottom: 1px dashed #aaa;"></div>
+                        <div style="height: 12px; font-size: 0.55rem; color: #444; padding-left: 2px; line-height: 12px;">Op:</div>
+                    </td>
+                `;
+            }).join('');
+            
+            return `
+                <tr>
+                    <td style="border: 1px solid #ccc; padding: 3px; text-align: center;">${i + 1}</td>
+                    <td style="border: 1px solid #ccc; padding: 3px; font-weight: bold; font-size: 0.8rem;">${emp.firstName} ${emp.lastName} <small style="font-weight: normal; color: #666;">(${emp.type === 'mobile' ? 'Móvil' : 'Fijo'})</small></td>
+                    <td style="border: 1px solid #ccc; padding: 3px;"></td>
+                    ${tdHtml}
+                </tr>
+            `;
+        }).join('');
+
+        contentHtml += `
+            <div style="page-break-after: ${deptIndex < deptNames.length - 1 ? 'always' : 'auto'}; margin-bottom: 30px;">
+                <div style="text-align: center; margin-bottom: 15px;">
+                    <h2 style="margin: 0; color: black; text-transform: uppercase;">Planilla de Control Manual de Nómina</h2>
+                    <h3 style="margin: 3px 0; color: #333; font-weight: 600;">Departamento: ${dept}</h3>
+                    <p style="margin: 3px 0; font-size: 1.1rem; color: black; font-weight: bold;">${run.name}</p>
+                    <p style="margin: 0; font-size: 0.9rem; color: #333;">Periodo: ${bounds ? bounds.min + ' al ' + bounds.max : run.startDate}</p>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; color: black;">
+                    <thead>
+                        <tr>
+                            <th style="border: 1px solid #ccc; padding: 5px; width: 25px;">#</th>
+                            <th style="border: 1px solid #ccc; padding: 5px; width: 180px; text-align: left;">Empleado</th>
+                            <th style="border: 1px solid #ccc; padding: 5px; width: 120px; text-align: left;">Actividad</th>
+                            ${thHtml}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+                ${legendHtml}
+            </div>
+        `;
+    });
+
+    if (deptNames.length === 0) {
+        contentHtml = `<p style="text-align: center; padding: 20px; color: black;">No hay empleados en el departamento seleccionado.</p>`;
+    }
+
+    const html = `
+        <style>
+            @media print {
+                @page { size: landscape; margin: 10mm; }
+            }
+        </style>
+        <div class="header-action no-print">
+            <h1>Planilla de Nómina Manual</h1>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" onclick="renderSection('payroll-runs')"><i class="fas fa-arrow-left"></i> Volver</button>
+                <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
+            </div>
+        </div>
+        <div class="card mt-4 print-area" style="background: white; color: black; padding: 20px;">
+            ${contentHtml}
+        </div>
+    `;
+
+    document.getElementById('content-area').innerHTML = html;
+    setTimeout(() => {
+        window.print();
+    }, 300);
+};
+
 const renderPayrollRuns = (container) => {
     container.innerHTML = `
             <div class="header-action">
@@ -2431,6 +2600,9 @@ const renderPayrollRuns = (container) => {
                                     <p>Periodo: ${payroll.periodType}</p>
                                     <p>Inicio: ${payroll.startDate}</p>
                                     <p><small>${payroll.dailyLogs ? payroll.dailyLogs.filter(l => l.status !== 'anulado').length : 0} registros activos</small></p>
+                                    <button class="btn btn-secondary mt-2 no-print" onclick="window.openPrintManualModal('${payroll.id}')" style="width: 100%; margin-top: 15px;">
+                                        <i class="fas fa-print"></i> Planilla Manual
+                                    </button>
                                 </div>
                             `).join('')}
                         </div>
@@ -2668,7 +2840,7 @@ const renderDailyRegistration = (container) => {
 
 
         <datalist id="list-op">
-            ${state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => `<option value="${o.name}"></option>`).join('')}
+            ${state.operations.filter(o => o.active !== false && (o.useInLabor === undefined || o.useInLabor)).map(o => `<option value="${o.name}"></option>`).join('')}
         </datalist>
         <datalist id="list-act">
             ${state.activities.map(a => `<option value="${a.name}"></option>`).join('')}
@@ -2743,7 +2915,7 @@ const renderDailyRegistration = (container) => {
         const opVal = opInputEl ? opInputEl.value.trim() : '';
         const actVal = actInputEl ? actInputEl.value.trim() : '';
 
-        const validOps = state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => o.name);
+        const validOps = state.operations.filter(o => o.active !== false && (o.useInLabor === undefined || o.useInLabor)).map(o => o.name);
         const validActs = state.activities.map(a => a.name);
 
         if (opVal && !validOps.includes(opVal)) {
@@ -3104,7 +3276,7 @@ window.saveBulkLogs = () => {
     const logsToAdd = [];
     let duplicates = 0;
 
-    const validOps = state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => o.name);
+    const validOps = state.operations.filter(o => o.active !== false && (o.useInLabor === undefined || o.useInLabor)).map(o => o.name);
     const validActs = state.activities.map(a => a.name);
 
     try {
@@ -5863,7 +6035,7 @@ window.editDailyLog = (index) => {
                     <div class="form-group">
                         <label>Operación</label>
                         <select id="edit-reg-op" class="form-control">
-                            ${state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => `<option value="${o.name}" ${log.op === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
+                            ${state.operations.filter(o => o.active !== false && (o.useInLabor === undefined || o.useInLabor)).map(o => `<option value="${o.name}" ${log.op === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group">
@@ -6002,7 +6174,7 @@ window.editEmployee = (index) => {
                         <label>Operación Defecto</label>
                         <select id="edit-emp-op" class="form-control">
                             <option value="">Seleccionar...</option>
-                            ${state.operations.filter(o => o.useInLabor === undefined || o.useInLabor).map(o => `<option value="${o.name}" ${emp.operation === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
+                            ${state.operations.filter(o => o.active !== false && (o.useInLabor === undefined || o.useInLabor)).map(o => `<option value="${o.name}" ${emp.operation === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
                         </select>
                     </div>
                 </div>
