@@ -3169,7 +3169,7 @@ window.renderBulkTable = () => {
     tbody.innerHTML = emps.map(e => {
         const fullName = `${e.firstName || ''} ${e.lastName || ''}`.replace(/\s+/g, ' ').trim();
         const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
-        const hasLog = (activePayroll.dailyLogs || []).some(l => (l.empReg && e.regNumber ? String(l.empReg) === String(e.regNumber) : l.employee === fullName) && l.date === date);
+        const hasLog = (activePayroll.dailyLogs || []).some(l => (l.empReg && e.regNumber ? String(l.empReg) === String(e.regNumber) : l.employee === fullName) && l.date === date && l.status !== 'anulado');
 
         // Get pre-selected activity amount
         let defaultAmount = '';
@@ -3325,7 +3325,7 @@ window.saveBulkLogs = () => {
                     throw new Error('Validation failed');
                 }
                 // Final check for duplicates in state
-                const exists = (activePayroll.dailyLogs || []).some(l => (l.empReg && empReg ? l.empReg == empReg : l.employee === emp) && l.date === date);
+                const exists = (activePayroll.dailyLogs || []).some(l => (l.empReg && empReg ? l.empReg == empReg : l.employee === emp) && l.date === date && l.status !== 'anulado');
                 if (exists) {
                     duplicates++;
                 } else {
