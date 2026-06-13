@@ -8148,17 +8148,17 @@ window.renderDailyLogsTable = () => {
             <td>${log.applyTSS === 'si' ? '<span class="status-badge fixed">Sí</span>' : '<span class="status-badge mobile">No</span>'}</td>
             <td><small>${log.createdBy || 'Sistema'}</small></td>
             <td>
-                ${!isAnnulled ? \`
+                ${!isAnnulled ? `
                 <button class="btn-icon edit" onclick="editDailyLog(${index})" title="Editar">
                     <i class="fas fa-edit"></i>
                 </button>
                 <button class="btn-icon delete admin-only" onclick="annulDailyLog(${index})" title="Anular">
                     <i class="fas fa-ban"></i>
                 </button>
-                \` : '<span class="text-gray" style="font-size: 0.8rem;">Anulado</span>'}
+                ` : '<span class="text-gray" style="font-size: 0.8rem;">Anulado</span>'}
             </td>
         </tr>
-    \`}).join('') + ((!activePayroll.dailyLogs || activePayroll.dailyLogs.length === 0) ? '<tr><td colspan="8" style="text-align:center">No hay registros diarios</td></tr>' : '');
+    `}).join('') + ((!activePayroll.dailyLogs || activePayroll.dailyLogs.length === 0) ? '<tr><td colspan="8" style="text-align:center">No hay registros diarios</td></tr>' : '');
 };
 
 // --- Initialization ---
