@@ -453,7 +453,11 @@ if (typeof firebase !== 'undefined') {
                         // Because `renderSection` is destructive, we will trigger a safe table re-render if it exists.
                         const tbody = document.getElementById('daily-logs-tbody');
                         if (tbody && window.globalState.currentSection === 'daily-registration') {
-                            requestSyncRender('daily-registration');
+                            if (typeof window.renderDailyLogsTable === 'function') {
+                                window.renderDailyLogsTable();
+                            } else {
+                                requestSyncRender('daily-registration');
+                            }
                         } else {
                             requestSyncRender(window.globalState.currentSection);
                         }

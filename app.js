@@ -8129,6 +8129,38 @@ const renderPayrollComparison = (container) => {
 };
 window.renderPayrollComparison = renderPayrollComparison;
 
+window.renderDailyLogsTable = () => {
+    const tbody = document.getElementById('daily-logs-tbody');
+    if (!tbody) return;
+    const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
+    if (!activePayroll) return;
+
+    tbody.innerHTML = (activePayroll.dailyLogs || []).map((log, index) => {
+        const isAnnulled = log.status === 'anulado';
+        return `
+        <tr style="${isAnnulled ? 'text-decoration: line-through; color: #888; opacity: 0.7; background-color: rgba(0,0,0,0.05);' : ''}">
+            <td>LOG-${log.logNumber || (index + 1)}</td>
+            <td>${log.date}</td>
+            <td>${log.employee} ${isAnnulled ? '<strong>(ANULADO)</strong>' : ''}</td>
+            <td style="font-weight: 500; font-family: monospace;">${log.empReg || '<span class="text-gray">N/A</span>'}</td>
+            <td>${log.op}</td>
+            <td>$${(isAnnulled ? 0 : parseFloat(log.amount)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td>${log.applyTSS === 'si' ? '<span class="status-badge fixed">Sí</span>' : '<span class="status-badge mobile">No</span>'}</td>
+            <td><small>${log.createdBy || 'Sistema'}</small></td>
+            <td>
+                ${!isAnnulled ? \`
+                <button class="btn-icon edit" onclick="editDailyLog(${index})" title="Editar">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn-icon delete admin-only" onclick="annulDailyLog(${index})" title="Anular">
+                    <i class="fas fa-ban"></i>
+                </button>
+                \` : '<span class="text-gray" style="font-size: 0.8rem;">Anulado</span>'}
+            </td>
+        </tr>
+    \`}).join('') + ((!activePayroll.dailyLogs || activePayroll.dailyLogs.length === 0) ? '<tr><td colspan="8" style="text-align:center">No hay registros diarios</td></tr>' : '');
+};
+
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
     initRouter();
