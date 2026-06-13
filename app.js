@@ -3312,6 +3312,12 @@ window.saveBulkLogs = () => {
             }
 
             if (emp && amt) {
+                if (!op) {
+                    opInput.style.borderColor = 'var(--danger)';
+                    opInput.focus();
+                    alert(`El empleado ${emp} no tiene una operación asignada. Debe asignarle una operación para poder registrarlo.`);
+                    throw new Error('Validation failed');
+                }
                 // Final check for duplicates in state
                 const exists = (activePayroll.dailyLogs || []).some(l => (l.empReg && empReg ? l.empReg == empReg : l.employee === emp) && l.date === date);
                 if (exists) {
