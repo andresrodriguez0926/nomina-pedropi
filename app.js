@@ -3657,7 +3657,7 @@ window.viewHistoricalPayroll = (index) => {
             totalGenBrute += res.brute; totalGenTSS += res.tss; totalGenISR += res.isr; totalGenDiscounts += res.disc; totalGenNet += res.net;
 
             return `
-            < tr >
+                <tr>
                     <td>${res.fullName}</td>
                     <td>${res.idNumber || '-'}</td>
                     <td>${res.type === 'fixed' ? 'Fijo' : 'Móvil'}</td>
@@ -3670,12 +3670,12 @@ window.viewHistoricalPayroll = (index) => {
                     <td class="td-numeric">$${res.isr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td class="td-numeric" style="color: var(--danger)">$${res.disc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td class="td-numeric" style="font-weight: bold; background: rgba(0,255,0,0.05)">$${res.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                </tr >
+                </tr>
             `;
         }).join('');
 
         reportHtml += `
-            < div class="dept-report-section mb-4" >
+            <div class="dept-report-section mb-4">
                 <h3 class="text-accent" style="border-bottom: 2px solid var(--accent-color); padding-bottom: 5px; margin-bottom: 15px;">Departamento: ${deptName}</h3>
                 <table class="data-table">
                     <thead>
@@ -5035,7 +5035,20 @@ window.selectAllReportDepts = (select) => {
 
 window.renderTransferReport = (payrollId, filterDepts) => {
     const container = document.getElementById('content-area');
-    const selectedPayroll = (state.activePayrolls || []).find(p => String(p.id) === String(payrollId));
+    let selectedPayroll;
+    
+    if (payrollId !== undefined && payrollId !== null) {
+        if (typeof payrollId === 'string' && payrollId.startsWith('history_')) {
+            const hIdx = parseInt(payrollId.replace('history_', ''));
+            selectedPayroll = state.payrollHistory[hIdx];
+        } else if (typeof payrollId === 'number') {
+            selectedPayroll = state.payrollHistory[payrollId];
+        } else {
+            selectedPayroll = (state.activePayrolls || []).find(p => String(p.id) === String(payrollId));
+        }
+    } else {
+        selectedPayroll = (state.activePayrolls || [])[0];
+    }
     
     if (!selectedPayroll) {
         alert("Seleccione una nómina activa primero.");
@@ -5063,34 +5076,76 @@ window.renderTransferReport = (payrollId, filterDepts) => {
 
     let totalTransfer = 0;
     const filteredDepts = state.departments.filter(d => filterDepts.includes(d.name));
+    
+    // Determine if it's a historical payroll by checking if it has .results
+    const isHistorical = !!selectedPayroll.results;
+    
+    // Get all relevant data lines
+    let allData = [];
+    
+    if (isHistorical) {
+        allData = selectedPayroll.results.filter(r => {
+            const pm = r.paymentMethod || 'cash';
+            if (pm !== 'transfer') {
+                // Look up employee as fallback
+                const emp = state.employees.find(e => e.idNumber === r.idNumber || window.normalizeName(e.firstName + ' ' + e.lastName) === window.normalizeName(r.fullName));
+                if (!emp || emp.paymentMethod !== 'transfer') return false;
+                r.bankName = emp.bankName || '';
+                r.accountNumber = emp.accountNumber || '';
+                r.regNumber = emp.regNumber || '-';
+            }
+            return true;
+        }).map(r => {
+            const emp = state.employees.find(e => e.idNumber === r.idNumber || window.normalizeName(e.firstName + ' ' + e.lastName) === window.normalizeName(r.fullName)) || {};
+            return {
+                dept: (r.dept || 'Sin Departamento').trim().toLowerCase(),
+                regNumber: r.regNumber || emp.regNumber || '-',
+                fullName: r.fullName,
+                idNumber: r.idNumber || '-',
+                bankName: r.bankName || emp.bankName || '-',
+                accountNumber: r.accountNumber || emp.accountNumber || '-',
+                net: r.net || 0
+            };
+        });
+    } else {
+        const emps = window.getVisibleEmployees().filter(e => e.active !== false && e.paymentMethod === 'transfer');
+        emps.forEach(emp => {
+            const res = calculateEmployeePayrollData(emp, selectedPayroll);
+            allData.push({
+                dept: (emp.department || '').trim().toLowerCase(),
+                regNumber: emp.regNumber || '-',
+                fullName: `${emp.firstName} ${emp.lastName}`,
+                idNumber: emp.idNumber || '-',
+                bankName: emp.bankName || '-',
+                accountNumber: emp.accountNumber || '-',
+                net: res.net || 0
+            });
+        });
+    }
 
     filteredDepts.forEach(dept => {
         const deptName = (dept.name || '').trim().toLowerCase();
-        const deptEmps = window.getVisibleEmployees().filter(e => {
-            const eDept = (e.department || '').trim().toLowerCase();
-            return eDept === deptName && e.active !== false && e.paymentMethod === 'transfer';
-        });
+        const deptData = allData.filter(d => d.dept === deptName);
 
-        if (deptEmps.length === 0) return;
+        if (deptData.length === 0) return;
 
         let deptTotal = 0;
         let rows = '';
 
-        deptEmps.forEach(emp => {
-            const res = calculateEmployeePayrollData(emp, selectedPayroll);
-            if (window.reportOnlyWithPayment && res.net <= 0.005) return;
+        deptData.forEach(data => {
+            if (window.reportOnlyWithPayment && data.net <= 0.005) return;
 
-            deptTotal += res.net;
-            totalTransfer += res.net;
+            deptTotal += data.net;
+            totalTransfer += data.net;
 
             rows += `
                 <tr>
-                    <td>${emp.regNumber || '-'}</td>
-                    <td>${emp.firstName} ${emp.lastName}</td>
-                    <td>${emp.idNumber || '-'}</td>
-                    <td>${emp.bankName || '-'}</td>
-                    <td>${emp.accountNumber || '-'}</td>
-                    <td class="td-numeric" style="font-weight: bold;">$${res.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>${data.regNumber}</td>
+                    <td>${data.fullName}</td>
+                    <td>${data.idNumber}</td>
+                    <td>${data.bankName}</td>
+                    <td>${data.accountNumber}</td>
+                    <td class="td-numeric" style="font-weight: bold;">$${data.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
             `;
         });
