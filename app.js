@@ -5064,7 +5064,7 @@ window.renderTransferReport = (payrollId, filterDepts) => {
         <div class="header-action no-print">
             <h1>Reporte de Pagos por Transferencia</h1>
             <div>
-                <button class="btn btn-secondary" onclick="${isHistorical ? \`window.viewHistoricalPayroll(\${hIdx})\` : "renderSection('reports')"}">
+                <button class="btn btn-secondary" onclick="${isHistorical ? 'window.viewHistoricalPayroll(' + hIdx + ')' : "renderSection('reports')"}">
                     <i class="fas fa-arrow-left"></i> Volver
                 </button>
                 <button class="btn btn-primary" onclick="window.print()">
@@ -5081,9 +5081,6 @@ window.renderTransferReport = (payrollId, filterDepts) => {
 
     let totalTransfer = 0;
     const filteredDepts = state.departments.filter(d => filterDepts.includes(d.name));
-    
-    // Determine if it's a historical payroll by checking if it has .results
-    const isHistorical = !!selectedPayroll.results;
     
     // Get all relevant data lines
     let allData = [];
