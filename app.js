@@ -3450,12 +3450,6 @@ const renderClosing = (container) => {
                                                 <button class="btn btn-sm btn-primary" onclick="window.printHistoricalPayroll(${state.payrollHistory.length - 1 - i})">
                                                     <i class="fas fa-print"></i> Imprimir
                                                 </button>
-                                                <button class="btn btn-sm btn-info" style="margin-left:5px" onclick="window.renderCashBreakdownReport(${state.payrollHistory.length - 1 - i})">
-                                                    <i class="fas fa-money-bill-wave"></i> Desglose de Efectivo
-                                                </button>
-                                                <button class="btn btn-sm btn-secondary" style="margin-left:5px" onclick="window.renderTransferReport(${state.payrollHistory.length - 1 - i})">
-                                                    <i class="fas fa-exchange-alt"></i> Reporte de Transferencia
-                                                </button>
                                             </td>
                                         </tr>
                                     `).join('') :
@@ -3767,6 +3761,9 @@ window.viewHistoricalPayroll = (index) => {
                 </button>
                 <button class="btn btn-primary" onclick="window.renderCashBreakdownReport(document.getElementById('content-area'), ${index})" style="background-color: var(--accent-color);">
                     <i class="fas fa-money-bill-wave"></i> Desglose de Efectivo
+                </button>
+                <button class="btn btn-primary" onclick="window.renderTransferReport('history_' + ${index}, window.currentHistoricalFilter)" style="background-color: #8b5cf6;">
+                    <i class="fas fa-university"></i> Reporte Transferencias
                 </button>
                 <button class="btn btn-primary" onclick="window.exportPayrollToExcel(${index})" style="background-color: #16a34a;">
                     <i class="fas fa-file-excel"></i> Exportar XLSX
