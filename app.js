@@ -5037,11 +5037,14 @@ window.renderTransferReport = (payrollId, filterDepts) => {
     const container = document.getElementById('content-area');
     let selectedPayroll;
     
+    let hIdx = null;
+    
     if (payrollId !== undefined && payrollId !== null) {
         if (typeof payrollId === 'string' && payrollId.startsWith('history_')) {
-            const hIdx = parseInt(payrollId.replace('history_', ''));
+            hIdx = parseInt(payrollId.replace('history_', ''));
             selectedPayroll = state.payrollHistory[hIdx];
         } else if (typeof payrollId === 'number') {
+            hIdx = payrollId;
             selectedPayroll = state.payrollHistory[payrollId];
         } else {
             selectedPayroll = (state.activePayrolls || []).find(p => String(p.id) === String(payrollId));
@@ -5055,11 +5058,13 @@ window.renderTransferReport = (payrollId, filterDepts) => {
         return;
     }
 
+    const isHistorical = !!selectedPayroll.results;
+
     let reportHtml = `
         <div class="header-action no-print">
             <h1>Reporte de Pagos por Transferencia</h1>
             <div>
-                <button class="btn btn-secondary" onclick="renderSection('reports')">
+                <button class="btn btn-secondary" onclick="${isHistorical ? \`window.viewHistoricalPayroll(\${hIdx})\` : "renderSection('reports')"}">
                     <i class="fas fa-arrow-left"></i> Volver
                 </button>
                 <button class="btn btn-primary" onclick="window.print()">
