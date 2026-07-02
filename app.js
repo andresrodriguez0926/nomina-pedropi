@@ -3724,8 +3724,8 @@ window.viewHistoricalPayroll = (index) => {
                 </button>
                 <h1>Consulta de Nómina Histórica</h1>
                 
-                <div class="multi-select-container no-print" id="hist-dept-multi-select">
-                    <div class="multi-select-btn" onclick="this.parentElement.classList.toggle('active')">
+                <div class="multi-select-container no-print ${window.activeDropdownId === 'hist-dept-multi-select' ? 'active' : ''}" id="hist-dept-multi-select">
+                    <div class="multi-select-btn" onclick="window.activeDropdownId = window.activeDropdownId === 'hist-dept-multi-select' ? null : 'hist-dept-multi-select'; this.parentElement.classList.toggle('active')">
                         ${filter.length === allDeptsInRun.length ? 'Todos los Departamentos' : (filter.length === 0 ? 'Ningun Departamento' : `${filter.length} Seleccionados`)}
                     </div>
                     <div class="multi-select-content">
@@ -3932,9 +3932,9 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                                 ${state.departments.map(d => `<option value="${d.name}" ${filterDept === d.name ? 'selected' : ''}>${d.name}</option>`).join('')}
                             </select>
                         </div>
-                        <div class="multi-select-container no-print" style="min-width: 250px;">
+                        <div class="multi-select-container no-print ${window.activeDropdownId === 'hist-ops-multi-select' ? 'active' : ''}" style="min-width: 250px;">
                             <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Filtrar Operaciones:</label>
-                            <div class="multi-select-btn" onclick="this.parentElement.classList.toggle('active')">
+                            <div class="multi-select-btn" onclick="window.activeDropdownId = window.activeDropdownId === 'hist-ops-multi-select' ? null : 'hist-ops-multi-select'; this.parentElement.classList.toggle('active')">
                                 ${filterOps.length === allOpsInRun.length ? 'Todas las Operaciones' : (filterOps.length === 0 ? 'Ninguna Seleccionada' : `${filterOps.length} Operaciones Seleccionadas`)}
                             </div>
                             <div class="multi-select-content">
@@ -4667,8 +4667,8 @@ const renderReports = (container) => {
                         ${(state.activePayrolls || []).map(p => `<option value="${p.id}" ${window.currentReportPayrollId == p.id ? 'selected' : ''}>${p.name} (${p.periodType})</option>`).join('')}
                     </select>
                 </div>
-                <div class="multi-select-container no-print" id="dept-multi-select">
-                    <div class="multi-select-btn" onclick="this.parentElement.classList.toggle('active')">
+                <div class="multi-select-container no-print ${window.activeDropdownId === 'dept-multi-select' ? 'active' : ''}" id="dept-multi-select">
+                    <div class="multi-select-btn" onclick="window.activeDropdownId = window.activeDropdownId === 'dept-multi-select' ? null : 'dept-multi-select'; this.parentElement.classList.toggle('active')">
                         ${filter.length === state.departments.length ? 'Todos los Departamentos' : (filter.length === 0 ? 'Ningún Departamento' : `${filter.length} Seleccionados`)}
                     </div>
                     <div class="multi-select-content">
@@ -5782,6 +5782,21 @@ document.addEventListener('click', (e) => {
     if (container && !container.contains(e.target)) {
         container.classList.remove('active');
     }
+    const activeMultiSelects = document.querySelectorAll('.multi-select-container.active');
+    activeMultiSelects.forEach(ms => {
+        if (!ms.contains(e.target)) {
+            ms.classList.remove('active');
+            window.cashBreakdownOpenDropdown = null;
+            window.activeDropdownId = null;
+        }
+    });
+    const showMultiSelects = document.querySelectorAll('.multi-select-content.show');
+    showMultiSelects.forEach(ms => {
+        if (!ms.parentElement.contains(e.target)) {
+            ms.classList.remove('show');
+            window.activeDropdownId = null;
+        }
+    });
 });
 
 // --- Module: Christmas Salary ---
@@ -6202,10 +6217,10 @@ window.renderChristmasReportByDepartment = () => {
 
         <div class="no-print mb-4 mt-3" style="background: var(--glass-bg); padding: 15px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1);">
             <div class="multi-select-container" style="max-width: 400px; position: relative;">
-                <div class="multi-select-header" onclick="this.nextElementSibling.classList.toggle('show')" style="cursor: pointer; padding: 10px; background: var(--card-bg, #1e1e2f); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 5px;">
+                <div class="multi-select-header" onclick="window.activeDropdownId = window.activeDropdownId === 'christmas-dept-select' ? null : 'christmas-dept-select'; this.nextElementSibling.classList.toggle('show')" style="cursor: pointer; padding: 10px; background: var(--card-bg, #1e1e2f); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 5px;">
                     Filtrar Departamentos (${currentFilter.length} seleccionados) <i class="fas fa-chevron-down" style="float: right; margin-top: 4px;"></i>
                 </div>
-                <div class="multi-select-content" style="display: none; position: absolute; z-index: 100; background: var(--card-bg, #1e1e2f); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; width: 100%; max-height: 300px; overflow-y: auto; margin-top: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                <div class="multi-select-content ${window.activeDropdownId === 'christmas-dept-select' ? 'show' : ''}" style="display: none; position: absolute; z-index: 100; background: var(--card-bg, #1e1e2f); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; width: 100%; max-height: 300px; overflow-y: auto; margin-top: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
                     <div class="multi-select-actions" style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; gap: 10px;">
                         <button class="btn btn-sm btn-secondary" onclick="window.selectAllChristmasDeptsReport(true)" style="flex: 1;">Todos</button>
                         <button class="btn btn-sm btn-secondary" onclick="window.selectAllChristmasDeptsReport(false)" style="flex: 1;">Ninguno</button>
@@ -7951,6 +7966,7 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
             ops: [...distinctOps]
         };
         window.cashBreakdownLastPayroll = isHistorical ? `hist_${historyIndex}` : `active_${payroll.id}`;
+        window.cashBreakdownOpenDropdown = null;
     }
 
     const filter = window.cashBreakdownFilter;
@@ -7975,20 +7991,21 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
     denominations.forEach(d => globalCount[d] = 0);
 
     const breakdownData = results.map(r => {
-        let remaining = Math.round(r.net); // Round to nearest integer for cash payments
+        let remaining = Math.round(r.net * 100) / 100; // Round to nearest cent
         const individualBreakdown = {};
         denominations.forEach(d => {
             const count = Math.floor(remaining / d);
             individualBreakdown[d] = count;
             globalCount[d] += count;
-            remaining %= d;
+            remaining = Math.round((remaining % d) * 100) / 100;
         });
-        return { ...r, breakdown: individualBreakdown };
+        return { ...r, breakdown: individualBreakdown, netRounded: Math.round(r.net * 100) / 100 };
     });
 
-    const totalCashNeeded = results.reduce((sum, r) => sum + Math.round(r.net), 0);
+    const totalCashNeeded = results.reduce((sum, r) => sum + (Math.round(r.net * 100) / 100), 0);
 
     const toggleFilter = (type, value) => {
+        window.cashBreakdownOpenDropdown = type;
         const idx = window.cashBreakdownFilter[type].indexOf(value);
         if (idx === -1) window.cashBreakdownFilter[type].push(value);
         else window.cashBreakdownFilter[type].splice(idx, 1);
@@ -7997,6 +8014,7 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
     window.toggleCashBreakdownFilter = toggleFilter;
 
     const selectAllFilters = (type, select) => {
+        window.cashBreakdownOpenDropdown = type;
         window.cashBreakdownFilter[type] = select ? (type === 'depts' ? [...distinctDepts] : [...distinctOps]) : [];
         renderCashBreakdownReport(container, historyIndex);
     };
@@ -8004,7 +8022,7 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
 
     let html = `
         <div class="no-print" style="padding: 20px; display: flex; gap: 15px; background: var(--sidebar-bg); border-bottom: 1px solid var(--border-color);">
-            <button class="btn btn-secondary" onclick="${isHistorical ? `window.viewHistoricalPayroll(${historyIndex})` : "switchSection('reports')"}" >
+            <button class="btn btn-secondary" onclick="window.cashBreakdownOpenDropdown = null; ${isHistorical ? `window.viewHistoricalPayroll(${historyIndex})` : "switchSection('reports')"}" >
                 <i class="fas fa-arrow-left"></i> Volver
             </button>
             <button class="btn btn-primary" onclick="window.print()">
@@ -8012,8 +8030,8 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
             </button>
             <div style="flex: 1; text-align: right; color: var(--text-secondary); align-self: center; display: flex; gap: 10px; justify-content: flex-end; align-items: center;">
                 <!-- Dept Filter -->
-                <div class="multi-select-container no-print" style="text-align: left;">
-                    <div class="multi-select-btn" onclick="this.parentElement.classList.toggle('active')">
+                <div class="multi-select-container no-print ${window.cashBreakdownOpenDropdown === 'depts' ? 'active' : ''}" style="text-align: left;">
+                    <div class="multi-select-btn" onclick="window.cashBreakdownOpenDropdown = window.cashBreakdownOpenDropdown === 'depts' ? null : 'depts'; this.parentElement.classList.toggle('active')">
                         <i class="fas fa-building"></i> Dept: ${filter.depts.length === distinctDepts.length ? 'Todos' : (filter.depts.length === 0 ? 'Ninguno' : `${filter.depts.length}`)}
                     </div>
                     <div class="multi-select-content">
@@ -8031,8 +8049,8 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
                 </div>
 
                 <!-- Op Filter -->
-                <div class="multi-select-container no-print" style="text-align: left;">
-                    <div class="multi-select-btn" onclick="this.parentElement.classList.toggle('active')">
+                <div class="multi-select-container no-print ${window.cashBreakdownOpenDropdown === 'ops' ? 'active' : ''}" style="text-align: left;">
+                    <div class="multi-select-btn" onclick="window.cashBreakdownOpenDropdown = window.cashBreakdownOpenDropdown === 'ops' ? null : 'ops'; this.parentElement.classList.toggle('active')">
                         <i class="fas fa-cogs"></i> Op: ${filter.ops.length === distinctOps.length ? 'Todas' : (filter.ops.length === 0 ? 'Ninguna' : `${filter.ops.length}`)}
                     </div>
                     <div class="multi-select-content">
@@ -8113,7 +8131,7 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
                             ${breakdownData.map(r => `
                                 <tr>
                                     <td style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.fullName}</td>
-                                    <td style="font-weight: bold;">$${Math.round(r.net).toLocaleString('en-US')}</td>
+                                    <td style="font-weight: bold;">$${(Math.round(r.net * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     ${denominations.map(d => `<td style="text-align: center;">${r.breakdown[d] || ''}</td>`).join('')}
                                 </tr>
                             `).join('')}
