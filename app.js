@@ -4651,15 +4651,6 @@ const renderReports = (container) => {
         }
         let selectedPayroll = (state.activePayrolls || []).find(p => String(p.id) === String(window.currentReportPayrollId));
 
-        // Aggressive Auto-Switch: If current selected is empty and there's one with data, switch to it.
-        if (selectedPayroll && (!selectedPayroll.dailyLogs || selectedPayroll.dailyLogs.filter(l => l.status !== 'anulado').length === 0)) {
-            const bestWithData = (state.activePayrolls || []).find(p => p.dailyLogs && p.dailyLogs.filter(l => l.status !== 'anulado').length > 0);
-            if (bestWithData && String(bestWithData.id) !== String(selectedPayroll.id)) {
-                console.log(`[REPORTS] Switched from empty payroll ${selectedPayroll.id} to non-empty ${bestWithData.id}`);
-                selectedPayroll = bestWithData;
-                window.currentReportPayrollId = bestWithData.id;
-            }
-        }
 
         if (!selectedPayroll && state.activePayrolls && state.activePayrolls.length > 0) {
             selectedPayroll = window.getBestActivePayroll() || state.activePayrolls[0];
