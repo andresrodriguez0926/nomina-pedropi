@@ -107,7 +107,13 @@ window.getVisibleEmployees = (targetPeriodType = null) => {
 
     if (targetPeriodType) {
         const target = targetPeriodType.trim().toLowerCase();
-        emps = emps.filter(emp => emp.payrollFrequency && emp.payrollFrequency.trim().toLowerCase() === target);
+        emps = emps.filter(emp => {
+            const freq = (emp.payrollFrequency || '').trim().toLowerCase();
+            if (target === 'bisemanal') {
+                return freq === 'bisemanal' || freq === '';
+            }
+            return freq === target;
+        });
     }
 
     if (state.globalSearchQuery && state.globalSearchQuery.trim() !== '') {
