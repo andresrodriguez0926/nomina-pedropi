@@ -56,6 +56,19 @@ const state = {
 window.globalState = state; // Allow firebase-backend to write directly to it
 window.state = state; // Backup explicit reference
 
+// --- Migration: Asignar 'Bisemanal' a empleados existentes ---
+let employeesMigrated = false;
+state.employees.forEach(emp => {
+    if (!emp.payrollFrequency) {
+        emp.payrollFrequency = 'Bisemanal';
+        employeesMigrated = true;
+    }
+});
+if (employeesMigrated) {
+    localStorage.setItem('payroll_employees', JSON.stringify(state.employees));
+}
+
+
 // --- Universal Utilities ---
 const removeAccents = (str) => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 window.removeAccents = removeAccents;
@@ -89,8 +102,13 @@ window.hasDepartmentAccess = (deptName) => {
     return user.allowedDepartments.includes(deptName);
 };
 
-window.getVisibleEmployees = () => {
+window.getVisibleEmployees = (targetPeriodType = null) => {
     let emps = state.employees.filter(emp => window.hasDepartmentAccess(emp.department));
+
+    if (targetPeriodType) {
+        const target = targetPeriodType.toLowerCase();
+        emps = emps.filter(emp => !emp.payrollFrequency || emp.payrollFrequency.toLowerCase() === target);
+    }
 
     if (state.globalSearchQuery && state.globalSearchQuery.trim() !== '') {
         const q = state.globalSearchQuery.toLowerCase().trim();
@@ -1560,6 +1578,18 @@ const renderEmployees = (container) => {
                         <option value="mobile">Móvil</option>
                     </select>
                 </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Frecuencia de Nómina</label>
+                    <select id="emp-frequency" class="form-control">
+                        <option value="">Todas (Cualquier Nómina)</option>
+                        <option value="Semanal">Semanal</option>
+                        <option value="Bisemanal">Bisemanal</option>
+                        <option value="Quincenal">Quincenal</option>
+                        <option value="Mensual">Mensual</option>
+                        ${state.periods.filter(p => !['Semanal', 'Bisemanal', 'Quincenal', 'Mensual'].includes(p.name)).map(p => `<option value="${p.name}">${p.name}</option>`).join('')}
+                    </select>
+                </div>
             </div>
             <div class="form-group" id="emp-tss-calc-group">
                 <label>Cálculo de TSS</label>
@@ -1648,6 +1678,7 @@ const renderEmployees = (container) => {
                 lastName: document.getElementById('emp-ln').value,
                 idNumber: document.getElementById('emp-id').value,
                 type: document.getElementById('emp-type').value,
+                payrollFrequency: document.getElementById('emp-frequency') ? document.getElementById('emp-frequency').value : '',
                 salary: document.getElementById('emp-salary').value,
                 address: document.getElementById('emp-address').value,
                 hireDate: document.getElementById('emp-hire-date').value,
@@ -2700,7 +2731,7 @@ const renderDailyRegistration = (container) => {
                     <label>Empleado Móvil</label>
                     <input list="list-emp-search" id="reg-emp" class="form-control" style="font-weight: 500;" placeholder="Escriba nombre o Nº de registro..." autocomplete="off">
                     <datalist id="list-emp-search">
-                        ${window.getVisibleEmployees().filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="${`[${e.regNumber}] ${(e.firstName||'')} ${(e.lastName||'')}`.replace(/\\s+/g, ' ').trim()}"></option>`).join('')}
+                        ${window.getVisibleEmployees(activePayroll?.periodType).filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="${`[${e.regNumber}] ${(e.firstName||'')} ${(e.lastName||'')}`.replace(/\\s+/g, ' ').trim()}"></option>`).join('')}
                     </datalist>
                 </div>
             </div>
@@ -3153,7 +3184,9 @@ window.renderBulkTable = () => {
         return;
     }
 
-    const emps = window.getVisibleEmployees()
+    const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
+
+    const emps = window.getVisibleEmployees(activePayroll?.periodType)
         .filter(e => e.type === 'mobile' && e.active !== false && e.department === dept)
         .sort((a, b) => {
             const nameA = `${a.firstName || ''} ${a.lastName || ''}`.trim().toLowerCase();
@@ -3168,7 +3201,6 @@ window.renderBulkTable = () => {
 
     tbody.innerHTML = emps.map(e => {
         const fullName = `${e.firstName || ''} ${e.lastName || ''}`.replace(/\s+/g, ' ').trim();
-        const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
         const hasLog = (activePayroll.dailyLogs || []).some(l => (l.empReg && e.regNumber ? String(l.empReg) === String(e.regNumber) : l.employee === fullName) && l.date === date && l.status !== 'anulado');
 
         // Get pre-selected activity amount
@@ -3485,7 +3517,7 @@ const renderClosing = (container) => {
                             closedAt: new Date().toISOString(),
                             closedBy: window.globalState.currentUser?.name || 'Desconocido',
                             dailyLogs: [...(targetPayroll.dailyLogs || [])],
-                            results: window.getVisibleEmployees().filter(e => e && e.active !== false).map(emp => {
+                            results: window.getVisibleEmployees(targetPayroll.periodType).filter(e => e && e.active !== false).map(emp => {
                                 try {
                                     const res = calculateEmployeePayrollData(emp, targetPayroll);
                                     return {
@@ -4631,7 +4663,7 @@ const renderReports = (container) => {
 
         const unmappedWarning = (() => {
             if (!selectedPayroll || !selectedPayroll.dailyLogs) return '';
-            const emps = window.getVisibleEmployees();
+            const emps = window.getVisibleEmployees(selectedPayroll?.periodType);
             const empNames = new Set(emps.map(e => window.normalizeName(`${e.firstName} ${e.lastName}`)));
 
             const orphans = selectedPayroll.dailyLogs.filter(l => !empNames.has(window.normalizeName(l.employee)));
@@ -4760,7 +4792,7 @@ const renderReports = (container) => {
 
                 filteredDepts.forEach(dept => {
                     const deptName = (dept.name || '').trim().toLowerCase();
-                    const deptEmps = window.getVisibleEmployees().filter(e => {
+                    const deptEmps = window.getVisibleEmployees(selectedPayroll?.periodType).filter(e => {
                         const eDept = (e.department || '').trim().toLowerCase();
                         return eDept === deptName && e.active !== false;
                     }).sort((a, b) => {
@@ -4961,7 +4993,7 @@ const renderReports = (container) => {
 
                 // Diagnostic: Show logs that didn't match any employee
                 const allLogs = selectedPayroll.dailyLogs || [];
-                const emps = window.getVisibleEmployees();
+                const emps = window.getVisibleEmployees(selectedPayroll?.periodType);
                 const orphanList = allLogs.filter(l => {
                     const lName = window.normalizeName(l.employee);
                     return !emps.some(e => {
@@ -5090,7 +5122,7 @@ window.renderTransferReport = (payrollId, filterDepts) => {
             const pm = r.paymentMethod || 'cash';
             if (pm !== 'transfer') {
                 // Look up employee as fallback
-                const emp = state.employees.find(e => e.idNumber === r.idNumber || window.normalizeName(e.firstName + ' ' + e.lastName) === window.normalizeName(r.fullName));
+                const emp = state.employees.find(e => (e.idNumber && r.idNumber && e.idNumber === r.idNumber) || window.normalizeName(e.firstName + ' ' + e.lastName) === window.normalizeName(r.fullName));
                 if (!emp || emp.paymentMethod !== 'transfer') return false;
                 r.bankName = emp.bankName || '';
                 r.accountNumber = emp.accountNumber || '';
@@ -5098,7 +5130,7 @@ window.renderTransferReport = (payrollId, filterDepts) => {
             }
             return true;
         }).map(r => {
-            const emp = state.employees.find(e => e.idNumber === r.idNumber || window.normalizeName(e.firstName + ' ' + e.lastName) === window.normalizeName(r.fullName)) || {};
+            const emp = state.employees.find(e => (e.idNumber && r.idNumber && e.idNumber === r.idNumber) || window.normalizeName(e.firstName + ' ' + e.lastName) === window.normalizeName(r.fullName)) || {};
             return {
                 dept: (r.dept || 'Sin Departamento').trim().toLowerCase(),
                 regNumber: r.regNumber || emp.regNumber || '-',
@@ -5411,7 +5443,7 @@ const renderPayrollEntry = (container) => {
     if (isHistorical && run.results) {
         // Historical Case: Use saved results for credits
         run.results.forEach(res => {
-            const empCheck = state.employees.find(e => e.idNumber === res.idNumber);
+            const empCheck = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
             if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
             totalCredits.tss += (res.tss || 0);
             totalCredits.isr += (res.isr || 0);
@@ -5420,8 +5452,8 @@ const renderPayrollEntry = (container) => {
 
             if (res.type === 'fixed') {
                 // Find employee to get operation/activity (since snapshot might only have names/ids)
-                const emp = state.employees.find(e => e.idNumber === res.idNumber);
-                const key = `${emp?.operation || 'Sin Cuenta'}| ${emp?.activity || '-'} `;
+                const emp = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
+                const key = `${res.operation || emp?.operation || 'Sin Cuenta'}| ${res.activity || emp?.activity || '-'} `;
                 debits[key] = (debits[key] || 0) + (res.base || 0);
             }
         });
@@ -5439,7 +5471,7 @@ const renderPayrollEntry = (container) => {
 
         // Global accounts (Incentives/OT/Christmas) - usually stored in results
         run.results.forEach(res => {
-            const empCheck = state.employees.find(e => e.idNumber === res.idNumber);
+            const empCheck = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
             if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
             if (res.incentives > 0) {
                 const incKey = `${state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente'}| -`;
@@ -5457,7 +5489,7 @@ const renderPayrollEntry = (container) => {
 
     } else {
         // Active Case or Fallback: Calculate fresh
-        window.getVisibleEmployees().filter(e => e.active !== false).forEach(emp => {
+        window.getVisibleEmployees(run?.periodType).filter(e => e.active !== false).forEach(emp => {
             const data = calculateEmployeePayrollData(emp, run);
             const empFullName = `${emp.firstName} ${emp.lastName} `;
 
@@ -5674,13 +5706,13 @@ const renderPayrollEntry = (container) => {
             const rows = [];
             if (isHistorical && run.results) {
                 run.results.forEach(res => {
-                    const emp = state.employees.find(e => e.idNumber === res.idNumber);
+                    const emp = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
                     if (emp && !window.hasDepartmentAccess(emp.department)) return;
                     if (res.type === 'fixed') {
                         rows.push({
                             name: res.fullName,
-                            acc: getAccNum(emp?.operation || 'Sin Cuenta'),
-                            act: getActVal(emp?.activity || '-'),
+                            acc: getAccNum(res.operation || emp?.operation || 'Sin Cuenta'),
+                            act: getActVal(res.activity || emp?.activity || '-'),
                             amt: res.base
                         });
                     }
@@ -5698,14 +5730,14 @@ const renderPayrollEntry = (container) => {
                 });
                 // Global amounts (distributed per employee who had them)
                 run.results.forEach(res => {
-                    const empCheck = state.employees.find(e => e.idNumber === res.idNumber);
+                    const empCheck = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
                     if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
                     if (res.incentives > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.incentives || 'Incentivos'), act: '-', amt: res.incentives });
                     if (res.overtime > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.overtime || 'Horas Extras'), act: '-', amt: res.overtime });
                     if (res.christmas > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.christmas || 'Navidad'), act: '-', amt: res.christmas });
                 });
             } else {
-                window.getVisibleEmployees().filter(e => e.active !== false).forEach(emp => {
+                window.getVisibleEmployees(run?.periodType).filter(e => e.active !== false).forEach(emp => {
                     const data = calculateEmployeePayrollData(emp, run);
                     const empFullName = `${emp.firstName} ${emp.lastName}`;
                     if (emp.type === 'fixed') {
@@ -6465,6 +6497,18 @@ window.editEmployee = (index) => {
                             <option value="mobile" ${emp.type === 'mobile' ? 'selected' : ''}>Móvil</option>
                         </select>
                     </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Frecuencia de Nómina</label>
+                        <select id="edit-emp-frequency" class="form-control">
+                            <option value="">Todas (Cualquier Nómina)</option>
+                            <option value="Semanal" ${(emp.payrollFrequency || '').toLowerCase() === 'semanal' ? 'selected' : ''}>Semanal</option>
+                            <option value="Bisemanal" ${(emp.payrollFrequency || '').toLowerCase() === 'bisemanal' ? 'selected' : ''}>Bisemanal</option>
+                            <option value="Quincenal" ${(emp.payrollFrequency || '').toLowerCase() === 'quincenal' ? 'selected' : ''}>Quincenal</option>
+                            <option value="Mensual" ${(emp.payrollFrequency || '').toLowerCase() === 'mensual' ? 'selected' : ''}>Mensual</option>
+                            ${state.periods.filter(p => !['semanal', 'bisemanal', 'quincenal', 'mensual'].includes(p.name.toLowerCase())).map(p => `<option value="${p.name}" ${(emp.payrollFrequency || '').toLowerCase() === p.name.toLowerCase() ? 'selected' : ''}>${p.name}</option>`).join('')}
+                        </select>
+                    </div>
                 </div>
                 <div class="form-group" id="edit-emp-tss-calc-group" style="display: ${emp.type === 'fixed' ? 'block' : 'none'};">
                     <label>Cálculo de TSS</label>
@@ -6552,6 +6596,7 @@ window.editEmployee = (index) => {
             lastName: document.getElementById('edit-emp-ln').value,
             idNumber: document.getElementById('edit-emp-id').value,
             type: document.getElementById('edit-emp-type').value,
+            payrollFrequency: document.getElementById('edit-emp-frequency') ? document.getElementById('edit-emp-frequency').value : '',
             salary: document.getElementById('edit-emp-salary').value,
             address: document.getElementById('edit-emp-address').value,
             hireDate: document.getElementById('edit-emp-hire-date').value,
@@ -7948,7 +7993,7 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
     }
 
     // Initialize Filters
-    const allResults = isHistorical ? (payroll.results || []) : window.getVisibleEmployees().filter(e => e.active !== false).map(emp => ({
+    const allResults = isHistorical ? (payroll.results || []) : window.getVisibleEmployees(payroll?.periodType).filter(e => e.active !== false).map(emp => ({
         ...calculateEmployeePayrollData(emp, payroll),
         fullName: `${emp.firstName} ${emp.lastName}`,
         idNumber: emp.idNumber,
@@ -7975,7 +8020,7 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
         // Payment Method Check
         let pMethod = res.paymentMethod;
         if (!pMethod) {
-            const emp = state.employees.find(e => e.idNumber === res.idNumber);
+            const emp = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
             pMethod = emp ? (emp.paymentMethod || 'cash') : 'cash';
         }
         if (pMethod !== 'cash' || res.net <= 0.005) return false;
@@ -8294,7 +8339,7 @@ const renderPayrollComparison = (container) => {
             const p = state.activePayrolls.find(x => String(x.id) === id);
             if (p) {
                 name = `[Activa] ${p.name}`;
-                results = window.getVisibleEmployees().filter(e => e && e.active !== false).map(emp => {
+                results = window.getVisibleEmployees(p?.periodType).filter(e => e && e.active !== false).map(emp => {
                     const res = calculateEmployeePayrollData(emp, p);
                     return {
                         idNumber: emp.idNumber,
