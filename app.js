@@ -5450,7 +5450,7 @@ const renderPayrollEntry = (container) => {
                 // Find employee to get operation/activity (since snapshot might only have names/ids)
                 const emp = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
                 const key = `${res.operation || emp?.operation || 'Sin Cuenta'}| ${res.activity || emp?.activity || '-'} `;
-                debits[key] = (debits[key] || 0) + (res.base || 0);
+                debits[key] = (debits[key] || 0) + (res.base || 0) + (res.vacations || 0);
             }
         });
 
@@ -5709,7 +5709,7 @@ const renderPayrollEntry = (container) => {
                             name: res.fullName,
                             acc: getAccNum(res.operation || emp?.operation || 'Sin Cuenta'),
                             act: getActVal(res.activity || emp?.activity || '-'),
-                            amt: res.base
+                            amt: (res.base || 0) + (res.vacations || 0)
                         });
                     }
                 });
@@ -5737,7 +5737,7 @@ const renderPayrollEntry = (container) => {
                     const data = calculateEmployeePayrollData(emp, run);
                     const empFullName = `${emp.firstName} ${emp.lastName}`;
                     if (emp.type === 'fixed') {
-                        rows.push({ name: empFullName, acc: getAccNum(emp.operation || 'Sin Cuenta'), act: getActVal(emp.activity || '-'), amt: data.base });
+                        rows.push({ name: empFullName, acc: getAccNum(emp.operation || 'Sin Cuenta'), act: getActVal(emp.activity || '-'), amt: (data.base || 0) + (data.vacations || 0) });
                     } else {
                         const logs = (run.dailyLogs || []).filter(l => {
                             if (l.status === 'anulado') return false;
