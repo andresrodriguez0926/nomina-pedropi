@@ -106,8 +106,8 @@ window.getVisibleEmployees = (targetPeriodType = null) => {
     let emps = state.employees.filter(emp => window.hasDepartmentAccess(emp.department));
 
     if (targetPeriodType) {
-        const target = targetPeriodType.toLowerCase();
-        emps = emps.filter(emp => !emp.payrollFrequency || emp.payrollFrequency.toLowerCase() === target);
+        const target = targetPeriodType.trim().toLowerCase();
+        emps = emps.filter(emp => !emp.payrollFrequency || emp.payrollFrequency.trim().toLowerCase() === target);
     }
 
     if (state.globalSearchQuery && state.globalSearchQuery.trim() !== '') {
@@ -1580,6 +1580,10 @@ const renderEmployees = (container) => {
                 </div>
             <div class="form-row">
                 <div class="form-group">
+                    <label>Teléfono</label>
+                    <input type="text" id="emp-phone" class="form-control" placeholder="Ej: 809-555-5555">
+                </div>
+                <div class="form-group">
                     <label>Frecuencia de Nómina</label>
                     <select id="emp-frequency" class="form-control">
                         <option value="">Todas (Cualquier Nómina)</option>
@@ -1679,6 +1683,7 @@ const renderEmployees = (container) => {
                 idNumber: document.getElementById('emp-id').value,
                 type: document.getElementById('emp-type').value,
                 payrollFrequency: document.getElementById('emp-frequency') ? document.getElementById('emp-frequency').value : '',
+                phone: document.getElementById('emp-phone') ? document.getElementById('emp-phone').value : '',
                 salary: document.getElementById('emp-salary').value,
                 address: document.getElementById('emp-address').value,
                 hireDate: document.getElementById('emp-hire-date').value,
@@ -6499,6 +6504,10 @@ window.editEmployee = (index) => {
                     </div>
                 <div class="form-row">
                     <div class="form-group">
+                        <label>Teléfono</label>
+                        <input type="text" id="edit-emp-phone" class="form-control" value="${emp.phone || ''}">
+                    </div>
+                    <div class="form-group">
                         <label>Frecuencia de Nómina</label>
                         <select id="edit-emp-frequency" class="form-control">
                             <option value="">Todas (Cualquier Nómina)</option>
@@ -6597,6 +6606,7 @@ window.editEmployee = (index) => {
             idNumber: document.getElementById('edit-emp-id').value,
             type: document.getElementById('edit-emp-type').value,
             payrollFrequency: document.getElementById('edit-emp-frequency') ? document.getElementById('edit-emp-frequency').value : '',
+            phone: document.getElementById('edit-emp-phone') ? document.getElementById('edit-emp-phone').value : '',
             salary: document.getElementById('edit-emp-salary').value,
             address: document.getElementById('edit-emp-address').value,
             hireDate: document.getElementById('edit-emp-hire-date').value,
