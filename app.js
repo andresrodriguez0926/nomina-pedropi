@@ -1529,6 +1529,9 @@ const renderEmployees = (container) => {
                                     <button class="btn-icon" onclick="quickAddChristmasSalary('[${emp.regNumber}] ${emp.firstName} ${emp.lastName}')" title="Salario Navidad">
                                         <i class="fas fa-tree"></i>
                                     </button>
+                                    <button class="btn-icon" onclick="window.printEmployeeRecord(${index})" title="Imprimir Récord">
+                                        <i class="fas fa-print"></i>
+                                    </button>
                                     <button class="btn-icon edit" onclick="editEmployee(${index})" title="Editar">
                                         <i class="fas fa-edit"></i>
                                     </button>
@@ -5144,7 +5147,7 @@ window.renderTransferReport = (payrollId, filterDepts) => {
             };
         });
     } else {
-        const emps = window.getVisibleEmployees().filter(e => e.active !== false && e.paymentMethod === 'transfer');
+        const emps = window.getVisibleEmployees(selectedPayroll?.periodType).filter(e => e.active !== false && e.paymentMethod === 'transfer');
         emps.forEach(emp => {
             const res = calculateEmployeePayrollData(emp, selectedPayroll);
             allData.push({
@@ -6659,6 +6662,210 @@ window.toggleEmployeeStatus = (index) => {
     renderSection('employees');
 };
 
+window.printEmployeeRecord = (index) => {
+    const emp = state.employees[index];
+    if (!emp) return;
+
+    const printWindow = window.open('', '_blank', 'width=800,height=800');
+    
+    let salaryHtml = '';
+    if (emp.type === 'fixed') {
+        const formatMoney = (amount) => {
+            return parseFloat(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+        salaryHtml = `
+            <div class="info-group">
+                <span class="label">Salario Fijo:</span>
+                <span class="value">RD$ ${formatMoney(emp.salary)}</span>
+            </div>
+        `;
+    } else {
+        salaryHtml = `
+            <div class="info-group">
+                <span class="label">Tipo de Salario:</span>
+                <span class="value">Móvil (Por rendimiento/tarea)</span>
+            </div>
+        `;
+    }
+
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Récord de Empleado - ${emp.firstName} ${emp.lastName}</title>
+            <style>
+                body {
+                    font-family: 'Arial', sans-serif;
+                    padding: 40px;
+                    color: #333;
+                    line-height: 1.6;
+                }
+                .header {
+                    text-align: center;
+                    border-bottom: 2px solid #2563eb;
+                    padding-bottom: 20px;
+                    margin-bottom: 30px;
+                }
+                .header h1 {
+                    margin: 0 0 10px 0;
+                    color: #1e3a8a;
+                }
+                .header p {
+                    margin: 0;
+                    color: #6b7280;
+                    font-size: 1.1em;
+                }
+                .section {
+                    margin-bottom: 30px;
+                }
+                .section-title {
+                    font-size: 1.2em;
+                    color: #2563eb;
+                    border-bottom: 1px solid #e5e7eb;
+                    padding-bottom: 5px;
+                    margin-bottom: 15px;
+                }
+                .grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 15px;
+                }
+                .info-group {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .info-group .label {
+                    font-size: 0.9em;
+                    font-weight: bold;
+                    color: #4b5563;
+                }
+                .info-group .value {
+                    font-size: 1.1em;
+                    color: #111827;
+                }
+                .footer {
+                    margin-top: 50px;
+                    text-align: center;
+                    font-size: 0.85em;
+                    color: #9ca3af;
+                    border-top: 1px solid #e5e7eb;
+                    padding-top: 20px;
+                }
+                @media print {
+                    body {
+                        padding: 0;
+                    }
+                    .no-print {
+                        display: none;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="no-print" style="margin-bottom: 20px; text-align: right;">
+                <button onclick="window.print()" style="padding: 10px 20px; background-color: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">Imprimir Documento</button>
+            </div>
+            
+            <div class="header">
+                <h1>Récord de Empleado</h1>
+                <p>Sistema de Gestión de Nómina</p>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Información Principal</div>
+                <div class="grid">
+                    <div class="info-group">
+                        <span class="label">Número Único de Registro:</span>
+                        <span class="value" style="font-size: 1.3em; font-weight: bold; color: #dc2626;">${emp.regNumber || 'N/A'}</span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Estado en el Sistema:</span>
+                        <span class="value">${emp.active !== false ? 'Activo' : 'Inactivo'}</span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Nombre Completo:</span>
+                        <span class="value">${emp.firstName} ${emp.lastName}</span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Cédula/Pasaporte:</span>
+                        <span class="value">${emp.idNumber || 'N/A'}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Datos Personales</div>
+                <div class="grid">
+                    <div class="info-group">
+                        <span class="label">Género:</span>
+                        <span class="value">${emp.gender === 'M' ? 'Masculino' : (emp.gender === 'F' ? 'Femenino' : 'No especificado')}</span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Teléfono:</span>
+                        <span class="value">${emp.phone || 'N/A'}</span>
+                    </div>
+                    <div class="info-group" style="grid-column: 1 / -1;">
+                        <span class="label">Dirección:</span>
+                        <span class="value">${emp.address || 'N/A'}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Información Laboral</div>
+                <div class="grid">
+                    <div class="info-group">
+                        <span class="label">Fecha de Ingreso:</span>
+                        <span class="value">${emp.hireDate ? new Date(emp.hireDate).toLocaleDateString() : 'N/A'}</span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Departamento:</span>
+                        <span class="value">${emp.department || 'N/A'}</span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Operación Asignada:</span>
+                        <span class="value">${emp.operation || 'N/A'}</span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Actividad/Puesto:</span>
+                        <span class="value">${emp.activity || 'N/A'}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Información de Pago</div>
+                <div class="grid">
+                    <div class="info-group">
+                        <span class="label">Tipo de Empleado:</span>
+                        <span class="value">${emp.type === 'fixed' ? 'Fijo' : 'Móvil'}</span>
+                    </div>
+                    ${salaryHtml}
+                    <div class="info-group">
+                        <span class="label">Método de Pago:</span>
+                        <span class="value">${emp.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'}</span>
+                    </div>
+                    ${emp.paymentMethod === 'transfer' ? `
+                    <div class="info-group">
+                        <span class="label">Banco / Cuenta:</span>
+                        <span class="value">${emp.bankName || 'N/A'} - ${emp.accountNumber || 'N/A'}</span>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+
+            <div class="footer">
+                Documento generado por NóminaApp el ${new Date().toLocaleString()}<br>
+                Registrado en sistema por: ${emp.createdBy || 'Sistema'}
+            </div>
+        </body>
+        </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+};
+
 window.editOperation = (index) => {
     const op = state.operations[index];
     showModal('Editar Operación', `
@@ -7859,7 +8066,7 @@ const renderPaySlips = (historyIndex = null, activePayrollId = null, optionalDep
 
         if (!isHistorical) {
             // If active, we need to calculate results for all visible employees
-            const employees = window.getVisibleEmployees().filter(e => e.active !== false);
+            const employees = window.getVisibleEmployees(run?.periodType).filter(e => e.active !== false);
             results = employees.map(emp => {
                 const res = calculateEmployeePayrollData(emp, run);
                 return {
@@ -8217,7 +8424,7 @@ const exportPayrollToExcel = (historyIndex = null, activePayrollId = null) => {
 
     const results = isHistorical ? run.results : [];
     if (!isHistorical) {
-        const employees = window.getVisibleEmployees().filter(e => e.active !== false);
+        const employees = window.getVisibleEmployees(run?.periodType).filter(e => e.active !== false);
         employees.forEach(emp => {
             const res = calculateEmployeePayrollData(emp, run);
             if (res.net > 0.005) {
