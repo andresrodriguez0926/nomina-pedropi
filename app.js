@@ -393,6 +393,7 @@ window.renderSection = (sectionId) => {
             case 'tss': renderTSS(contentArea); break;
             case 'periods': renderPeriods(contentArea); break;
             case 'discounts': renderDiscounts(contentArea); break;
+            case 'discounts-report': renderDiscountsReport(contentArea); break;
             case 'overtime': renderOvertime(contentArea); break;
             case 'incentives': renderIncentives(contentArea); break;
             case 'christmas-salary': renderChristmasSalary(contentArea); break;
@@ -1959,9 +1960,14 @@ const renderDiscounts = (container) => {
     container.innerHTML = `
         <div class="header-action">
             <h1>Descuentos (Cuentas por Cobrar)</h1>
-            <button class="btn btn-primary" id="add-disc-btn">
-                <i class="fas fa-plus"></i> Crear Descuento
-            </button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" onclick="renderSection('discounts-report')">
+                    <i class="fas fa-print"></i> Reporte
+                </button>
+                <button class="btn btn-primary" id="add-disc-btn">
+                    <i class="fas fa-plus"></i> Crear Descuento
+                </button>
+            </div>
         </div>
         <div class="card mt-4">
             <table class="data-table">
@@ -2171,6 +2177,110 @@ const renderDiscounts = (container) => {
             hideModal();
         });
     };
+};
+
+const renderDiscountsReport = (container) => {
+    if (!window.discountReportDate) {
+        window.discountReportDate = new Date().toISOString().split('T')[0];
+    }
+    const filterDateStr = window.discountReportDate;
+    const filterDateObj = new Date(filterDateStr + 'T23:59:59');
+
+    let totalOwed = 0;
+    const rows = [];
+
+    (state.discounts || []).forEach(d => {
+        let creationDate = 0;
+        if (d.id) {
+            const possibleTs = parseInt(d.id.toString().substring(0, 13));
+            if (!isNaN(possibleTs) && possibleTs > 1000000000000) {
+                creationDate = possibleTs;
+            }
+        }
+        
+        if (creationDate > filterDateObj.getTime()) {
+            return;
+        }
+
+        const originalAmount = parseFloat(d.totalAmount || d.amount || 0);
+        let currentBalance = parseFloat(d.remainingBalance ?? originalAmount);
+
+        state.payrollHistory.forEach(run => {
+            const closedAt = new Date(run.closedAt).getTime();
+            if (closedAt > filterDateObj.getTime()) {
+                run.results.forEach(res => {
+                    if (res.loanDeductions) {
+                        const ded = res.loanDeductions.find(ld => ld.loanId === d.id);
+                        if (ded) {
+                            currentBalance += parseFloat(ded.amount || 0);
+                        }
+                    }
+                });
+            }
+        });
+
+        if (currentBalance > 0) {
+            totalOwed += currentBalance;
+            rows.push({
+                name: d.employeeName,
+                reason: d.reason || '-',
+                balance: currentBalance
+            });
+        }
+    });
+
+    rows.sort((a, b) => a.name.localeCompare(b.name));
+
+    container.innerHTML = `
+        <div class="header-action no-print">
+            <h1>Reporte de Empleados con Deudas</h1>
+            <div style="display: flex; gap: 10px; align-items: flex-end;">
+                <div>
+                    <label style="font-size: 0.8rem; display: block; margin-bottom: 5px;">Fecha de Corte</label>
+                    <input type="date" class="form-control" value="${filterDateStr}" style="cursor: pointer;" onclick="this.showPicker()" onchange="window.discountReportDate = this.value; renderSection('discounts-report')">
+                </div>
+                <button class="btn btn-secondary" onclick="renderSection('discounts')">
+                    <i class="fas fa-arrow-left"></i> Volver
+                </button>
+                <button class="btn btn-primary" onclick="window.print()">
+                    <i class="fas fa-print"></i> Imprimir
+                </button>
+            </div>
+        </div>
+
+        <div class="card mt-4 print-area">
+            <div style="text-align: center; margin-bottom: 25px;">
+                <h2 style="margin: 0; color: var(--primary);">REPORTE DE PRESTAMOS Y DESCUENTOS</h2>
+                <p style="margin: 5px 0; font-weight: 600;">Fecha de Corte: ${new Date(filterDateStr + 'T12:00:00').toLocaleDateString()}</p>
+            </div>
+            
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Empleado</th>
+                        <th>Concepto / Motivo</th>
+                        <th class="money-col">Balance Pendiente</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows.map(r => `
+                        <tr>
+                            <td>${r.name}</td>
+                            <td>${r.reason}</td>
+                            <td class="money-col">$${r.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        </tr>
+                    `).join('')}
+                    ${rows.length === 0 ? '<tr><td colspan="3" style="text-align:center">No hay deudas pendientes en esta fecha</td></tr>' : ''}
+                </tbody>
+                <tfoot>
+                    <tr style="background-color: var(--background); font-weight: bold;">
+                        <td colspan="2" style="text-align: right;">TOTAL DEUDAS PENDIENTES:</td>
+                        <td class="money-col" style="color: var(--danger);">$${totalOwed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    `;
 };
 
 // --- Module: Overtime ---
@@ -3539,8 +3649,8 @@ const renderClosing = (container) => {
                                         fullName: `${emp.firstName} ${emp.lastName} `,
                                         type: emp.type,
                                         dept: emp.department,
-                                        activity: emp.activity || 'Sin Actividad',
-                                        operation: emp.operation || 'Sin Operación',
+                                        activity: emp.activity || '-',
+                                        operation: emp.operation || 'Sin Cuenta',
                                         base: res.base || 0,
                                         incentives: res.inc || 0,
                                         overtime: res.ot || 0,
@@ -5450,46 +5560,49 @@ const renderPayrollEntry = (container) => {
         run.results.forEach(res => {
             const empCheck = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
             if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
+            
             totalCredits.tss += (res.tss || 0);
             totalCredits.isr += (res.isr || 0);
             totalCredits.disc += (res.disc || 0);
             totalCredits.net += (res.net || 0);
 
-            if (res.type === 'fixed') {
-                // Find employee to get operation/activity (since snapshot might only have names/ids)
-                const emp = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
-                const key = `${res.operation || emp?.operation || 'Sin Cuenta'}| ${res.activity || emp?.activity || '-'} `;
+            const empType = res.type || (empCheck ? empCheck.type : '');
+            
+            if (empType === 'fixed') {
+                const op = res.operation || (empCheck ? empCheck.operation : 'Sin Cuenta') || 'Sin Cuenta';
+                const act = res.activity || (empCheck ? empCheck.activity : '-') || '-';
+                const key = `${op}|${act}`;
                 debits[key] = (debits[key] || 0) + (res.base || 0) + (res.vacations || 0);
+            }
+
+            const inc = res.incentives || res.inc || 0;
+            if (inc > 0) {
+                const incKey = `${state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente'}|-`;
+                debits[incKey] = (debits[incKey] || 0) + inc;
+            }
+            
+            const ot = res.overtime || res.ot || 0;
+            if (ot > 0) {
+                const otKey = `${state.settings.payrollAccounts?.overtime || 'Horas Extras Pendiente'}|-`;
+                debits[otKey] = (debits[otKey] || 0) + ot;
+            }
+            
+            const chr = res.christmas || res.chr || 0;
+            if (chr > 0) {
+                const chrKey = `${state.settings.payrollAccounts?.christmas || 'Navidad Pendiente'}|-`;
+                debits[chrKey] = (debits[chrKey] || 0) + chr;
             }
         });
 
         // For Historical Debits (Mobile and Global accounts)
-        // Mobile: Only if dailyLogs were saved
+        // Mobile: Add all dailyLogs unconditionally just as they were saved.
         const logs = run.dailyLogs || [];
         logs.forEach(l => {
             if (l.status === 'anulado') return;
-            const empCheck = state.employees.find(e => `${e.firstName} ${e.lastName}` === l.employee);
+            const empCheck = state.employees.find(e => window.normalizeName(`${e.firstName} ${e.lastName}`) === window.normalizeName(l.employee));
             if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
-            const key = `${l.op || 'Sin Cuenta'}| ${l.act || '-'} `;
+            const key = `${l.op || 'Sin Cuenta'}|${l.act || '-'}`;
             debits[key] = (debits[key] || 0) + (parseFloat(l.amount) || 0);
-        });
-
-        // Global accounts (Incentives/OT/Christmas) - usually stored in results
-        run.results.forEach(res => {
-            const empCheck = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
-            if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
-            if (res.incentives > 0) {
-                const incKey = `${state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente'}| -`;
-                debits[incKey] = (debits[incKey] || 0) + res.incentives;
-            }
-            if (res.overtime > 0) {
-                const otKey = `${state.settings.payrollAccounts?.overtime || 'Horas Extras Pendiente'}| -`;
-                debits[otKey] = (debits[otKey] || 0) + res.overtime;
-            }
-            if (res.christmas > 0) {
-                const chrKey = `${state.settings.payrollAccounts?.christmas || 'Navidad Pendiente'}| -`;
-                debits[chrKey] = (debits[chrKey] || 0) + res.christmas;
-            }
         });
 
     } else {
@@ -5504,8 +5617,8 @@ const renderPayrollEntry = (container) => {
             totalCredits.net += data.net;
 
             if (emp.type === 'fixed') {
-                const key = `${emp.operation || 'Sin Cuenta'}| ${emp.activity || '-'} `;
-                debits[key] = (debits[key] || 0) + data.base;
+                const key = `${emp.operation || 'Sin Cuenta'}|${emp.activity || '-'}`;
+                debits[key] = (debits[key] || 0) + (data.base || 0) + (data.vacations || 0);
             } else {
                 const normalizedEmpName = window.normalizeName(empFullName);
                 const logs = (run.dailyLogs || []).filter(l => {
@@ -5524,21 +5637,21 @@ const renderPayrollEntry = (container) => {
                     return nameMatches;
                 });
                 logs.forEach(l => {
-                    const key = `${l.op || 'Sin Cuenta'}| ${l.act || '-'} `;
+                    const key = `${l.op || 'Sin Cuenta'}|${l.act || '-'}`;
                     debits[key] = (debits[key] || 0) + (parseFloat(l.amount) || 0);
                 });
             }
 
             if (data.inc > 0) {
-                const incKey = `${state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente'}| -`;
+                const incKey = `${state.settings.payrollAccounts?.incentives || 'Incentivos Pendiente'}|-`;
                 debits[incKey] = (debits[incKey] || 0) + data.inc;
             }
             if (data.ot > 0) {
-                const otKey = `${state.settings.payrollAccounts?.overtime || 'Horas Extras Pendiente'}| -`;
+                const otKey = `${state.settings.payrollAccounts?.overtime || 'Horas Extras Pendiente'}|-`;
                 debits[otKey] = (debits[otKey] || 0) + data.ot;
             }
             if (data.chr > 0) {
-                const chrKey = `${state.settings.payrollAccounts?.christmas || 'Navidad Pendiente'}| -`;
+                const chrKey = `${state.settings.payrollAccounts?.christmas || 'Navidad Pendiente'}|-`;
                 debits[chrKey] = (debits[chrKey] || 0) + data.chr;
             }
         });
@@ -5713,25 +5826,41 @@ const renderPayrollEntry = (container) => {
                 run.results.forEach(res => {
                     const emp = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
                     if (emp && !window.hasDepartmentAccess(emp.department)) return;
-                    if (res.type === 'fixed') {
+                    const rType = (res.type || (emp ? emp.type : '')).toLowerCase();
+                    const isFixed = rType.includes('fix') || rType.includes('fij') || rType.includes('mensual');
+
+                    if (isFixed) {
                         rows.push({
                             name: res.fullName,
-                            acc: getAccNum(res.operation || emp?.operation || 'Sin Cuenta'),
-                            act: getActVal(res.activity || emp?.activity || '-'),
+                            acc: getAccNum(res.operation || 'Sin Cuenta'),
+                            act: getActVal(res.activity || '-'),
                             amt: (res.base || 0) + (res.vacations || 0)
                         });
+                    } else {
+                        const normalizedEmpName = window.normalizeName(res.fullName);
+                        const logs = (run.dailyLogs || []).filter(l => {
+                            if (l.status === 'anulado') return false;
+                            const logName = window.normalizeName(l.employee);
+                            const nameMatches = (logName === normalizedEmpName);
+                            const nameSimilar = logName.includes(normalizedEmpName) || normalizedEmpName.includes(logName);
+                            if (l.empReg && emp && emp.regNumber) {
+                                if (String(l.empReg) === String(emp.regNumber)) {
+                                    if (!nameSimilar && logName !== '') return false;
+                                    return true;
+                                }
+                                return false;
+                            }
+                            return nameMatches;
+                        });
+                        logs.forEach(l => {
+                            rows.push({
+                                name: l.employee.trim(),
+                                acc: getAccNum(l.op),
+                                act: getActVal(l.act),
+                                amt: parseFloat(l.amount)
+                            });
+                        });
                     }
-                });
-                (run.dailyLogs || []).forEach(l => {
-                    if (l.status === 'anulado') return;
-                    const empCheck = state.employees.find(e => `${e.firstName} ${e.lastName}` === l.employee);
-                    if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
-                    rows.push({
-                        name: l.employee,
-                        acc: getAccNum(l.op),
-                        act: getActVal(l.act),
-                        amt: parseFloat(l.amount)
-                    });
                 });
                 // Global amounts (distributed per employee who had them)
                 run.results.forEach(res => {
