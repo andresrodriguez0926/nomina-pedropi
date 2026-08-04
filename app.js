@@ -99,7 +99,9 @@ window.hasDepartmentAccess = (deptName) => {
     const user = window.globalState.currentUser;
     if (user.role === 'admin') return true;
     if (!user.allowedDepartments || user.allowedDepartments.length === 0) return true; // Default to all if nothing selected
-    return user.allowedDepartments.includes(deptName);
+    if (!deptName) return false;
+    const normalizedDept = deptName.trim().toLowerCase();
+    return user.allowedDepartments.some(d => d && d.trim().toLowerCase() === normalizedDept);
 };
 
 window.getVisibleEmployees = (targetPeriodType = null) => {
@@ -5558,8 +5560,7 @@ const renderPayrollEntry = (container) => {
     if (isHistorical && run.results) {
         // Historical Case: Use saved results for credits
         run.results.forEach(res => {
-            const empCheck = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
-            const dept = empCheck ? empCheck.department : (res.dept || res.department || 'Sin clasificar');
+            const dept = res.dept || res.department || 'Sin clasificar';
             if (!window.hasDepartmentAccess(dept)) return;
             
             totalCredits.tss += (res.tss || 0);
@@ -5597,24 +5598,30 @@ const renderPayrollEntry = (container) => {
 
         // For Historical Debits (Mobile and Global accounts)
         // Mobile: Add all dailyLogs unconditionally just as they were saved.
+        const getResForLog = (l) => {
+            let emp = null;
+            if (l.empReg) emp = state.employees.find(e => String(e.regNumber) === String(l.empReg));
+            if (!emp) emp = state.employees.find(e => window.normalizeName(`${e.firstName} ${e.lastName}`) === window.normalizeName(l.employee));
+            
+            let resMatch = null;
+            if (emp && emp.idNumber) resMatch = run.results.find(r => r.idNumber === emp.idNumber);
+            if (!resMatch && emp) resMatch = run.results.find(r => window.normalizeName(r.fullName) === window.normalizeName(`${emp.firstName} ${emp.lastName}`));
+            if (!resMatch) resMatch = run.results.find(r => window.normalizeName(r.fullName) === window.normalizeName(l.employee));
+            
+            return { resMatch, emp };
+        };
+
         const logs = run.dailyLogs || [];
         logs.forEach(l => {
             if (l.status === 'anulado') return;
             
-            let empCheck = null;
-            if (l.empReg) {
-                empCheck = state.employees.find(e => String(e.regNumber) === String(l.empReg));
-            }
-            if (!empCheck) {
-                empCheck = state.employees.find(e => window.normalizeName(`${e.firstName} ${e.lastName}`) === window.normalizeName(l.employee));
-            }
-            
+            const { resMatch, emp } = getResForLog(l);
             let dept = 'Sin clasificar';
-            if (empCheck) {
-                dept = empCheck.department;
-            } else {
-                const resMatch = run.results.find(r => window.normalizeName(r.fullName) === window.normalizeName(l.employee));
-                if (resMatch) dept = resMatch.dept || resMatch.department || 'Sin clasificar';
+            
+            if (resMatch) {
+                dept = resMatch.dept || resMatch.department || 'Sin clasificar';
+            } else if (emp) {
+                dept = emp.department || 'Sin clasificar';
             }
             
             if (!window.hasDepartmentAccess(dept)) return;
