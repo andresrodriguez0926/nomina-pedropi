@@ -2226,7 +2226,8 @@ const renderDiscountsReport = (container) => {
             rows.push({
                 name: d.employeeName,
                 reason: d.reason || '-',
-                balance: currentBalance
+                balance: currentBalance,
+                installment: parseFloat(d.installment) || 0
             });
         }
     });
@@ -2261,6 +2262,7 @@ const renderDiscountsReport = (container) => {
                     <tr>
                         <th>Empleado</th>
                         <th>Concepto / Motivo</th>
+                        <th class="money-col">Cuota</th>
                         <th class="money-col">Balance Pendiente</th>
                     </tr>
                 </thead>
@@ -2269,14 +2271,15 @@ const renderDiscountsReport = (container) => {
                         <tr>
                             <td>${r.name}</td>
                             <td>${r.reason}</td>
+                            <td class="money-col">$${r.installment.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="money-col">$${r.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                     `).join('')}
-                    ${rows.length === 0 ? '<tr><td colspan="3" style="text-align:center">No hay deudas pendientes en esta fecha</td></tr>' : ''}
+                    ${rows.length === 0 ? '<tr><td colspan="4" style="text-align:center">No hay deudas pendientes en esta fecha</td></tr>' : ''}
                 </tbody>
                 <tfoot>
                     <tr style="background-color: var(--background); font-weight: bold;">
-                        <td colspan="2" style="text-align: right;">TOTAL DEUDAS PENDIENTES:</td>
+                        <td colspan="3" style="text-align: right;">TOTAL DEUDAS PENDIENTES:</td>
                         <td class="money-col" style="color: var(--danger);">$${totalOwed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                 </tfoot>
