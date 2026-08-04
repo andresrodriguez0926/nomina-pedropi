@@ -5559,7 +5559,8 @@ const renderPayrollEntry = (container) => {
         // Historical Case: Use saved results for credits
         run.results.forEach(res => {
             const empCheck = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
-            if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
+            const dept = empCheck ? empCheck.department : (res.dept || res.department || 'Sin clasificar');
+            if (!window.hasDepartmentAccess(dept)) return;
             
             totalCredits.tss += (res.tss || 0);
             totalCredits.isr += (res.isr || 0);
@@ -5599,8 +5600,24 @@ const renderPayrollEntry = (container) => {
         const logs = run.dailyLogs || [];
         logs.forEach(l => {
             if (l.status === 'anulado') return;
-            const empCheck = state.employees.find(e => window.normalizeName(`${e.firstName} ${e.lastName}`) === window.normalizeName(l.employee));
-            if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
+            
+            let empCheck = null;
+            if (l.empReg) {
+                empCheck = state.employees.find(e => String(e.regNumber) === String(l.empReg));
+            }
+            if (!empCheck) {
+                empCheck = state.employees.find(e => window.normalizeName(`${e.firstName} ${e.lastName}`) === window.normalizeName(l.employee));
+            }
+            
+            let dept = 'Sin clasificar';
+            if (empCheck) {
+                dept = empCheck.department;
+            } else {
+                const resMatch = run.results.find(r => window.normalizeName(r.fullName) === window.normalizeName(l.employee));
+                if (resMatch) dept = resMatch.dept || resMatch.department || 'Sin clasificar';
+            }
+            
+            if (!window.hasDepartmentAccess(dept)) return;
             const key = `${l.op || 'Sin Cuenta'}|${l.act || '-'}`;
             debits[key] = (debits[key] || 0) + (parseFloat(l.amount) || 0);
         });
