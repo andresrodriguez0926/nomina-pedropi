@@ -5604,8 +5604,16 @@ const renderPayrollEntry = (container) => {
             if (!emp) emp = state.employees.find(e => window.normalizeName(`${e.firstName} ${e.lastName}`) === window.normalizeName(l.employee));
             
             let resMatch = null;
-            if (emp && emp.idNumber) resMatch = run.results.find(r => r.idNumber === emp.idNumber);
-            if (!resMatch && emp) resMatch = run.results.find(r => window.normalizeName(r.fullName) === window.normalizeName(`${emp.firstName} ${emp.lastName}`));
+            if (emp) {
+                const safeId = emp.idNumber ? String(emp.idNumber).trim() : '';
+                // Only trust idNumber if it looks like a real CEDULA (length >= 9) to prevent collisions on "-", "0", "N/A"
+                if (safeId.length >= 9) {
+                    resMatch = run.results.find(r => r.idNumber === safeId);
+                }
+                if (!resMatch) {
+                    resMatch = run.results.find(r => window.normalizeName(r.fullName) === window.normalizeName(`${emp.firstName} ${emp.lastName}`));
+                }
+            }
             if (!resMatch) resMatch = run.results.find(r => window.normalizeName(r.fullName) === window.normalizeName(l.employee));
             
             return { resMatch, emp };
