@@ -6037,7 +6037,19 @@ const renderChristmasSalary = (container) => {
                     return sameName || sameId || sameReg;
                 });
                 
-                if (!exists) {
+                const isDeactivated = (state.employees || []).some(emp => {
+                    if (emp.active !== false) return false;
+                    let empName = `${emp.firstName || ''} ${emp.lastName || ''}`.trim();
+                    if (empName.endsWith('undefined')) empName = empName.replace('undefined', '').trim();
+                    const sameName = rName.toLowerCase() === empName.toLowerCase() || window.normalizeName(rName) === window.normalizeName(empName);
+                    const empId = String(emp.idNumber || '').trim();
+                    const empReg = String(emp.regNumber || '').trim();
+                    const sameId = (rId === empId && empId !== '');
+                    const sameReg = (rReg === empReg && empReg !== '');
+                    return sameName || sameId || sameReg;
+                });
+                
+                if (!exists && !isDeactivated) {
                     baseEmployees.push({
                         firstName: rName,
                         lastName: '',
@@ -8760,12 +8772,12 @@ const renderPayrollComparison = (container) => {
 
     data1.results.forEach(r => {
         const d = r.dept && r.dept !== '-' ? r.dept : 'Sin Departamento';
-        deptTotals1[d] = (deptTotals1[d] || 0) + (r.net || 0);
+        deptTotals1[d] = (deptTotals1[d] || 0) + (r.brute || 0);
     });
 
     data2.results.forEach(r => {
         const d = r.dept && r.dept !== '-' ? r.dept : 'Sin Departamento';
-        deptTotals2[d] = (deptTotals2[d] || 0) + (r.net || 0);
+        deptTotals2[d] = (deptTotals2[d] || 0) + (r.brute || 0);
     });
 
     const allDepts = new Set([...Object.keys(deptTotals1), ...Object.keys(deptTotals2)]);
@@ -8775,19 +8787,19 @@ const renderPayrollComparison = (container) => {
     let totalN2 = 0;
 
     allDepts.forEach(dept => {
-        const net1 = deptTotals1[dept] || 0;
-        const net2 = deptTotals2[dept] || 0;
-        const diff = net2 - net1;
-        const variation = net1 === 0 ? (net2 > 0 ? 100 : 0) : (diff / net1) * 100;
+        const val1 = deptTotals1[dept] || 0;
+        const val2 = deptTotals2[dept] || 0;
+        const diff = val2 - val1;
+        const variation = val1 === 0 ? (val2 > 0 ? 100 : 0) : (diff / val1) * 100;
 
-        totalN1 += net1;
-        totalN2 += net2;
+        totalN1 += val1;
+        totalN2 += val2;
 
-        if (net1 > 0 || net2 > 0) {
+        if (val1 > 0 || val2 > 0) {
             rows.push({
                 dept,
-                net1,
-                net2,
+                val1,
+                val2,
                 diff,
                 variation
             });
@@ -8825,8 +8837,8 @@ const renderPayrollComparison = (container) => {
                 <thead>
                     <tr>
                         <th>Departamento</th>
-                        <th class="text-right">Neto ${data1.name}</th>
-                        <th class="text-right">Neto ${data2.name}</th>
+                        <th class="text-right">Bruto ${data1.name}</th>
+                        <th class="text-right">Bruto ${data2.name}</th>
                         <th class="text-right">Diferencia ($)</th>
                         <th class="text-right">Variación (%)</th>
                     </tr>
@@ -8835,8 +8847,8 @@ const renderPayrollComparison = (container) => {
                     ${rows.map(r => `
                         <tr>
                             <td style="font-weight: bold">${r.dept}</td>
-                            <td class="text-right">$${r.net1.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            <td class="text-right">$${r.net2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="text-right">$${r.val1.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td class="text-right">$${r.val2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="text-right" style="color: ${r.diff > 0 ? 'var(--danger)' : (r.diff < 0 ? 'var(--success)' : 'inherit')}; font-weight: bold;">
                                 ${r.diff > 0 ? '+' : ''}$${r.diff.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
