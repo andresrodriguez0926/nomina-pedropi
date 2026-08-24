@@ -8927,6 +8927,38 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Mobile menu logic
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+    const toggleSidebar = () => {
+        if (sidebar && sidebarOverlay) {
+            sidebar.classList.toggle('open');
+            sidebarOverlay.classList.toggle('active');
+        }
+    };
+
+    const closeSidebar = () => {
+        if (sidebar && sidebarOverlay) {
+            sidebar.classList.remove('open');
+            sidebarOverlay.classList.remove('active');
+        }
+    };
+
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', toggleSidebar);
+    }
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', closeSidebar);
+    }
+
+    // Attach closeSidebar to navItems so it closes when an item is clicked on mobile
+    const navItemsList = document.querySelectorAll('.nav-item');
+    navItemsList.forEach(item => {
+        item.addEventListener('click', closeSidebar);
+    });
+
     switchSection('dashboard');
 });
 
