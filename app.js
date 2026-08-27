@@ -7428,7 +7428,16 @@ window.viewBenefitsHistory = async () => {
             history.forEach(record => {
                 const regDate = record.fechaRegistro && record.fechaRegistro.toDate ? record.fechaRegistro.toDate().toLocaleDateString() : 'N/A';
                 const total = parseFloat(record.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 });
-                const dEnd = record.dateEnd ? record.dateEnd.split('T')[0] : 'N/A';
+                let dEnd = 'N/A';
+                if (record.dateEnd) {
+                    if (typeof record.dateEnd === 'string') {
+                        dEnd = record.dateEnd.split('T')[0];
+                    } else if (record.dateEnd.toDate) {
+                        dEnd = record.dateEnd.toDate().toLocaleDateString();
+                    } else if (record.dateEnd instanceof Date) {
+                        dEnd = record.dateEnd.toISOString().split('T')[0];
+                    }
+                }
                 html += `
                     <tr>
                         <td>${regDate}</td>
