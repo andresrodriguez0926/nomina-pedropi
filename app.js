@@ -3717,6 +3717,17 @@ const renderClosing = (container) => {
                             state.payrollHistory.push(snapshot);
                         }
 
+                        // Process terminations: if an employee has a terminationDate <= periodEnd, mark inactive
+                        const periodEndObj = new Date(bounds.max + 'T23:59:59');
+                        state.employees.forEach(emp => {
+                            if (emp.active !== false && emp.terminationDate) {
+                                const termDate = new Date(emp.terminationDate + 'T00:00:00');
+                                if (termDate <= periodEndObj) {
+                                    emp.active = false;
+                                }
+                            }
+                        });
+
                         state.activePayrolls = state.activePayrolls.filter(p => String(p.id) !== String(targetId));
                         if (window.selectedDailyPayrollId === targetId) window.selectedDailyPayrollId = null;
 
@@ -4553,17 +4564,24 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
             const periodStart = new Date(bounds.min + 'T00:00:00');
             const periodEnd = new Date(bounds.max + 'T00:00:00');
             const hireDate = emp.hireDate ? new Date(emp.hireDate + 'T00:00:00') : new Date('2000-01-01T00:00:00');
+            const termDate = emp.terminationDate ? new Date(emp.terminationDate + 'T00:00:00') : null;
 
             periodStart.setHours(0, 0, 0, 0);
             periodEnd.setHours(0, 0, 0, 0);
             hireDate.setHours(0, 0, 0, 0);
+            if (termDate) termDate.setHours(0, 0, 0, 0);
 
             let effectiveStart = periodStart;
             if (hireDate > periodStart) {
                 effectiveStart = hireDate > periodEnd ? null : hireDate;
             }
 
-            if (!effectiveStart) {
+            let effectiveEnd = periodEnd;
+            if (termDate && termDate < periodEnd) {
+                effectiveEnd = termDate < periodStart ? null : termDate;
+            }
+
+            if (!effectiveStart || !effectiveEnd || effectiveStart > effectiveEnd) {
                 base = 0;
             } else {
                 const vac = state.vacations.find(v => v.employeeId === emp.idNumber && v.type === 'Tomada');
@@ -4575,10 +4593,10 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
                     vacEnd.setHours(0, 0, 0, 0);
                 }
 
-                if (!vacStart || vacStart > periodEnd || vacEnd <= effectiveStart) {
-                    if (hireDate > periodStart) {
+                if (!vacStart || vacStart > effectiveEnd || vacEnd <= effectiveStart) {
+                    if (hireDate > periodStart || (termDate && termDate < periodEnd)) {
                         const dailyRate = monthlySalary / 23.83;
-                        const workedDays = calculateLegislativeDays(effectiveStart, periodEnd);
+                        const workedDays = calculateLegislativeDays(effectiveStart, effectiveEnd);
                         base = dailyRate * workedDays;
                     } else {
                         base = monthlySalary / divisor;
@@ -4586,7 +4604,7 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
                 } else {
                     let daysWorked = 0;
                     let current = new Date(effectiveStart.getTime());
-                    while (current <= periodEnd) {
+                    while (current <= effectiveEnd) {
                         if (current < vacStart || current >= vacEnd) {
                             const day = current.getDay();
                             if (day >= 1 && day <= 5) daysWorked += 1;
@@ -7406,7 +7424,7 @@ const renderBenefits = (container) => {
                     <label>Escriba el Empleado a Buscar</label>
                     <input list="ben-emp-list" id="ben-emp-search" class="form-control" placeholder="Buscar por nombre o cédula...">
                     <datalist id="ben-emp-list">
-                        ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${e.idNumber}">[${e.idNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
+                        ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${e.idNumber ? e.idNumber + ' - ' : ''}${e.firstName} ${e.lastName}"></option>`).join('')}
                     </datalist>
                 </div>
             </div>
@@ -7554,12 +7572,16 @@ const renderBenefits = (container) => {
     let currentSelectedEmployee = null;
 
     empSearch.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
+        const query = e.target.value.toLowerCase().trim();
 
-        // Buscar coincidencia exacta por ID (si selecciona de la lista)
-        let emp = state.employees.find(emp => emp.idNumber === query && emp.active !== false);
+        // Buscar coincidencia exacta por el string completo del datalist o id
+        let emp = state.employees.find(emp => {
+            if (emp.active === false) return false;
+            const datalistStr = `${emp.idNumber ? emp.idNumber + ' - ' : ''}${emp.firstName} ${emp.lastName}`.toLowerCase();
+            return datalistStr === query || (emp.idNumber && emp.idNumber.toLowerCase() === query);
+        });
 
-        // Si no hay por ID, buscar por nombre o apellido
+        // Si no hay exacta, buscar coincidencia parcial
         if (!emp) {
             emp = state.employees.find(emp =>
                 emp.active !== false &&
@@ -7785,8 +7807,8 @@ const renderBenefits = (container) => {
             employeeId: currentSelectedEmployee.id || currentSelectedEmployee.idNumber,
             idNumber: currentSelectedEmployee.idNumber,
             employeeName: `${currentSelectedEmployee.firstName} ${currentSelectedEmployee.lastName}`,
-            dateStart: start,
-            dateEnd: end,
+            dateStart: start.toISOString(),
+            dateEnd: end.toISOString(),
             timeElapsed: `${diffYears} años , ${diffMonths} meses y ${diffDays} días`,
             SPD: SPD,
             salaryMonthly: salaryMonthly,
@@ -7809,17 +7831,26 @@ const renderBenefits = (container) => {
                 registerBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando...';
 
                 // Registrar historial
-                await firebase.firestore().collection('benefitsHistory').add(window.currentCalculatedBenefits);
+                await firebase.firestore().collection('benefitsHistory').add({
+                    ...window.currentCalculatedBenefits,
+                    fechaRegistro: firebase.firestore.FieldValue.serverTimestamp()
+                });
 
-                // Actualizar empleado (inactivo) en nuestro state global
-                const empIndex = state.employees.findIndex(e => e.idNumber === currentSelectedEmployee.idNumber);
+                // Set terminationDate in employee state. Employee will be automatically disabled when their final payroll is closed.
+                const empIndex = state.employees.findIndex(e => e.id === (currentSelectedEmployee.id || currentSelectedEmployee.idNumber) || e.idNumber === currentSelectedEmployee.idNumber);
                 if (empIndex > -1) {
-                    state.employees[empIndex].active = false;
-                    state.employees[empIndex].terminationDate = window.currentCalculatedBenefits.dateEnd;
+                    let exitD = window.currentCalculatedBenefits.dateEnd;
+                    if (exitD instanceof Date) {
+                        exitD = exitD.toISOString().split('T')[0];
+                    } else if (typeof exitD === 'string') {
+                        exitD = exitD.split('T')[0];
+                    }
+                    state.employees[empIndex].terminationDate = exitD;
                     saveState();
                 }
 
-                alert('Prestaciones registradas exitosamente. El empleado ha sido inactivado.');
+                alert('Prestaciones registradas exitosamente. El empleado cobrará sus días trabajados en su última nómina y será inactivado al cerrarla.');
+
 
                 // Limpiar vista
                 document.getElementById('ben-emp-search').value = '';
