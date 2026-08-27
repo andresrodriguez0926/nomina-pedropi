@@ -7424,7 +7424,7 @@ const renderBenefits = (container) => {
                     <label>Escriba el Empleado a Buscar</label>
                     <input list="ben-emp-list" id="ben-emp-search" class="form-control" placeholder="Buscar por nombre o cédula...">
                     <datalist id="ben-emp-list">
-                        ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${e.idNumber ? e.idNumber + ' - ' : ''}${e.firstName} ${e.lastName}"></option>`).join('')}
+                        ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${((e.idNumber ? e.idNumber + ' - ' : '') + (e.firstName || '') + ' ' + (e.lastName || '')).trim()}"></option>`).join('')}
                     </datalist>
                 </div>
             </div>
@@ -7577,18 +7577,21 @@ const renderBenefits = (container) => {
         // Buscar coincidencia exacta por el string completo del datalist o id
         let emp = state.employees.find(emp => {
             if (emp.active === false) return false;
-            const datalistStr = `${emp.idNumber ? emp.idNumber + ' - ' : ''}${emp.firstName} ${emp.lastName}`.toLowerCase();
-            return datalistStr === query || (emp.idNumber && emp.idNumber.toLowerCase() === query);
+            const fName = emp.firstName || '';
+            const lName = emp.lastName || '';
+            const datalistStr = `${emp.idNumber ? emp.idNumber + ' - ' : ''}${fName} ${lName}`.trim().toLowerCase();
+            return datalistStr === query || (emp.idNumber && String(emp.idNumber).toLowerCase() === query);
         });
 
         // Si no hay exacta, buscar coincidencia parcial
         if (!emp) {
-            emp = state.employees.find(emp =>
-                emp.active !== false &&
-                (emp.firstName.toLowerCase().includes(query) ||
-                    emp.lastName.toLowerCase().includes(query) ||
-                    `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(query))
-            );
+            emp = state.employees.find(emp => {
+                if (emp.active === false) return false;
+                const fName = (emp.firstName || '').toLowerCase();
+                const lName = (emp.lastName || '').toLowerCase();
+                const full = `${fName} ${lName}`;
+                return fName.includes(query) || lName.includes(query) || full.includes(query);
+            });
         }
 
         if (!emp || query.length === 0) {
@@ -7804,20 +7807,23 @@ const renderBenefits = (container) => {
 
         // Almacenar data globalmente para guardar
         window.currentCalculatedBenefits = {
-            employeeId: currentSelectedEmployee.id || currentSelectedEmployee.idNumber,
-            idNumber: currentSelectedEmployee.idNumber,
-            employeeName: `${currentSelectedEmployee.firstName} ${currentSelectedEmployee.lastName}`,
+            employeeId: currentSelectedEmployee.id || currentSelectedEmployee.idNumber || '',
+            idNumber: currentSelectedEmployee.idNumber || '',
+            employeeName: `${currentSelectedEmployee.firstName || ''} ${currentSelectedEmployee.lastName || ''}`.trim(),
             dateStart: start.toISOString(),
             dateEnd: end.toISOString(),
             timeElapsed: `${diffYears} años , ${diffMonths} meses y ${diffDays} días`,
-            SPD: SPD,
-            salaryMonthly: salaryMonthly,
-            montoPreaviso, diasPreaviso,
-            montoCesantia, diasCesantia,
-            montoVacaciones, diasVacaciones,
-            montoRegalia,
-            subTotal,
-            total,
+            SPD: SPD || 0,
+            salaryMonthly: salaryMonthly || 0,
+            montoPreaviso: montoPreaviso || 0,
+            diasPreaviso: diasPreaviso || 0,
+            montoCesantia: montoCesantia || 0,
+            diasCesantia: diasCesantia || 0,
+            montoVacaciones: montoVacaciones || 0,
+            diasVacaciones: diasVacaciones || 0,
+            montoRegalia: montoRegalia || 0,
+            subTotal: subTotal || 0,
+            total: total || 0,
             fechaRegistro: firebase.firestore.FieldValue.serverTimestamp()
         };
     });
