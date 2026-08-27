@@ -1519,7 +1519,10 @@ const renderEmployees = (container) => {
                             <td>${emp.department || '-'}</td>
                                 <td><small>${emp.createdBy || 'Sistema'}</small></td>
                             <td>
-                                <div class="action-group">
+                                    ${emp.active === false ? `
+                                    <button class="btn-icon" style="color: var(--success);" onclick="window.rehireEmployee(${index})" title="Reingresar Empleado">
+                                        <i class="fas fa-user-plus"></i>
+                                    </button>` : ''}
                                     <button class="btn-icon" onclick="quickAddIncentive('[${emp.regNumber}] ${emp.firstName} ${emp.lastName}')" title="Aplicar Incentivo">
                                         <i class="fas fa-gift"></i>
                                     </button>
@@ -7560,6 +7563,8 @@ const renderBenefits = (container) => {
                 </div>
             </div>
             
+            <div id="ben-warning-msg" style="display: none; padding: 15px; margin-bottom: 20px; border-radius: 4px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;"></div>
+            
             <div id="ben-details-section" style="display: none;">
                 <div class="form-row">
                     <div class="form-group">
@@ -7725,14 +7730,31 @@ const renderBenefits = (container) => {
             });
         }
 
+        const warningMsg = document.getElementById('ben-warning-msg');
+        
         if (!emp || query.length === 0) {
             detailsSection.style.display = 'none';
             reportArea.style.display = 'none';
             btnPrint.style.display = 'none';
+            warningMsg.style.display = 'none';
             currentSelectedEmployee = null;
             return;
         }
+
         currentSelectedEmployee = emp;
+
+        // Si ya tiene prestaciones registradas pendientes (tiene terminationDate)
+        if (emp.terminationDate) {
+            warningMsg.style.display = 'block';
+            warningMsg.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Este empleado ya tiene prestaciones laborales registradas y fecha de salida programada.';
+            detailsSection.style.display = 'none';
+            reportArea.style.display = 'none';
+            btnPrint.style.display = 'none';
+            return;
+        }
+
+        warningMsg.style.display = 'none';
+
         document.getElementById('ben-hire-date').value = emp.hireDate;
         document.getElementById('ben-salary').value = emp.salary || 0;
 
@@ -7740,6 +7762,8 @@ const renderBenefits = (container) => {
         if (emp.type === 'mobile' && (!emp.salary || emp.salary == 0)) {
             // Replace annoying alert with a console log or non-blocking notification
             console.warn("Atención: El empleado seleccionado es Móvil y no tiene salario base. Por favor inserte manualmente el Promedio Mensual devengado en los últimos 12 meses.");
+            warningMsg.style.display = 'block';
+            warningMsg.innerHTML = '<i class="fas fa-info-circle"></i> <strong>Atención:</strong> El empleado seleccionado es Móvil y no tiene salario base. Por favor inserte manualmente el Promedio Mensual devengado en los últimos 12 meses.';
         }
 
         detailsSection.style.display = 'block';
