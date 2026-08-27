@@ -7403,12 +7403,84 @@ window.quickAddChristmasSalary = (employeeName) => {
     });
 };
 
+window.viewBenefitsHistory = async () => {
+    try {
+        const snapshot = await firebase.firestore().collection('benefitsHistory').orderBy('fechaRegistro', 'desc').get();
+        const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        let html = `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Fecha Reg.</th>
+                        <th>Empleado</th>
+                        <th>Salida</th>
+                        <th>Total (RD$)</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        if (history.length === 0) {
+            html += `<tr><td colspan="5" style="text-align:center">No hay registros</td></tr>`;
+        } else {
+            history.forEach(record => {
+                const regDate = record.fechaRegistro && record.fechaRegistro.toDate ? record.fechaRegistro.toDate().toLocaleDateString() : 'N/A';
+                const total = parseFloat(record.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 });
+                const dEnd = record.dateEnd ? record.dateEnd.split('T')[0] : 'N/A';
+                html += `
+                    <tr>
+                        <td>${regDate}</td>
+                        <td>${record.employeeName || 'Desconocido'}</td>
+                        <td>${dEnd}</td>
+                        <td>${total}</td>
+                        <td>
+                            <button class="btn btn-sm btn-danger" onclick="window.revertBenefits('${record.id}', '${record.employeeId || ''}', '${record.idNumber || ''}')">
+                                <i class="fas fa-undo"></i> Reversar
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        html += `</tbody></table>`;
+        showModal('Historial de Prestaciones', html, () => { hideModal(); });
+        document.getElementById('modal-confirm-btn').style.display = 'none';
+        document.getElementById('modal-cancel-btn').innerText = 'Cerrar';
+    } catch (e) {
+        alert("Error al cargar historial: " + e.message);
+    }
+};
+
+window.revertBenefits = async (docId, employeeId, idNumber) => {
+    if (!confirm("¿Seguro que desea reversar este registro? El empleado volverá a estar activo (se quitará su fecha de salida) y el registro se eliminará.")) return;
+    try {
+        await firebase.firestore().collection('benefitsHistory').doc(docId).delete();
+        const empIndex = state.employees.findIndex(e => (employeeId && e.id === employeeId) || (idNumber && e.idNumber === idNumber));
+        if (empIndex > -1) {
+            state.employees[empIndex].active = true;
+            state.employees[empIndex].terminationDate = null;
+            saveState();
+        }
+        alert("Registro reversado exitosamente.");
+        hideModal();
+        if (state.currentSection === 'benefits') renderSection('benefits');
+    } catch (e) {
+        alert("Error al reversar: " + e.message);
+    }
+};
+
 // --- Module: Benefits (Prestaciones Laborales) ---
 const renderBenefits = (container) => {
     container.innerHTML = `
         <div class="header-action hidden-print">
             <h1>Cálculo de Prestaciones Laborales</h1>
             <div>
+                <button class="btn btn-secondary" onclick="window.viewBenefitsHistory()" style="margin-right: 10px;">
+                    <i class="fas fa-history"></i> Histórico
+                </button>
                 <button class="btn btn-primary" id="btn-register-benefits" style="display:none; margin-right: 10px; background-color: var(--success);">
                     <i class="fas fa-save"></i> Registrar Prestaciones
                 </button>
