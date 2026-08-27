@@ -8465,6 +8465,10 @@ window.printVacation = (vacId) => {
                         <td style="padding: 5px 0; text-align: right;">${vac.employeeId}</td>
                     </tr>
                     <tr>
+                        <td style="padding: 5px 0;"><strong>Periodo (Año):</strong></td>
+                        <td style="padding: 5px 0; text-align: right;">${vac.periodYear}</td>
+                    </tr>
+                    <tr>
                         <td style="padding: 5px 0;"><strong>Fecha de Pago:</strong></td>
                         <td style="padding: 5px 0; text-align: right;">${new Date(vac.createdAt || Date.now()).toLocaleDateString()}</td>
                     </tr>
