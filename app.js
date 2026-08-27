@@ -8245,6 +8245,40 @@ const renderVacations = (container) => {
                 </tbody>
             </table>
         </div>
+
+        <!-- Historial de Vacaciones -->
+        <div class="card mt-4">
+            <h3><i class="fas fa-history"></i> Historial de Vacaciones Registradas</h3>
+            <table class="data-table mt-2">
+                <thead>
+                    <tr>
+                        <th>Cédula</th>
+                        <th>Nombre</th>
+                        <th>Periodo</th>
+                        <th>Modalidad</th>
+                        <th>Monto (RD$)</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${(!state.vacations || state.vacations.length === 0) ? '<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">No hay historial de vacaciones registradas.</td></tr>' : ''}
+                    ${(state.vacations || []).slice().reverse().map(v => `
+                        <tr>
+                            <td>${v.employeeId}</td>
+                            <td>${v.employeeName}</td>
+                            <td>${v.periodYear}</td>
+                            <td>${v.type}</td>
+                            <td>${v.totalPay ? v.totalPay.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00'}</td>
+                            <td>
+                                <button class="btn btn-secondary btn-sm" onclick="window.printVacation('${v.id}')">
+                                    <i class="fas fa-print"></i> Imprimir
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
     `;
 
     // Interacción del Formulario
@@ -8394,6 +8428,93 @@ window.markVacationReturned = (vacId) => {
 
 window.printBenefitsReport = () => {
     window.print();
+};
+
+window.printVacation = (vacId) => {
+    const vac = state.vacations.find(v => v.id === vacId);
+    if (!vac) return;
+
+    const contentArea = document.getElementById('content-area');
+    
+    contentArea.innerHTML = `
+        <div class="no-print" style="padding: 20px; display: flex; gap: 15px; background: var(--sidebar-bg); border-bottom: 1px solid var(--border-color);">
+            <button class="btn btn-secondary" onclick="renderSection('vacations')">
+                <i class="fas fa-arrow-left"></i> Volver
+            </button>
+            <button class="btn btn-primary" onclick="window.print()">
+                <i class="fas fa-print"></i> Imprimir Comprobante
+            </button>
+            <div style="flex: 1; text-align: right; color: var(--text-secondary); align-self: center;">
+                Vista Previa de Comprobante de Vacaciones
+            </div>
+        </div>
+        <div class="pay-slips-container" style="display: flex; justify-content: center; padding: 20px;">
+            <div class="pay-slip" style="width: 100%; max-width: 600px; padding: 30px; border: 1px solid #ddd; background: #fff; color: #000; font-family: sans-serif;">
+                <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
+                    <h1 style="margin: 0; font-size: 24px; color: #000;">${state.settings.companyName || 'NóminaApp'}</h1>
+                    <p style="margin: 5px 0 0; font-weight: bold; font-size: 16px; color: #000;">COMPROBANTE DE VACACIONES</p>
+                </div>
+                
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; color: #000;">
+                    <tr>
+                        <td style="padding: 5px 0;"><strong>Empleado:</strong></td>
+                        <td style="padding: 5px 0; text-align: right;">${vac.employeeName.toUpperCase()}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;"><strong>Cédula / Documento:</strong></td>
+                        <td style="padding: 5px 0; text-align: right;">${vac.employeeId}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;"><strong>Periodo:</strong></td>
+                        <td style="padding: 5px 0; text-align: right;">${vac.periodYear}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;"><strong>Modalidad:</strong></td>
+                        <td style="padding: 5px 0; text-align: right;">${vac.type === 'Tomada' ? 'Descanso Físico (Tomada)' : 'Pagada'}</td>
+                    </tr>
+                    ${vac.type === 'Tomada' ? `
+                    <tr>
+                        <td style="padding: 5px 0;"><strong>Fecha de Salida:</strong></td>
+                        <td style="padding: 5px 0; text-align: right;">${vac.outDate || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;"><strong>Fecha de Reingreso:</strong></td>
+                        <td style="padding: 5px 0; text-align: right;">${vac.returnDate || 'N/A'}</td>
+                    </tr>
+                    ` : ''}
+                </table>
+
+                <div style="border-top: 1px dashed #ccc; padding-top: 15px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 10px 0; font-size: 16px; text-transform: uppercase; color: #000;">Cálculo Identificado</h3>
+                    <table style="width: 100%; border-collapse: collapse; color: #000;">
+                        <tr>
+                            <td style="padding: 3px 0;">Días Correspondientes:</td>
+                            <td style="padding: 3px 0; text-align: right;">${vac.days || 0} días</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 3px 0;">Salario Promedio Diario (SPD):</td>
+                            <td style="padding: 3px 0; text-align: right;">RD$ ${(vac.spd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 0; font-weight: bold; font-size: 18px;">Monto a Cobrar:</td>
+                            <td style="padding: 10px 0; text-align: right; font-weight: bold; font-size: 18px;">RD$ ${(vac.totalPay || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div style="margin-top: 60px; display: flex; justify-content: space-between;">
+                    <div style="text-align: center; width: 45%;">
+                        <div style="border-bottom: 1px solid #000; height: 30px;"></div>
+                        <p style="margin-top: 5px; font-size: 12px; color: #000;">Firma de Empleado</p>
+                    </div>
+                    <div style="text-align: center; width: 45%;">
+                        <div style="border-bottom: 1px solid #000; height: 30px;"></div>
+                        <p style="margin-top: 5px; font-size: 12px; color: #000;">Firma del Empleador / RRHH</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 };
 
 // --- Module: Individual Pay Slips (Volantes de Pago) ---
