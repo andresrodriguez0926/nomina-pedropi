@@ -7407,6 +7407,7 @@ window.viewBenefitsHistory = async () => {
     try {
         const snapshot = await firebase.firestore().collection('benefitsHistory').orderBy('fechaRegistro', 'desc').get();
         const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        window.currentBenefitsHistoryList = history;
         
         let html = `
             <table class="data-table">
@@ -7416,7 +7417,7 @@ window.viewBenefitsHistory = async () => {
                         <th>Empleado</th>
                         <th>Salida</th>
                         <th>Total (RD$)</th>
-                        <th>Acción</th>
+                        <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -7445,8 +7446,11 @@ window.viewBenefitsHistory = async () => {
                         <td>${dEnd}</td>
                         <td>${total}</td>
                         <td>
-                            <button class="btn btn-sm btn-danger" onclick="window.revertBenefits('${record.id}', '${record.employeeId || ''}', '${record.idNumber || ''}')">
-                                <i class="fas fa-undo"></i> Reversar
+                            <button class="btn btn-sm btn-primary" onclick="window.printHistoricalBenefits('${record.id}')" title="Imprimir" style="margin-right: 5px;">
+                                <i class="fas fa-print"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="window.revertBenefits('${record.id}', '${record.employeeId || ''}', '${record.idNumber || ''}')" title="Reversar">
+                                <i class="fas fa-undo"></i>
                             </button>
                         </td>
                     </tr>
@@ -7461,6 +7465,52 @@ window.viewBenefitsHistory = async () => {
     } catch (e) {
         alert("Error al cargar historial: " + e.message);
     }
+};
+
+window.printHistoricalBenefits = (docId) => {
+    if (!window.currentBenefitsHistoryList) return;
+    const record = window.currentBenefitsHistoryList.find(r => r.id === docId);
+    if (!record) return;
+
+    const fmt = (num) => 'RD$' + parseFloat(num || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formatDate = (ds) => {
+        if(!ds) return '-';
+        const d = (typeof ds === 'string') ? new Date(ds) : (ds.toDate ? ds.toDate() : ds);
+        return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+    };
+
+    document.getElementById('rep-cedula').innerText = record.idNumber || '';
+    document.getElementById('rep-nombre').innerText = record.employeeName || 'Desconocido';
+    document.getElementById('rep-ingreso').innerText = formatDate(record.dateStart);
+    document.getElementById('rep-salida').innerText = formatDate(record.dateEnd);
+    document.getElementById('rep-tiempo').innerText = record.timeElapsed || '-';
+    document.getElementById('rep-spd').innerText = fmt(record.SPD);
+    document.getElementById('rep-salario').innerText = fmt(record.salaryMonthly) + ' Mensual';
+
+    document.getElementById('rep-preaviso').innerHTML = parseFloat(record.montoPreaviso) > 0 ? `${fmt(record.montoPreaviso)} (${record.diasPreaviso || 0} días)` : 'RD$0.00';
+    document.getElementById('rep-cesantia').innerHTML = parseFloat(record.montoCesantia) > 0 ? `${fmt(record.montoCesantia)} (${record.diasCesantia || 0} días)` : 'RD$0.00';
+    document.getElementById('rep-vacaciones').innerHTML = parseFloat(record.montoVacaciones) > 0 ? `${fmt(record.montoVacaciones)} (${record.diasVacaciones || 0} días)` : '0.00';
+
+    document.getElementById('rep-subtotal').innerText = fmt(record.subTotal);
+
+    // Calculate regalia days string if needed or just output amount
+    let regaliaStr = record.montoRegalia > 0 ? fmt(record.montoRegalia) : 'RD$0.00';
+    document.getElementById('rep-regalia').innerHTML = regaliaStr;
+    document.getElementById('rep-total').innerText = fmt(record.total);
+
+    const end = (typeof record.dateEnd === 'string') ? new Date(record.dateEnd) : (record.dateEnd && record.dateEnd.toDate ? record.dateEnd.toDate() : new Date());
+    const monthNames = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+    document.getElementById('rep-fecha-doc').innerText = `DADO A LOS ${end.getDate().toString().padStart(2, '0')} DÍAS DEL MES DE ${monthNames[end.getMonth()]} DEL AÑO ${end.getFullYear()}`;
+
+    document.getElementById('benefits-report-area').style.display = 'block';
+    
+    // Hide the modal so it doesn't print over the report
+    hideModal();
+
+    setTimeout(() => {
+        window.print();
+        document.getElementById('benefits-report-area').style.display = 'none';
+    }, 500);
 };
 
 window.revertBenefits = async (docId, employeeId, idNumber) => {
