@@ -7607,7 +7607,8 @@ const renderBenefits = (container) => {
 
         // Si es movil destajero que no tiene sueldo, sugerir poner sueldo prop.
         if (emp.type === 'mobile' && (!emp.salary || emp.salary == 0)) {
-            alert("Atención: El empleado seleccionado es Móvil y no tiene salario base. Por favor inserte manualmente el Promedio Mensual devengado en los últimos 12 meses.");
+            // Replace annoying alert with a console log or non-blocking notification
+            console.warn("Atención: El empleado seleccionado es Móvil y no tiene salario base. Por favor inserte manualmente el Promedio Mensual devengado en los últimos 12 meses.");
         }
 
         detailsSection.style.display = 'block';
@@ -7873,7 +7874,7 @@ const renderBenefits = (container) => {
                 switchSection('benefits');
             } catch (e) {
                 console.error("Error al registrar prestaciones:", e);
-                alert("Error al registrar las prestaciones y deshabilitar al empleado.");
+                alert("Error al registrar las prestaciones: " + (e.message || String(e)));
                 const registerBtn = document.getElementById('btn-register-benefits');
                 registerBtn.disabled = false;
                 registerBtn.innerHTML = '<i class="fas fa-save"></i> Registrar Prestaciones';
