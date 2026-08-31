@@ -403,6 +403,7 @@ window.renderSection = (sectionId) => {
             case 'daily-registration': renderDailyRegistration(contentArea); break;
             case 'closing': renderClosing(contentArea); break;
             case 'reports': renderReports(contentArea); break;
+            case 'tss-report': renderTSSReport(contentArea); break;
             case 'payroll-comparison': renderPayrollComparison(contentArea); break;
             case 'employee-record': renderEmployeeRecord(contentArea); break;
             case 'payroll-entry': renderPayrollEntry(contentArea); break;
@@ -1014,6 +1015,7 @@ window.showEditUserModal = (uid) => {
             { id: 'daily-registration', name: 'Registro Diario' },
             { id: 'closing', name: 'Cierre Nómina' },
             { id: 'reports', name: 'Reportes' },
+            { id: 'tss-report', name: 'Reporte TSS' },
             { id: 'payroll-entry', name: 'Entrada de Nómina' }
         ].map(m => `
                             <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; font-size: 0.85rem;">
@@ -1112,6 +1114,7 @@ window.showAddUserModal = () => {
             { id: 'daily-registration', name: 'Registro Diario' },
             { id: 'closing', name: 'Cierre Nómina' },
             { id: 'reports', name: 'Reportes' },
+            { id: 'tss-report', name: 'Reporte TSS' },
             { id: 'payroll-entry', name: 'Entrada de Nómina' }
         ].map(m => `
                             <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; font-size: 0.85rem;">
@@ -4656,45 +4659,8 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
 
 
-    // Calculate Vacation Pay for the current period
-    if (((emp.type || '').toLowerCase() === 'fixed' || (emp.type || '').toLowerCase() === 'fijo') && bounds && bounds.min && bounds.max) {
-        const pStart = new Date(bounds.min + 'T00:00:00');
-        const pEnd = new Date(bounds.max + 'T00:00:00');
-        pStart.setHours(0, 0, 0, 0);
-        pEnd.setHours(0, 0, 0, 0);
-
-        const vcs = (state.vacations || []).filter(v =>
-            v.employeeId === emp.idNumber &&
-            v.type === 'Tomada' &&
-            v.outDate && v.returnDate
-        );
-
-        for (const v of vcs) {
-            const vStart = new Date(v.outDate + 'T00:00:00');
-            const vEnd = new Date(v.returnDate + 'T00:00:00');
-            vStart.setHours(0, 0, 0, 0);
-            vEnd.setHours(0, 0, 0, 0);
-
-            // Check if vacation overlaps with current period
-            if (vStart <= pEnd && vEnd >= pStart) {
-                const overlapStart = new Date(Math.max(vStart, pStart));
-                const overlapEnd = new Date(Math.min(vEnd, pEnd));
-
-                // For simplicity and matching ministerial logic, calculate days in overlap
-                let daysInOverlap = 0;
-                let cur = new Date(overlapStart.getTime());
-                while (cur <= overlapEnd) {
-                    const d = cur.getDay();
-                    if (d >= 1 && d <= 5) daysInOverlap += 1;
-                    else if (d === 6) daysInOverlap += 0.5;
-                    cur.setDate(cur.getDate() + 1);
-                }
-
-                const dailyRate = (parseFloat(emp.salary) || 0) / 23.83;
-                vacationPay += dailyRate * daysInOverlap;
-            }
-        }
-    }
+    // Las vacaciones ahora se manejan de manera totalmente individual y no se suman a la nómina.
+    // (El salario base ya fue reducido proporcionalmente arriba para los días de descanso físico).
 
     chr = (state.christmasSalary || []).filter(c => {
         if (c.empReg && emp.regNumber) return String(c.empReg) === String(emp.regNumber) && filterByPeriod(c);
@@ -5184,6 +5150,269 @@ const renderReports = (container) => {
             </div>
         `;
     }
+};
+
+const renderTSSReport = (container) => {
+    const today = new Date();
+    const currentMonthDefault = today.toISOString().substring(0, 7); // YYYY-MM
+    
+    if (!window.currentTSSMonth) window.currentTSSMonth = currentMonthDefault;
+    const selectedMonth = window.currentTSSMonth;
+
+    // Tasa Empleado
+    const sfsEmpRate = state.settings.sfs_rate || 0.0304;
+    const afpEmpRate = state.settings.afp_rate || 0.0287;
+    const tssEmployeeRate = sfsEmpRate + afpEmpRate;
+
+    // Tasa Empleador
+    const sfsEmprRate = 0.0709;
+    const afpEmprRate = 0.0710;
+    const srlEmprRate = 0.0120; // Promedio Riesgo Laboral
+    const tssEmployerRate = sfsEmprRate + afpEmprRate + srlEmprRate;
+
+    let payrollEmployeeTSS = 0;
+    let payrollEmployerTSS = 0;
+    let payrollBaseTotal = 0;
+
+    let vacationEmployeeTSS = 0;
+    let vacationEmployerTSS = 0;
+    let vacationBaseTotal = 0;
+
+    let details = [];
+
+    // Totales segregados
+    let totSfsEmp = 0, totAfpEmp = 0;
+    let totSfsEmpr = 0, totAfpEmpr = 0, totSrlEmpr = 0;
+
+    // Payroll calculation
+    const payrollDetailsMap = {};
+
+    (state.payrollHistory || []).forEach(run => {
+        const runMonth = run.closedAt ? run.closedAt.substring(0, 7) : '';
+        if (runMonth === selectedMonth) {
+            (run.results || []).forEach(res => {
+                const empTss = (res.tss || 0);
+                if (empTss > 0 && tssEmployeeRate > 0) {
+                    payrollEmployeeTSS += empTss;
+                    const empBaseCotizable = empTss / tssEmployeeRate;
+                    const empEmployerTss = empBaseCotizable * tssEmployerRate;
+                    payrollBaseTotal += empBaseCotizable;
+                    payrollEmployerTSS += empEmployerTss;
+                    
+                    const pSfsEmp = empBaseCotizable * sfsEmpRate;
+                    const pAfpEmp = empBaseCotizable * afpEmpRate;
+                    const pSfsEmpr = empBaseCotizable * sfsEmprRate;
+                    const pAfpEmpr = empBaseCotizable * afpEmprRate;
+                    const pSrlEmpr = empBaseCotizable * srlEmprRate;
+
+                    totSfsEmp += pSfsEmp; totAfpEmp += pAfpEmp;
+                    totSfsEmpr += pSfsEmpr; totAfpEmpr += pAfpEmpr; totSrlEmpr += pSrlEmpr;
+
+                    const idKey = res.idNumber || res.fullName || 'Desconocido';
+                    if (!payrollDetailsMap[idKey]) {
+                        payrollDetailsMap[idKey] = {
+                            name: res.fullName || 'Desconocido',
+                            idNumber: res.idNumber || '',
+                            source: 'Nómina',
+                            base: 0,
+                            empTss: 0,
+                            empEmployerTss: 0,
+                            sfsEmp: 0, afpEmp: 0,
+                            sfsEmpr: 0, afpEmpr: 0, srlEmpr: 0
+                        };
+                    }
+                    const d = payrollDetailsMap[idKey];
+                    d.base += empBaseCotizable;
+                    d.empTss += empTss;
+                    d.empEmployerTss += empEmployerTss;
+                    d.sfsEmp += pSfsEmp; d.afpEmp += pAfpEmp;
+                    d.sfsEmpr += pSfsEmpr; d.afpEmpr += pAfpEmpr; d.srlEmpr += pSrlEmpr;
+                }
+            });
+        }
+    });
+
+    Object.values(payrollDetailsMap).forEach(d => details.push(d));
+
+    // Vacation calculation
+    (state.vacations || []).forEach(vac => {
+        const vacMonth = vac.createdAt ? vac.createdAt.substring(0, 7) : '';
+        if (vacMonth === selectedMonth && vac.applyTSS) {
+            const pay = vac.totalPay || 0;
+            const vacEmpTss = pay * tssEmployeeRate;
+            const vacEmpEmployerTss = pay * tssEmployerRate;
+            
+            vacationBaseTotal += pay;
+            vacationEmployeeTSS += vacEmpTss;
+            vacationEmployerTSS += vacEmpEmployerTss;
+            
+            const vSfsEmp = pay * sfsEmpRate;
+            const vAfpEmp = pay * afpEmpRate;
+            const vSfsEmpr = pay * sfsEmprRate;
+            const vAfpEmpr = pay * afpEmprRate;
+            const vSrlEmpr = pay * srlEmprRate;
+
+            totSfsEmp += vSfsEmp; totAfpEmp += vAfpEmp;
+            totSfsEmpr += vSfsEmpr; totAfpEmpr += vAfpEmpr; totSrlEmpr += vSrlEmpr;
+
+            details.push({
+                name: vac.employeeName || 'Desconocido',
+                idNumber: vac.employeeId || '',
+                source: 'Vacaciones',
+                base: pay,
+                empTss: vacEmpTss,
+                empEmployerTss: vacEmpEmployerTss,
+                sfsEmp: vSfsEmp, afpEmp: vAfpEmp,
+                sfsEmpr: vSfsEmpr, afpEmpr: vAfpEmpr, srlEmpr: vSrlEmpr
+            });
+        }
+    });
+
+    const totalEmployeeTSS = payrollEmployeeTSS + vacationEmployeeTSS;
+    const totalEmployerTSS = payrollEmployerTSS + vacationEmployerTSS;
+    const totalTSS = totalEmployeeTSS + totalEmployerTSS;
+
+    // Generate Month Options from history
+    const monthSet = new Set();
+    monthSet.add(currentMonthDefault);
+    (state.payrollHistory || []).forEach(run => {
+        if (run.closedAt) monthSet.add(run.closedAt.substring(0, 7));
+    });
+    (state.vacations || []).forEach(vac => {
+        if (vac.createdAt) monthSet.add(vac.createdAt.substring(0, 7));
+    });
+    
+    const months = Array.from(monthSet).sort().reverse();
+    
+    const fmt = (num) => 'RD$ ' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    container.innerHTML = `
+        <div class="no-print header-action" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1><i class="fas fa-file-medical-alt"></i> Reporte Mensual de TSS</h1>
+            <div style="display: flex; gap: 15px;">
+                <select class="form-control" onchange="window.currentTSSMonth = this.value; renderSection('tss-report')" style="min-width: 200px;">
+                    ${months.map(m => `<option value="${m}" ${m === selectedMonth ? 'selected' : ''}>${m}</option>`).join('')}
+                </select>
+                <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir Reporte</button>
+            </div>
+        </div>
+        
+        <div class="card printable-page" style="padding: 30px;">
+            <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #ddd; padding-bottom: 20px;">
+                <h2 style="margin: 0; font-size: 24px; color: #333;">${state.settings.companyName || 'NóminaApp'}</h2>
+                <p style="margin: 5px 0 0; font-weight: bold; font-size: 18px; color: #555;">Reporte de Aportes y Retenciones a la TSS (Desglosado)</p>
+                <p style="margin: 5px 0 0; color: #777;">Periodo: <strong>${selectedMonth}</strong></p>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <p>Este reporte consolida las retenciones realizadas a los empleados y los aportes estimados del empleador para la Tesorería de la Seguridad Social (TSS).</p>
+                <div style="display: flex; gap: 40px; font-size: 0.9rem; color: #666; margin-top: 15px;">
+                    <div>
+                        <strong>Tasa Empleado: ${(tssEmployeeRate * 100).toFixed(2)}%</strong>
+                        <ul style="margin-top: 5px; padding-left: 20px;">
+                            <li>SFS (Salud): ${(sfsEmpRate * 100).toFixed(2)}%</li>
+                            <li>AFP (Pensión): ${(afpEmpRate * 100).toFixed(2)}%</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <strong>Tasa Empleador: ${(tssEmployerRate * 100).toFixed(2)}%</strong>
+                        <ul style="margin-top: 5px; padding-left: 20px;">
+                            <li>SFS (Salud): ${(sfsEmprRate * 100).toFixed(2)}%</li>
+                            <li>AFP (Pensión): ${(afpEmprRate * 100).toFixed(2)}%</li>
+                            <li>SRL (Riesgo Laboral): ${(srlEmprRate * 100).toFixed(2)}%</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <h3 style="border-bottom: 1px solid #eee; padding-bottom: 10px; margin-top: 30px;"><i class="fas fa-chart-pie"></i> Resumen de Aportes y Retenciones</h3>
+            <table class="data-table" style="width: 100%; margin-top: 10px;">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">Concepto de Seguro</th>
+                        <th style="text-align: right; background: #fafafa; color: #333;">Base Cotizable</th>
+                        <th style="text-align: right; color: #d32f2f;">Retención Empleado</th>
+                        <th style="text-align: right; color: #1976d2;">Aporte Empleador</th>
+                        <th style="text-align: right; font-weight: bold; background: #fafafa; color: #333;">Total a Pagar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Seguro Familiar de Salud (SFS)</strong></td>
+                        <td style="text-align: right; background: #fafafa; color: #333;">${fmt(payrollBaseTotal + vacationBaseTotal)}</td>
+                        <td style="text-align: right; color: #d32f2f;">${fmt(totSfsEmp)}</td>
+                        <td style="text-align: right; color: #1976d2;">${fmt(totSfsEmpr)}</td>
+                        <td style="text-align: right; font-weight: bold; background: #fafafa; color: #333;">${fmt(totSfsEmp + totSfsEmpr)}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Fondo de Pensiones (AFP)</strong></td>
+                        <td style="text-align: right; background: #fafafa; color: #333;">${fmt(payrollBaseTotal + vacationBaseTotal)}</td>
+                        <td style="text-align: right; color: #d32f2f;">${fmt(totAfpEmp)}</td>
+                        <td style="text-align: right; color: #1976d2;">${fmt(totAfpEmpr)}</td>
+                        <td style="text-align: right; font-weight: bold; background: #fafafa; color: #333;">${fmt(totAfpEmp + totAfpEmpr)}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Seguro Riesgos Laborales (SRL)</strong></td>
+                        <td style="text-align: right; background: #fafafa; color: #333;">${fmt(payrollBaseTotal + vacationBaseTotal)}</td>
+                        <td style="text-align: right; color: #d32f2f;">-</td>
+                        <td style="text-align: right; color: #1976d2;">${fmt(totSrlEmpr)}</td>
+                        <td style="text-align: right; font-weight: bold; background: #fafafa; color: #333;">${fmt(totSrlEmpr)}</td>
+                    </tr>
+                    <tr style="border-top: 2px solid #333;">
+                        <td style="font-size: 1.1rem;"><strong>TOTALES GENERALES</strong></td>
+                        <td style="text-align: right; font-weight: bold; background: #fafafa; color: #333; font-size: 1.1rem;">${fmt(payrollBaseTotal + vacationBaseTotal)}</td>
+                        <td style="text-align: right; color: #d32f2f; font-weight: bold; font-size: 1.1rem;">${fmt(totalEmployeeTSS)}</td>
+                        <td style="text-align: right; color: #1976d2; font-weight: bold; font-size: 1.1rem;">${fmt(totalEmployerTSS)}</td>
+                        <td style="text-align: right; font-weight: bold; background: #e8f5e9; color: #2e7d32; font-size: 1.1rem;">${fmt(totalTSS)}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3 style="border-bottom: 1px solid #eee; padding-bottom: 10px; margin-top: 40px; page-break-before: always;"><i class="fas fa-users"></i> Desglose Detallado por Empleado</h3>
+            <table class="data-table" style="width: 100%; margin-top: 10px; font-size: 0.75rem;">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;" rowspan="2">Empleado</th>
+                        <th style="text-align: left;" rowspan="2">Cédula</th>
+                        <th style="text-align: center;" rowspan="2">Origen</th>
+                        <th style="text-align: right;" rowspan="2">Base Cotizable</th>
+                        <th style="text-align: center; color: #d32f2f; border-bottom: 1px solid #ccc; background: #fff5f5;" colspan="3">Retención Empleado</th>
+                        <th style="text-align: center; color: #1976d2; border-bottom: 1px solid #ccc; background: #f0f7ff;" colspan="4">Aporte Empleador</th>
+                    </tr>
+                    <tr>
+                        <th style="text-align: right; color: #d32f2f; background: #fff5f5;">SFS</th>
+                        <th style="text-align: right; color: #d32f2f; background: #fff5f5;">AFP</th>
+                        <th style="text-align: right; color: #b71c1c; font-weight: bold; background: #ffebee;">Total Emp.</th>
+                        <th style="text-align: right; color: #1976d2; background: #f0f7ff;">SFS</th>
+                        <th style="text-align: right; color: #1976d2; background: #f0f7ff;">AFP</th>
+                        <th style="text-align: right; color: #1976d2; background: #f0f7ff;">SRL</th>
+                        <th style="text-align: right; color: #0d47a1; font-weight: bold; background: #e3f2fd;">Total Empr.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${details.length > 0 ? details.map(d => `
+                        <tr>
+                            <td><strong>${d.name}</strong></td>
+                            <td>${d.idNumber || '-'}</td>
+                            <td style="text-align: center;"><span style="background: ${d.source === 'Nómina' ? '#e3f2fd' : '#fff3e0'}; color: ${d.source === 'Nómina' ? '#0d47a1' : '#e65100'}; font-weight: bold; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem;">${d.source}</span></td>
+                            <td style="text-align: right;">${fmt(d.base)}</td>
+                            <td style="text-align: right; color: #d32f2f; background: #fffcfc;">${fmt(d.sfsEmp)}</td>
+                            <td style="text-align: right; color: #d32f2f; background: #fffcfc;">${fmt(d.afpEmp)}</td>
+                            <td style="text-align: right; color: #b71c1c; font-weight: bold; background: #fff5f5;">${fmt(d.empTss)}</td>
+                            <td style="text-align: right; color: #1976d2; background: #f8fbff;">${fmt(d.sfsEmpr)}</td>
+                            <td style="text-align: right; color: #1976d2; background: #f8fbff;">${fmt(d.afpEmpr)}</td>
+                            <td style="text-align: right; color: #1976d2; background: #f8fbff;">${fmt(d.srlEmpr)}</td>
+                            <td style="text-align: right; color: #0d47a1; font-weight: bold; background: #f0f7ff;">${fmt(d.empEmployerTss)}</td>
+                        </tr>
+                    `).join('') : `<tr><td colspan="11" style="text-align: center; color: #999; padding: 20px;">No hay registros cotizables en este periodo.</td></tr>`}
+                </tbody>
+            </table>
+            
+            <div style="margin-top: 30px; font-size: 0.8rem; color: #888; text-align: justify; line-height: 1.4;">
+                * <strong>Nota aclaratoria:</strong> Este documento es de uso interno para fines de cuadre o estimación y no sustituye la factura oficial emitida por el Sistema Único de Información y Recaudo (SUIR) de la TSS. Los montos exactos pueden variar ligeramente debido al redondeo que aplica la TSS a nivel de cada empleado y el cálculo del SRL según el riesgo específico de la empresa.
+            </div>
+        </div>
+    `;
 };
 
 window.toggleReportDept = (deptName) => {
@@ -8206,6 +8435,14 @@ const renderVacations = (container) => {
                     </div>
                 </div>
                 
+                <div class="form-row">
+                    <div class="form-group" style="display: flex; align-items: center; margin-top: 15px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
+                            <input type="checkbox" id="vac-apply-tss" checked> Calcular retención de TSS
+                        </label>
+                    </div>
+                </div>
+                
                 <button class="btn btn-primary mt-3" id="btn-save-vacation" style="width: 100%;">
                     <i class="fas fa-save"></i> Registrar Vacación
                 </button>
@@ -8383,6 +8620,7 @@ const renderVacations = (container) => {
         const type = document.getElementById('vac-type').value;
         const outDate = document.getElementById('vac-out-date').value;
         const returnDate = document.getElementById('vac-in-date').value;
+        const applyTSS = document.getElementById('vac-apply-tss') ? document.getElementById('vac-apply-tss').checked : false;
 
         if (type === 'Tomada' && (!outDate || !returnDate)) {
             alert("Debe proveer fechas de salida y retorno para vacaciones tomadas.");
@@ -8405,6 +8643,7 @@ const renderVacations = (container) => {
             outDate: type === 'Tomada' ? outDate : null,
             returnDate: type === 'Tomada' ? returnDate : null,
             returned: type === 'Tomada' ? false : true, // Pagada es True por defecto
+            applyTSS: applyTSS,
             createdAt: new Date().toISOString()
         };
 
@@ -8500,9 +8739,24 @@ window.printVacation = (vacId) => {
                             <td style="padding: 3px 0; text-align: right;">RD$ ${(vac.spd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                         </tr>
                         <tr>
+                            <td style="padding: 10px 0; font-weight: bold; font-size: 16px;">Monto Bruto:</td>
+                            <td style="padding: 10px 0; text-align: right; font-weight: bold; font-size: 16px;">RD$ ${(vac.totalPay || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                        ${vac.applyTSS ? `
+                        <tr>
+                            <td style="padding: 3px 0; color: #d32f2f;">Retención TSS:</td>
+                            <td style="padding: 3px 0; text-align: right; color: #d32f2f;">- RD$ ${((vac.totalPay || 0) * (state.settings.tss_rate || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 0; font-weight: bold; font-size: 18px;">Monto Neto a Recibir:</td>
+                            <td style="padding: 10px 0; text-align: right; font-weight: bold; font-size: 18px;">RD$ ${((vac.totalPay || 0) * (1 - (state.settings.tss_rate || 0))).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                        ` : `
+                        <tr>
                             <td style="padding: 10px 0; font-weight: bold; font-size: 18px;">Monto a Cobrar:</td>
                             <td style="padding: 10px 0; text-align: right; font-weight: bold; font-size: 18px;">RD$ ${(vac.totalPay || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                         </tr>
+                        `}
                     </table>
                 </div>
 
