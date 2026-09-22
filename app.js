@@ -4081,16 +4081,16 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
         const idx = filterOps.indexOf(op);
         if (idx > -1) filterOps.splice(idx, 1);
         else filterOps.push(op);
-        renderMobileDetailedReport(historyIndex, filterOps, filterDept);
+        renderMobileDetailedReport(historyIndex, filterOps, filterDept, activePayrollId);
     };
 
     window.selectAllMobileReportOps = (all) => {
         const ops = all ? [...allOpsInRun] : [];
-        renderMobileDetailedReport(historyIndex, ops, filterDept);
+        renderMobileDetailedReport(historyIndex, ops, filterDept, activePayrollId);
     };
 
     window.changeMobileReportDept = (selectObj) => {
-        renderMobileDetailedReport(historyIndex, filterOps, selectObj.value);
+        renderMobileDetailedReport(historyIndex, filterOps, selectObj.value, activePayrollId);
     };
 
     let html = `
@@ -4344,7 +4344,7 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
     const contentArea = document.getElementById('content-area');
 
     window.changeMobileEmpDeptReportDept = (selectObj) => {
-        renderMobileEmployeeDeptReport(historyIndex, selectObj.value);
+        renderMobileEmployeeDeptReport(historyIndex, selectObj.value, activePayrollId);
     };
 
     let html = `
