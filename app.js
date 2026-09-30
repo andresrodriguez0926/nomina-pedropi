@@ -2324,6 +2324,13 @@ const renderOvertime = (container) => {
                     <input type="number" id="ot-factor" class="form-control" value="1.35" step="0.01">
                 </div>
             </div>
+            <div class="form-row">
+                <div class="form-group" style="display: flex; align-items: center; margin-top: 15px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
+                        <input type="checkbox" id="ot-apply-tss"> Calcular retención de TSS
+                    </label>
+                </div>
+            </div>
             <div id="ot-result" class="mt-4 p-4 glass-bg rounded-md hidden">
                 <h3 style="margin-bottom: 5px;">Cálculo Estimado: <span id="ot-pay-value" class="text-accent"></span></h3>
                 <small id="ot-formula-info" class="text-gray"></small>
@@ -2344,6 +2351,7 @@ const renderOvertime = (container) => {
                         <th>Horas</th>
                         <th>Factor</th>
                         <th class="text-right">Monto</th>
+                        <th>TSS</th>
                         <th>Registrado por</th>
                         <th style="width: 80px">Acciones</th>
                     </tr>
@@ -2364,6 +2372,7 @@ const renderOvertime = (container) => {
                                 <td>${ot.hours}</td>
                                 <td>${ot.factor}</td>
                                 <td class="td-numeric">$${parseFloat(ot.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td>${ot.applyTSS ? '<span class="status-badge fixed">Sí</span>' : '<span class="status-badge mobile">No</span>'}</td>
                                 <td><small>${ot.createdBy || 'Sistema'}</small></td>
                                 <td>
                                     <button class="btn-icon delete admin-only" onclick="deleteItem('overtime', ${ot.idx})">
@@ -2376,7 +2385,7 @@ const renderOvertime = (container) => {
                         ${(() => {
             const bounds = getPayrollBounds();
             const count = (state.overtime || []).filter(ot => bounds && ot.date >= bounds.min && ot.date <= bounds.max).length;
-            return count === 0 ? '<tr><td colspan="8" style="text-align:center">No hay horas extras en este periodo</td></tr>' : '';
+            return count === 0 ? '<tr><td colspan="9" style="text-align:center">No hay horas extras en este periodo</td></tr>' : '';
         })()}
                 </tbody>
             </table>
@@ -2390,6 +2399,7 @@ const renderOvertime = (container) => {
         const hours = parseFloat(document.getElementById('ot-hours').value);
         const factor = parseFloat(document.getElementById('ot-factor').value);
         const date = document.getElementById('ot-date').value;
+        const applyTSS = document.getElementById('ot-apply-tss') ? document.getElementById('ot-apply-tss').checked : false;
 
         if (salary && hours && date) {
             const bounds = getPayrollBounds();
@@ -2412,6 +2422,7 @@ const renderOvertime = (container) => {
                 hours,
                 factor,
                 amount: extraPay.toFixed(2),
+                applyTSS,
                 operation: state.settings.payrollAccounts?.overtime || '',
                 createdBy: window.globalState.currentUser?.name || 'Desconocido'
             });
@@ -4641,11 +4652,21 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
         return iName === empFullNameMatch && filterByPeriod(i);
     }).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
 
-    ot = (state.overtime || []).filter(o => {
+    ot = 0;
+    let otTssBase = 0;
+    (state.overtime || []).filter(o => {
         if (o.empReg && emp.regNumber) return String(o.empReg) === String(emp.regNumber) && filterByPeriod(o);
         const oName = normalizeMatch(o.employeeName);
         return oName === empFullNameMatch && filterByPeriod(o);
-    }).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
+    }).forEach(o => {
+        const amt = parseFloat(o.amount) || 0;
+        ot += amt;
+        if (o.applyTSS) otTssBase += amt;
+    });
+
+    if (isFixed && emp.calcTSS !== false) {
+        tss += otTssBase * (state.settings.tss_rate || 0);
+    }
 
     disc = (state.discounts || []).filter(d => {
         if (d.empReg && emp.regNumber) return String(d.empReg) === String(emp.regNumber) && parseFloat(d.remainingBalance) > 0;
@@ -7514,11 +7535,19 @@ window.quickAddOvertime = (employeeName) => {
                     <input type="number" id="ot-factor" class="form-control" value="1.35" step="0.01">
                 </div>
             </div>
+            <div class="form-row">
+                <div class="form-group" style="display: flex; align-items: center; margin-top: 15px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
+                        <input type="checkbox" id="ot-apply-tss"> Calcular retención de TSS
+                    </label>
+                </div>
+            </div>
         `, () => {
         const salary = parseFloat(employee.salary);
         const hours = parseFloat(document.getElementById('ot-hours').value);
         const factor = parseFloat(document.getElementById('ot-factor').value);
         const date = document.getElementById('ot-date').value;
+        const applyTSS = document.getElementById('ot-apply-tss') ? document.getElementById('ot-apply-tss').checked : false;
 
         if (hours && date) {
             const bounds = getPayrollBounds();
@@ -7537,6 +7566,7 @@ window.quickAddOvertime = (employeeName) => {
                 hours,
                 factor,
                 amount: extraPay.toFixed(2),
+                applyTSS,
                 operation: state.settings.payrollAccounts?.overtime || '',
                 createdBy: window.globalState.currentUser?.name || 'Desconocido'
             });
