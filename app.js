@@ -1691,6 +1691,10 @@ const renderEmployees = (container) => {
                 <label>Monto Fijo a Retener (Dejar en blanco para no retener nada)</label>
                 <input type="number" id="emp-fixed-isr" class="form-control" placeholder="0.00">
             </div>
+            <div class="form-group">
+                <label>Descuento Fijo Adicional (Opcional)</label>
+                <input type="number" id="emp-fixed-discount" class="form-control" placeholder="0.00">
+            </div>
         `, () => {
             const emp = {
                 id: 'emp_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
@@ -1715,6 +1719,7 @@ const renderEmployees = (container) => {
                 applyISR: document.getElementById('emp-isr').checked,
                 calcTSS: document.getElementById('emp-calc-tss') ? document.getElementById('emp-calc-tss').value === 'auto' : true,
                 fixedISR: document.getElementById('emp-fixed-isr') ? parseFloat(document.getElementById('emp-fixed-isr').value) : null,
+                fixedDiscount: document.getElementById('emp-fixed-discount') ? parseFloat(document.getElementById('emp-fixed-discount').value) : null,
                 createdBy: window.globalState.currentUser?.name || 'Desconocido'
             };
 
@@ -1824,6 +1829,13 @@ const renderTSS = (container) => {
                             </select>
                         </div>
                         <div class="form-group">
+                            <label>Cuenta para Descuento Fijo Adicional</label>
+                            <select id="acc-fixed-disc" class="form-control">
+                                <option value="">Seleccionar...</option>
+                                ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.fixedDiscount === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label>Cuenta para Salario de Navidad</label>
                             <select id="acc-chr" class="form-control">
                                 <option value="">Seleccionar...</option>
@@ -1907,6 +1919,7 @@ const renderTSS = (container) => {
             incentives: document.getElementById('acc-inc').value,
             overtime: document.getElementById('acc-ot').value,
             discounts: document.getElementById('acc-disc').value,
+            fixedDiscount: document.getElementById('acc-fixed-disc') ? document.getElementById('acc-fixed-disc').value : '',
             christmas: document.getElementById('acc-chr').value,
             tss: document.getElementById('acc-sfs').value, // Fallback
             sfs: document.getElementById('acc-sfs').value,
@@ -4788,7 +4801,13 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
         isr = calculateMonthlyISR(currentTaxableIncome);
     }
 
-    net = brute - tss - disc - isr;
+    // Add custom fixed discount
+    let fixedDisc = 0;
+    if (emp.fixedDiscount && !isNaN(parseFloat(emp.fixedDiscount)) && parseFloat(emp.fixedDiscount) > 0) {
+        fixedDisc = parseFloat(emp.fixedDiscount);
+    }
+
+    net = brute - tss - disc - fixedDisc - isr;
 
     // Additional info for Mobile employees: Count of distinct days worked
     daysPaid = 0;
@@ -4821,7 +4840,7 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
     const empSrl = currentTotalTssBase * (state.settings.employer_srl_rate || 0.0120);
     const empInfotep = currentTotalTssBase * (state.settings.employer_infotep_rate || 0.01);
 
-    return { base, tss, inc, ot, disc, chr, brute, isr, net, daysPaid, vacations: vacationPay, empSfs, empAfp, empSrl, empInfotep };
+    return { base, tss, inc, ot, disc, fixedDisc, chr, brute, isr, net, daysPaid, vacations: vacationPay, empSfs, empAfp, empSrl, empInfotep };
 };
 
 // --- Module: Reports ---
@@ -5884,6 +5903,7 @@ const renderPayrollEntry = (container) => {
         tss: 0,
         isr: 0,
         disc: 0,
+        fixedDisc: 0,
         net: 0
     };
 
@@ -5897,6 +5917,7 @@ const renderPayrollEntry = (container) => {
             totalCredits.tss += (res.tss || 0);
             totalCredits.isr += (res.isr || 0);
             totalCredits.disc += (res.disc || 0);
+            totalCredits.fixedDisc += (res.fixedDisc || 0);
             totalCredits.net += (res.net || 0);
 
             const empType = res.type || (empCheck ? empCheck.type : '');
@@ -5977,6 +5998,7 @@ const renderPayrollEntry = (container) => {
             totalCredits.tss += data.tss;
             totalCredits.isr += data.isr;
             totalCredits.disc += data.disc;
+            totalCredits.fixedDisc += (data.fixedDisc || 0);
             totalCredits.net += data.net;
 
             if (emp.type === 'fixed') {
@@ -6021,7 +6043,7 @@ const renderPayrollEntry = (container) => {
     }
 
     const totalDebitAmount = Object.values(debits).reduce((a, b) => a + b, 0);
-    const totalCreditAmount = totalCredits.tss + totalCredits.isr + totalCredits.disc + totalCredits.net;
+    const totalCreditAmount = totalCredits.tss + totalCredits.isr + totalCredits.disc + totalCredits.fixedDisc + totalCredits.net;
 
     const getAccNum = (name) => {
         const op = state.operations.find(o => o.name === name);
@@ -6153,6 +6175,16 @@ const renderPayrollEntry = (container) => {
                                         <td class="activity-col"></td>
                                         <td class="amount-col"></td>
                                         <td class="amount-col">$${totalCredits.disc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                ` : ''}
+
+                                ${totalCredits.fixedDisc > 0 ? `
+                                    <tr>
+                                        <td>DESCUENTO FIJO ADICIONAL</td>
+                                        <td>${getAccNum(state.settings.payrollAccounts?.fixedDiscount) || 'Pendiente Config.'}</td>
+                                        <td class="activity-col"></td>
+                                        <td class="amount-col"></td>
+                                        <td class="amount-col">$${totalCredits.fixedDisc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     </tr>
                                 ` : ''}
 
@@ -7101,6 +7133,10 @@ window.editEmployee = (index) => {
                     <label>Monto Fijo a Retener (Dejar en blanco para no retener nada)</label>
                     <input type="number" id="edit-emp-fixed-isr" class="form-control" placeholder="0.00" value="${emp.fixedISR || ''}">
                 </div>
+                <div class="form-group">
+                    <label>Descuento Fijo Adicional (Opcional)</label>
+                    <input type="number" id="edit-emp-fixed-discount" class="form-control" placeholder="0.00" value="${emp.fixedDiscount || ''}">
+                </div>
         `, () => {
         const updatedEmp = {
             regNumber: document.getElementById('edit-emp-reg').value,
@@ -7123,7 +7159,8 @@ window.editEmployee = (index) => {
             active: document.getElementById('edit-emp-active').checked,
             applyISR: document.getElementById('edit-emp-isr').checked,
             calcTSS: document.getElementById('edit-emp-calc-tss') ? document.getElementById('edit-emp-calc-tss').value === 'auto' : true,
-            fixedISR: document.getElementById('edit-emp-fixed-isr') ? parseFloat(document.getElementById('edit-emp-fixed-isr').value) : null
+            fixedISR: document.getElementById('edit-emp-fixed-isr') ? parseFloat(document.getElementById('edit-emp-fixed-isr').value) : null,
+            fixedDiscount: document.getElementById('edit-emp-fixed-discount') ? parseFloat(document.getElementById('edit-emp-fixed-discount').value) : null
         };
 
         if (updatedEmp.firstName && updatedEmp.idNumber) {
@@ -9289,7 +9326,8 @@ const exportPayrollToExcel = (historyIndex = null, activePayrollId = null) => {
         "Total Bruto": r.brute,
         "Ret. TSS": r.tss,
         "Ret. ISR": r.isr,
-        "Descuentos": r.disc || r.discounts || 0,
+        "Descuentos Variados": r.disc || r.discounts || 0,
+        "Descuento Fijo": r.fixedDisc || 0,
         "Total Neto": r.net,
         "Aporte SFS": r.empSfs || 0,
         "Aporte AFP": r.empAfp || 0,
