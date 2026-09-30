@@ -1777,6 +1777,28 @@ const renderTSS = (container) => {
                             </div>
                         </div>
                         
+                        <h3 class="mt-4 mb-2">Aportes del Empleador (TSS e INFOTEP)</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>SFS Empleador (%)</label>
+                                <input type="number" id="emp-sfs-rate" class="form-control" value="${(state.settings.employer_sfs_rate || 0.0709) * 100}" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label>AFP Empleador (%)</label>
+                                <input type="number" id="emp-afp-rate" class="form-control" value="${(state.settings.employer_afp_rate || 0.0710) * 100}" step="0.01">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Riesgos Laborales (SRL) (%)</label>
+                                <input type="number" id="emp-srl-rate" class="form-control" value="${(state.settings.employer_srl_rate || 0.0120) * 100}" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label>INFOTEP Empleador (%)</label>
+                                <input type="number" id="emp-infotep-rate" class="form-control" value="${(state.settings.employer_infotep_rate || 0.01) * 100}" step="0.01">
+                            </div>
+                        </div>
+                        
                         <h3 class="mt-4 mb-2">Cuentas Contables por Defecto</h3>
                         <p class="text-sm text-gray mb-4">Seleccione la cuenta (Operación) que se asociará automáticamente a cada rubro de nómina.</p>
                         
@@ -1875,6 +1897,11 @@ const renderTSS = (container) => {
         state.settings.sfs_rate = sfsRate;
         state.settings.afp_rate = afpRate;
         state.settings.tss_rate = sfsRate + afpRate; // Keep for backward compatibility
+        
+        state.settings.employer_sfs_rate = parseFloat(document.getElementById('emp-sfs-rate').value) / 100;
+        state.settings.employer_afp_rate = parseFloat(document.getElementById('emp-afp-rate').value) / 100;
+        state.settings.employer_srl_rate = parseFloat(document.getElementById('emp-srl-rate').value) / 100;
+        state.settings.employer_infotep_rate = parseFloat(document.getElementById('emp-infotep-rate').value) / 100;
         
         state.settings.payrollAccounts = {
             incentives: document.getElementById('acc-inc').value,
@@ -4778,7 +4805,23 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
         daysPaid = distinctDates.length;
     }
 
-    return { base, tss, inc, ot, disc, chr, brute, isr, net, daysPaid, vacations: vacationPay };
+    let currentTotalTssBase = 0;
+    if (empLogs.length > 0) {
+        currentTotalTssBase = empLogs.filter(l => l.applyTSS === 'si').reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
+    } else if (isFixed) {
+        currentTotalTssBase = base + (otTssBase || 0);
+    }
+    
+    if (isFixed && emp.calcTSS === false) {
+        currentTotalTssBase = 0;
+    }
+
+    const empSfs = currentTotalTssBase * (state.settings.employer_sfs_rate || 0.0709);
+    const empAfp = currentTotalTssBase * (state.settings.employer_afp_rate || 0.0710);
+    const empSrl = currentTotalTssBase * (state.settings.employer_srl_rate || 0.0120);
+    const empInfotep = currentTotalTssBase * (state.settings.employer_infotep_rate || 0.01);
+
+    return { base, tss, inc, ot, disc, chr, brute, isr, net, daysPaid, vacations: vacationPay, empSfs, empAfp, empSrl, empInfotep };
 };
 
 // --- Module: Reports ---
@@ -9247,7 +9290,11 @@ const exportPayrollToExcel = (historyIndex = null, activePayrollId = null) => {
         "Ret. TSS": r.tss,
         "Ret. ISR": r.isr,
         "Descuentos": r.disc || r.discounts || 0,
-        "Total Neto": r.net
+        "Total Neto": r.net,
+        "Aporte SFS": r.empSfs || 0,
+        "Aporte AFP": r.empAfp || 0,
+        "Aporte SRL": r.empSrl || 0,
+        "Aporte INFOTEP": r.empInfotep || 0
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
