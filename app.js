@@ -2441,13 +2441,24 @@ const renderOvertime = (container) => {
         const salary = parseFloat(empSelect.selectedOptions[0].dataset.salary);
         const hours = parseFloat(document.getElementById('ot-hours').value) || 0;
         const factor = parseFloat(document.getElementById('ot-factor').value) || 1.35;
+        const applyTSS = document.getElementById('ot-apply-tss') ? document.getElementById('ot-apply-tss').checked : false;
 
         if (salary && hours > 0) {
             const dailyRate = salary / 23.83;
             const hourlyRate = dailyRate / 8;
             const extraPay = hourlyRate * hours * factor;
+            
+            let tssDeduction = 0;
+            if (applyTSS) {
+                tssDeduction = extraPay * (state.settings.tss_rate || 0);
+            }
 
-            document.getElementById('ot-pay-value').innerText = `$${extraPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `;
+            let previewHTML = `$${extraPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            if (applyTSS && tssDeduction > 0) {
+                previewHTML += `<br><span style="font-size: 0.85em; color: #d32f2f;">Retención TSS Estimada: -$${tssDeduction.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
+            }
+
+            document.getElementById('ot-pay-value').innerHTML = previewHTML;
             document.getElementById('ot-formula-info').innerText = `Formula: ($${salary.toFixed(2)} / 23.83 / 8) * ${hours} * ${factor} `;
             document.getElementById('ot-result').classList.remove('hidden');
         } else {
@@ -2458,6 +2469,9 @@ const renderOvertime = (container) => {
     document.getElementById('ot-hours').oninput = updatePreview;
     document.getElementById('ot-factor').oninput = updatePreview;
     document.getElementById('ot-emp').onchange = updatePreview;
+    if (document.getElementById('ot-apply-tss')) {
+        document.getElementById('ot-apply-tss').onchange = updatePreview;
+    }
 };
 
 // --- Module: Incentives ---
