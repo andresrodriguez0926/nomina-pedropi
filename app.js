@@ -1688,7 +1688,7 @@ const renderEmployees = (container) => {
                 </label>
             </div>
             <div class="form-group" id="emp-fixed-isr-group" style="display: none; margin-left: 20px;">
-                <label>Monto Fijo a Retener (Dejar en blanco para no retener nada)</label>
+                <label>Monto Fijo de ISR a Retener (Dejar en blanco para no retener nada)</label>
                 <input type="number" id="emp-fixed-isr" class="form-control" placeholder="0.00">
             </div>
             <div class="form-group">
@@ -7130,7 +7130,7 @@ window.editEmployee = (index) => {
                     </label>
                 </div>
                 <div class="form-group" id="edit-emp-fixed-isr-group" style="display: ${emp.applyISR !== false ? 'none' : 'block'}; margin-left: 20px;">
-                    <label>Monto Fijo a Retener (Dejar en blanco para no retener nada)</label>
+                    <label>Monto Fijo de ISR a Retener (Dejar en blanco para no retener nada)</label>
                     <input type="number" id="edit-emp-fixed-isr" class="form-control" placeholder="0.00" value="${emp.fixedISR || ''}">
                 </div>
                 <div class="form-group">
