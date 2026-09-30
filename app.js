@@ -1769,11 +1769,11 @@ const renderTSS = (container) => {
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Seguro Familiar de Salud (SFS) (%)</label>
-                                <input type="number" id="sfs-rate" class="form-control" value="${(state.settings.sfs_rate || 0.0304) * 100}" step="0.01">
+                                <input type="number" id="sfs-rate" class="form-control" value="${parseFloat(((state.settings.sfs_rate || 0.0304) * 100).toFixed(2))}" step="0.01">
                             </div>
                             <div class="form-group">
                                 <label>Fondo de Pensiones (AFP) (%)</label>
-                                <input type="number" id="afp-rate" class="form-control" value="${(state.settings.afp_rate || 0.0287) * 100}" step="0.01">
+                                <input type="number" id="afp-rate" class="form-control" value="${parseFloat(((state.settings.afp_rate || 0.0287) * 100).toFixed(2))}" step="0.01">
                             </div>
                         </div>
                         
@@ -1781,21 +1781,21 @@ const renderTSS = (container) => {
                         <div class="form-row">
                             <div class="form-group">
                                 <label>SFS Empleador (%)</label>
-                                <input type="number" id="emp-sfs-rate" class="form-control" value="${(state.settings.employer_sfs_rate || 0.0709) * 100}" step="0.01">
+                                <input type="number" id="emp-sfs-rate" class="form-control" value="${parseFloat(((state.settings.employer_sfs_rate || 0.0709) * 100).toFixed(2))}" step="0.01">
                             </div>
                             <div class="form-group">
                                 <label>AFP Empleador (%)</label>
-                                <input type="number" id="emp-afp-rate" class="form-control" value="${(state.settings.employer_afp_rate || 0.0710) * 100}" step="0.01">
+                                <input type="number" id="emp-afp-rate" class="form-control" value="${parseFloat(((state.settings.employer_afp_rate || 0.0710) * 100).toFixed(2))}" step="0.01">
                             </div>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Riesgos Laborales (SRL) (%)</label>
-                                <input type="number" id="emp-srl-rate" class="form-control" value="${(state.settings.employer_srl_rate || 0.0120) * 100}" step="0.01">
+                                <input type="number" id="emp-srl-rate" class="form-control" value="${parseFloat(((state.settings.employer_srl_rate || 0.0120) * 100).toFixed(2))}" step="0.01">
                             </div>
                             <div class="form-group">
                                 <label>INFOTEP Empleador (%)</label>
-                                <input type="number" id="emp-infotep-rate" class="form-control" value="${(state.settings.employer_infotep_rate || 0.01) * 100}" step="0.01">
+                                <input type="number" id="emp-infotep-rate" class="form-control" value="${parseFloat(((state.settings.employer_infotep_rate || 0.01) * 100).toFixed(2))}" step="0.01">
                             </div>
                         </div>
                         
