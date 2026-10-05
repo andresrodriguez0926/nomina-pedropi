@@ -4332,7 +4332,7 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
 };
 window.renderMobileDetailedReport = renderMobileDetailedReport;
 
-const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, activePayrollId = null) => {
+const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, activePayrollId = null, filterOps = null) => {
     const isHistorical = historyIndex !== null;
     let run = null;
     if (isHistorical) {
@@ -4346,15 +4346,35 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
     if (!run) return;
 
     const logs = run.dailyLogs || [];
+    const allOpsInRun = [...new Set(logs.map(l => l.op))].filter(Boolean).sort();
 
     // Manage global filter states for this specific report
     if (window.lastMobileEmpDeptHistoryIndex !== historyIndex) {
         window.currentMobileEmpDeptFilterDept = 'all';
+        window.currentMobileEmpDeptFilterOps = [...allOpsInRun];
         window.lastMobileEmpDeptHistoryIndex = historyIndex;
     }
 
     if (filterDept !== null) window.currentMobileEmpDeptFilterDept = filterDept;
+    if (filterOps !== null) window.currentMobileEmpDeptFilterOps = filterOps;
+
     filterDept = window.currentMobileEmpDeptFilterDept;
+    filterOps = window.currentMobileEmpDeptFilterOps || [...allOpsInRun];
+
+    const availableOps = [...new Set(logs.map(log => {
+        if (log.status === 'anulado') return null;
+        const logName = normalizeName(log.employee);
+        const emp = state.employees.find(e => {
+            if (log.empReg && e.regNumber) {
+                return String(log.empReg) === String(e.regNumber);
+            }
+            return normalizeName(`${e.firstName} ${e.lastName}`) === logName;
+        });
+        if (emp && !window.hasDepartmentAccess(emp.department)) return null;
+        const dept = emp ? (emp.department || 'Sin clasificar') : 'Sin clasificar';
+        if (filterDept && filterDept !== 'all' && dept !== filterDept) return null;
+        return log.op;
+    }))].filter(Boolean).sort();
 
     const bounds = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds(run.id);
     if (!bounds || !bounds.min || !bounds.max) {
@@ -4381,6 +4401,9 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
     const grouped = {};
     logs.forEach(log => {
         if (log.status === 'anulado') return;
+        // Filter by Operation
+        if (!filterOps.includes(log.op)) return;
+
         const logName = normalizeName(log.employee);
         const emp = state.employees.find(e => {
             if (log.empReg && e.regNumber) {
@@ -4408,9 +4431,29 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
 
     const contentArea = document.getElementById('content-area');
 
-    window.changeMobileEmpDeptReportDept = (selectObj) => {
-        renderMobileEmployeeDeptReport(historyIndex, selectObj.value, activePayrollId);
+    window.toggleMobileEmpDeptReportOp = (op) => {
+        const idx = filterOps.indexOf(op);
+        if (idx > -1) filterOps.splice(idx, 1);
+        else filterOps.push(op);
+        renderMobileEmployeeDeptReport(historyIndex, filterDept, activePayrollId, filterOps);
     };
+
+    window.selectAllMobileEmpDeptReportOps = (all) => {
+        let newOps;
+        if (all) {
+            newOps = [...new Set([...filterOps, ...availableOps])];
+        } else {
+            newOps = filterOps.filter(op => !availableOps.includes(op));
+        }
+        renderMobileEmployeeDeptReport(historyIndex, filterDept, activePayrollId, newOps);
+    };
+
+    window.changeMobileEmpDeptReportDept = (selectObj) => {
+        renderMobileEmployeeDeptReport(historyIndex, selectObj.value, activePayrollId, filterOps);
+    };
+
+    const activeAvailableOpsCount = availableOps.filter(op => filterOps.includes(op)).length;
+    const titleText = activeAvailableOpsCount === availableOps.length && availableOps.length > 0 ? 'Todas las Operaciones' : (activeAvailableOpsCount === 0 ? 'Ninguna Seleccionada' : `${activeAvailableOpsCount} Operaciones Seleccionadas`);
 
     let html = `
                 <div class="header-action no-print" style="flex-wrap: wrap; gap: 15px;">
@@ -4428,6 +4471,25 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
                                 <option value="all" ${filterDept === 'all' || !filterDept ? 'selected' : ''}>Todos los Departamentos</option>
                                 ${state.departments.map(d => `<option value="${d.name}" ${filterDept === d.name ? 'selected' : ''}>${d.name}</option>`).join('')}
                             </select>
+                        </div>
+                        <div class="multi-select-container no-print ${window.activeDropdownId === 'emp-dept-ops-multi-select' ? 'active' : ''}" style="min-width: 250px;">
+                            <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Filtrar Operaciones:</label>
+                            <div class="multi-select-btn" onclick="window.activeDropdownId = window.activeDropdownId === 'emp-dept-ops-multi-select' ? null : 'emp-dept-ops-multi-select'; this.parentElement.classList.toggle('active')">
+                                ${titleText}
+                            </div>
+                            <div class="multi-select-content">
+                                <div class="multi-select-actions">
+                                    <span onclick="window.selectAllMobileEmpDeptReportOps(true)">Todas</span>
+                                    <span onclick="window.selectAllMobileEmpDeptReportOps(false)">Ninguna</span>
+                                </div>
+                                ${availableOps.map(op => `
+                                    <div class="multi-select-item" onclick="event.stopPropagation();">
+                                        <input type="checkbox" id="emp-dept-op-chk-${op}" ${filterOps.includes(op) ? 'checked' : ''} 
+                                            onchange="window.toggleMobileEmpDeptReportOp('${op}')">
+                                        <label for="emp-dept-op-chk-${op}" onclick="event.preventDefault(); window.toggleMobileEmpDeptReportOp('${op}')">${op}</label>
+                                    </div>
+                                `).join('')}
+                            </div>
                         </div>
                     </div>
 
