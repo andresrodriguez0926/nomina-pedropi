@@ -1,4 +1,4 @@
-/**
+﻿/**
          * Payroll App Core Engine
          * Handles routing, state, and UI rendering
          */
@@ -10,7 +10,7 @@ window.addEventListener('error', function (e) {
         contentArea.innerHTML = `<div style="padding: 20px; color: #ef4444; background: #fff; border: 1px solid #ef4444; border-radius: 8px; margin: 20px;">
                     <h3>Error Interno</h3>
                     <p>${e.message}</p>
-                    <small>Línea: ${e.lineno}</small>
+                    <small>LÃ­nea: ${e.lineno}</small>
                 </div>`;
     } else {
         alert("Error: " + e.message);
@@ -208,17 +208,17 @@ window.getBestActivePayroll = () => {
 };
 
 window.cleanupGhostPayrolls = () => {
-    if (!confirm("Esto eliminará las nóminas abiertas que no tengan ningún registro (nóminas vacías). ¿Deseas continuar?")) return;
+    if (!confirm("Esto eliminarÃ¡ las nÃ³minas abiertas que no tengan ningÃºn registro (nÃ³minas vacÃ­as). Â¿Deseas continuar?")) return;
     const initialCount = state.activePayrolls.length;
     state.activePayrolls = state.activePayrolls.filter(p => p.dailyLogs && p.dailyLogs.length > 0);
     const finalCount = state.activePayrolls.length;
     saveState();
     renderSection(state.currentSection);
-    alert(`Se eliminaron ${initialCount - finalCount} nóminas vacías.`);
+    alert(`Se eliminaron ${initialCount - finalCount} nÃ³minas vacÃ­as.`);
 };
 
 window.forceMasterReload = () => {
-    if (!confirm("⚠️ ATENCIÓN: Esto borrará la memoria de este navegador y descargará TODO de nuevo desde el servidor. Use esto solo si ve datos fantasmas que no se borran.\n\n¿Desea continuar?")) return;
+    if (!confirm("âš ï¸ ATENCIÃ“N: Esto borrarÃ¡ la memoria de este navegador y descargarÃ¡ TODO de nuevo desde el servidor. Use esto solo si ve datos fantasmas que no se borran.\n\nÂ¿Desea continuar?")) return;
     localStorage.clear();
     location.reload();
 };
@@ -412,7 +412,7 @@ window.renderSection = (sectionId) => {
             case 'isr': renderISR(contentArea); break;
             case 'cash-breakdown': renderCashBreakdownReport(contentArea); break;
             default:
-                contentArea.innerHTML = `<h2>Módulo ${sectionId} en construcción</h2>`;
+                contentArea.innerHTML = `<h2>MÃ³dulo ${sectionId} en construcciÃ³n</h2>`;
         }
     }, 150);
 };
@@ -436,14 +436,14 @@ window.exportLocalData = () => {
     };
     const json = JSON.stringify(dump);
     navigator.clipboard.writeText(json).then(() => {
-        alert("¡Tus datos locales han sido copiados! Ve a la versión de la nube (Netlify), dale a 'Importar' y pégalos.");
+        alert("Â¡Tus datos locales han sido copiados! Ve a la versiÃ³n de la nube (Netlify), dale a 'Importar' y pÃ©galos.");
     }).catch(err => {
-        prompt("Hubo un error al copiar automáticamente. Copia el siguiente texto manualmente:", json);
+        prompt("Hubo un error al copiar automÃ¡ticamente. Copia el siguiente texto manualmente:", json);
     });
 };
 
 window.importLocalData = () => {
-    const json = prompt("Pega aquí los datos que exportaste de tu PC:");
+    const json = prompt("Pega aquÃ­ los datos que exportaste de tu PC:");
     if (!json) return;
     try {
         const dump = JSON.parse(json);
@@ -462,10 +462,10 @@ window.importLocalData = () => {
         state.settings = dump.settings || {};
 
         saveState(); // Trigger a Firebase save
-        alert("¡Datos importados y subidos a la nube exitosamente! La página se recargará.");
+        alert("Â¡Datos importados y subidos a la nube exitosamente! La pÃ¡gina se recargarÃ¡.");
         setTimeout(() => window.location.reload(), 1000);
     } catch (e) {
-        alert("Código inválido. Asegúrate de pegar el texto exacto.");
+        alert("CÃ³digo invÃ¡lido. AsegÃºrate de pegar el texto exacto.");
     }
 };
 
@@ -494,7 +494,7 @@ window.getPayrollOpStats = (payroll) => {
     const activityExpenses = {};
     const processCost = (opName, actName, amount) => {
         if (!amount || amount <= 0) return;
-        const op = opName || 'Sin Operación';
+        const op = opName || 'Sin OperaciÃ³n';
         const act = actName || 'Sin Actividad';
         if (!opStats[op]) opStats[op] = { total: 0, activities: {} };
         if (!opStats[op].activities[act]) opStats[op].activities[act] = 0;
@@ -512,7 +512,7 @@ window.getPayrollOpStats = (payroll) => {
             if (emp && !window.hasDepartmentAccess(emp.department)) return;
             const amount = parseFloat(log.amount) || 0;
             const actName = (log.act && log.act.trim()) ? log.act.trim() : (emp ? emp.activity : 'Sin Actividad');
-            const opName = (log.op && log.op.trim()) ? log.op.trim() : (emp ? emp.operation : 'Sin Operación');
+            const opName = (log.op && log.op.trim()) ? log.op.trim() : (emp ? emp.operation : 'Sin OperaciÃ³n');
             processCost(opName, actName, amount);
         });
     }
@@ -526,7 +526,7 @@ window.getPayrollOpStats = (payroll) => {
                 const emp = window.findEmployeeRobust(res.idNumber, res.fullName);
                 if (emp && !window.hasDepartmentAccess(emp.department)) return;
                 if (!actName) actName = emp ? emp.activity : 'Sin Actividad';
-                if (!opName) opName = emp ? emp.operation : 'Sin Operación';
+                if (!opName) opName = emp ? emp.operation : 'Sin OperaciÃ³n';
             }
             processCost(opName, actName, parseFloat(res.brute) || 0);
         });
@@ -614,22 +614,22 @@ const renderDashboard = (container) => {
 
     const historyOptions = (state.payrollHistory || []).slice().reverse().map((run, i) => {
         const realIdx = state.payrollHistory.length - 1 - i;
-        const name = run.payrollName || run.name || `Histórica #${realIdx + 1}`;
+        const name = run.payrollName || run.name || `HistÃ³rica #${realIdx + 1}`;
         return `<option value="history_${realIdx}" ${selectedPayrollValue === 'history_' + realIdx ? 'selected' : ''}>[Cerrada] ${name} (${run.periodEnd})</option>`;
     }).join('');
 
     container.innerHTML = `
         <div class="dashboard-grid">
             <div class="header-action mb-4" style="background: var(--glass-bg); padding: 15px; border-radius: var(--radius-md); border: 1px solid var(--border-color); flex-wrap: wrap; gap: 15px;">
-                <h1 style="margin:0; font-size: 1.5rem;"><i class="fas fa-chart-line text-accent"></i> Resumen de Nómina</h1>
+                <h1 style="margin:0; font-size: 1.5rem;"><i class="fas fa-chart-line text-accent"></i> Resumen de NÃ³mina</h1>
                 <div style="display: flex; gap: 10px; align-items: center;" class="no-print">
                     <label style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Periodo:</label>
                     <select class="form-control" style="width: auto; min-width: 250px; background: var(--bg-color);" onchange="window.dashboardPayrollFilter = this.value; renderSection('dashboard')">
-                        <option value="all" ${selectedPayrollValue === 'all' ? 'selected' : ''}>Resumen General (Nóminas Abiertas)</option>
-                        <optgroup label="Nóminas en Curso">
+                        <option value="all" ${selectedPayrollValue === 'all' ? 'selected' : ''}>Resumen General (NÃ³minas Abiertas)</option>
+                        <optgroup label="NÃ³minas en Curso">
                             ${activeOptions}
                         </optgroup>
-                        <optgroup label="Historial de Nóminas">
+                        <optgroup label="Historial de NÃ³minas">
                             ${historyOptions}
                         </optgroup>
                     </select>
@@ -645,7 +645,7 @@ const renderDashboard = (container) => {
                     </div>
                 </div>
                 <div class="card stat-card" style="display: flex; flex-direction: column; justify-content: center;">
-                    <div class="stat-label" style="margin-bottom: 5px;">Por Género (Activos)</div>
+                    <div class="stat-label" style="margin-bottom: 5px;">Por GÃ©nero (Activos)</div>
                     <div class="stat-value" style="font-size: 1.3rem; display: flex; justify-content: space-around; width: 100%;">
                         <span title="Masculino" style="color: #60a5fa;"><i class="fas fa-mars"></i> ${window.getVisibleEmployees().filter(e => e.active !== false && e.gender === 'M').length}</span>
                         <span title="Femenino" style="color: #f472b6;"><i class="fas fa-venus"></i> ${window.getVisibleEmployees().filter(e => e.active !== false && e.gender === 'F').length}</span>
@@ -656,7 +656,7 @@ const renderDashboard = (container) => {
                     <div class="stat-value">${state.departments.length}</div>
                 </div>
                 <div class="card stat-card">
-                    <div class="stat-label">Nóminas Abiertas</div>
+                    <div class="stat-label">NÃ³minas Abiertas</div>
                     <div class="stat-value ${(state.activePayrolls && state.activePayrolls.length > 0) ? 'text-success' : 'text-danger'}" id="dash-active-payroll">
                         ${(state.activePayrolls && state.activePayrolls.length > 0) ? state.activePayrolls.length : 'NO'}
                     </div>
@@ -665,7 +665,7 @@ const renderDashboard = (container) => {
                     <button class="btn btn-secondary w-100" onclick="exportLocalData()" title="Copiar datos de esta PC" style="font-size: 0.85rem; padding: 6px;">
                         <i class="fas fa-file-export"></i> Exportar Datos (Local)
                     </button>
-                    <button class="btn btn-secondary w-100" onclick="importLocalData()" title="Pegar datos de otra PC aquí" style="font-size: 0.85rem; padding: 6px;">
+                    <button class="btn btn-secondary w-100" onclick="importLocalData()" title="Pegar datos de otra PC aquÃ­" style="font-size: 0.85rem; padding: 6px;">
                         <i class="fas fa-file-import"></i> Importar Datos
                     </button>
                 </div>
@@ -673,8 +673,8 @@ const renderDashboard = (container) => {
             
             <div class="charts-row mt-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
                 <div class="card">
-                    <h3 class="mb-3" style="font-size: 1.1rem; color: var(--gray);">Gasto de Nómina por Mes (Histórico)</h3>
-                    ${sortedMonths.length > 0 ? `<div style="position: relative; height:300px; width:100%"><canvas id="monthlyChart"></canvas></div>` : '<p class="text-gray" style="text-align: center; padding: 40px 0;">No hay datos históricos suficientes.</p>'}
+                    <h3 class="mb-3" style="font-size: 1.1rem; color: var(--gray);">Gasto de NÃ³mina por Mes (HistÃ³rico)</h3>
+                    ${sortedMonths.length > 0 ? `<div style="position: relative; height:300px; width:100%"><canvas id="monthlyChart"></canvas></div>` : '<p class="text-gray" style="text-align: center; padding: 40px 0;">No hay datos histÃ³ricos suficientes.</p>'}
                 </div>
                 <div class="card">
                     <h3 class="mb-3" style="font-size: 1.1rem; color: var(--gray);">Top ${topActivitiesCount} Actividades con Mayor Gasto</h3>
@@ -687,10 +687,10 @@ const renderDashboard = (container) => {
             ${state.currentUser && state.currentUser.role === 'admin' ? `
                 <div class="card mt-4 no-print" style="border: 1px dashed var(--warning); background: rgba(245, 158, 11, 0.05); grid-column: 1 / -1;">
                     <h3 style="color: var(--warning); margin-bottom: 15px;"><i class="fas fa-tools"></i> Mantenimiento de Datos</h3>
-                    <p style="margin-bottom: 15px; font-size: 0.9rem;">Si nota duplicados o faltantes causados por errores de sincronización previos, utilice estas herramientas:</p>
+                    <p style="margin-bottom: 15px; font-size: 0.9rem;">Si nota duplicados o faltantes causados por errores de sincronizaciÃ³n previos, utilice estas herramientas:</p>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                         <button class="btn" style="background: var(--warning); color: white;" onclick="window.cleanupGhostPayrolls()">
-                            <i class="fas fa-broom"></i> Eliminar Nóminas Abiertas Vacías
+                            <i class="fas fa-broom"></i> Eliminar NÃ³minas Abiertas VacÃ­as
                         </button>
                         <button class="btn" style="background: var(--danger); color: white;" onclick="window.forceMasterReload()">
                             <i class="fas fa-sync-alt"></i> Reiniciar desde la Nube (Limpieza Profunda)
@@ -755,11 +755,11 @@ const renderDashboard = (container) => {
 
         let html = `
                     <div class="header-action mb-3" style="border:none; flex-wrap: wrap; gap: 20px;">
-                        <h3 style="font-size: 1.1rem; color: var(--gray); margin: 0;">Comparativa Multi-Nómina</h3>
+                        <h3 style="font-size: 1.1rem; color: var(--gray); margin: 0;">Comparativa Multi-NÃ³mina</h3>
                         
                         <div style="display: flex; gap: 10px; align-items: center; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px;" class="no-print">
                             <div style="display: flex; flex-direction: column; gap: 5px;">
-                                <small style="color: var(--primary);">Nómina 1</small>
+                                <small style="color: var(--primary);">NÃ³mina 1</small>
                                 <select class="form-control" style="width: 200px; font-size: 0.85rem;" onchange="window.dashboardComparisonP1 = this.value; window.renderOpComparison()">
                                     ${payrollOptions(window.comparisonP1)}
                                 </select>
@@ -771,7 +771,7 @@ const renderDashboard = (container) => {
                             <span style="font-weight: bold; color: var(--gray); margin-top: 20px;">VS</span>
 
                             <div style="display: flex; flex-direction: column; gap: 5px;">
-                                <small style="color: var(--accent-color);">Nómina 2</small>
+                                <small style="color: var(--accent-color);">NÃ³mina 2</small>
                                 <select class="form-control" style="width: 200px; font-size: 0.85rem;" onchange="window.dashboardComparisonP2 = this.value; window.renderOpComparison()">
                                     ${payrollOptions(window.comparisonP2)}
                                 </select>
@@ -789,8 +789,8 @@ const renderDashboard = (container) => {
                             <thead>
                                 <tr>
                                     <th>Actividad</th>
-                                    <th class="text-right" style="color: var(--primary);"><small>${p1 ? (p1.payrollName || p1.name) : 'Nómina 1'}</small><br>${op1}</th>
-                                    <th class="text-right" style="color: var(--accent-color);"><small>${p2 ? (p2.payrollName || p2.name) : 'Nómina 2'}</small><br>${op2}</th>
+                                    <th class="text-right" style="color: var(--primary);"><small>${p1 ? (p1.payrollName || p1.name) : 'NÃ³mina 1'}</small><br>${op1}</th>
+                                    <th class="text-right" style="color: var(--accent-color);"><small>${p2 ? (p2.payrollName || p2.name) : 'NÃ³mina 2'}</small><br>${op2}</th>
                                     <th class="text-right">Diferencia</th>
                                 </tr>
                             </thead>
@@ -904,13 +904,13 @@ const renderDashboard = (container) => {
                 });
             }
         } catch (chartError) {
-            console.error("Error al inicializar gráficos:", chartError);
+            console.error("Error al inicializar grÃ¡ficos:", chartError);
             const container = document.querySelector('.dashboard-grid');
             if (container) {
                 const errDiv = document.createElement('div');
                 errDiv.className = 'card mt-4';
                 errDiv.style.border = '1px solid var(--danger)';
-                errDiv.innerHTML = `<p style="color: var(--danger);"><i class="fas fa-exclamation-triangle"></i> Error al cargar gráficos: ${chartError.message}. Recargue la página si el error persiste.</p>`;
+                errDiv.innerHTML = `<p style="color: var(--danger);"><i class="fas fa-exclamation-triangle"></i> Error al cargar grÃ¡ficos: ${chartError.message}. Recargue la pÃ¡gina si el error persiste.</p>`;
                 container.appendChild(errDiv);
             }
         }
@@ -922,7 +922,7 @@ const renderUsers = (container) => {
     const users = state.users || [];
     container.innerHTML = `
                 <div class="header-actions">
-                    <h2>Gestión de Usuarios</h2>
+                    <h2>GestiÃ³n de Usuarios</h2>
                     <button class="btn btn-primary admin-only" onclick="showAddUserModal()">
                         <i class="fas fa-plus"></i> Nuevo Usuario
                     </button>
@@ -974,26 +974,26 @@ window.showEditUserModal = (uid) => {
     showModal('Editar Usuario', `
                 <div class="form-group">
                     <label>Nombre Completo</label>
-                    <input type="text" id="edit-user-name" class="form-control" value="${user.name || ''}" placeholder="Ej. Juan Pérez">
+                    <input type="text" id="edit-user-name" class="form-control" value="${user.name || ''}" placeholder="Ej. Juan PÃ©rez">
                 </div>
                 <div class="form-group">
                     <label>Nombre de Usuario</label>
                     <input type="text" id="edit-user-email" class="form-control" value="${user.email || user.username || ''}" placeholder="Ej. jperez">
                 </div>
                 <div class="form-group">
-                    <label>Nueva Contraseña (Opcional)</label>
+                    <label>Nueva ContraseÃ±a (Opcional)</label>
                     <input type="password" id="edit-user-password" class="form-control" placeholder="Dejar en blanco para no cambiar">
                 </div>
                 <div class="form-group">
                     <label>Rol / Nivel de Acceso</label>
                     <select id="edit-user-role" class="form-control">
                         <option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Lector (Solo ver reportes)</option>
-                        <option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor (Registrar nómina, sin borrar)</option>
+                        <option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor (Registrar nÃ³mina, sin borrar)</option>
                         <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrador (Acceso total)</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Módulos Autorizados</label>
+                    <label>MÃ³dulos Autorizados</label>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 5px; max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #444; border-radius: 4px;">
                         ${[
             { id: 'dashboard', name: 'Dashboard' },
@@ -1003,7 +1003,7 @@ window.showEditUserModal = (uid) => {
             { id: 'activities', name: 'Actividades' },
             { id: 'tss', name: 'TSS / Seguros' },
             { id: 'employees', name: 'Empleados' },
-            { id: 'employee-record', name: 'Récord de Empleado' },
+            { id: 'employee-record', name: 'RÃ©cord de Empleado' },
             { id: 'discounts', name: 'Descuentos' },
             { id: 'overtime', name: 'Horas Extras' },
             { id: 'incentives', name: 'Incentivos' },
@@ -1011,12 +1011,12 @@ window.showEditUserModal = (uid) => {
             { id: 'benefits', name: 'Prestaciones' },
             { id: 'vacations', name: 'Vacaciones' },
             { id: 'periods', name: 'Periodos' },
-            { id: 'payroll-runs', name: 'Abrir Nómina' },
+            { id: 'payroll-runs', name: 'Abrir NÃ³mina' },
             { id: 'daily-registration', name: 'Registro Diario' },
-            { id: 'closing', name: 'Cierre Nómina' },
+            { id: 'closing', name: 'Cierre NÃ³mina' },
             { id: 'reports', name: 'Reportes' },
             { id: 'tss-report', name: 'Reporte TSS' },
-            { id: 'payroll-entry', name: 'Entrada de Nómina' }
+            { id: 'payroll-entry', name: 'Entrada de NÃ³mina' }
         ].map(m => `
                             <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; font-size: 0.85rem;">
                                 <input type="checkbox" class="user-module-check" value="${m.id}" ${(!user.allowedModules || user.allowedModules.includes(m.id)) ? 'checked' : ''}> ${m.name}
@@ -1054,7 +1054,7 @@ window.showEditUserModal = (uid) => {
                 if (password.length >= 6) {
                     updatedData.password = password;
                 } else if (password.length > 0) {
-                    alert("La contraseña debe tener al menos 6 caracteres.");
+                    alert("La contraseÃ±a debe tener al menos 6 caracteres.");
                     return;
                 }
 
@@ -1064,7 +1064,7 @@ window.showEditUserModal = (uid) => {
                 alert("Error: Script de Firebase Backend no responde.");
             }
         } else {
-            alert("El nombre y el usuario no pueden estar vacíos.");
+            alert("El nombre y el usuario no pueden estar vacÃ­os.");
         }
     });
 };
@@ -1073,26 +1073,26 @@ window.showAddUserModal = () => {
     showModal('Crear Nuevo Usuario', `
                 <div class="form-group">
                     <label>Nombre Completo</label>
-                    <input type="text" id="new-user-name" class="form-control" placeholder="Ej. Juan Pérez">
+                    <input type="text" id="new-user-name" class="form-control" placeholder="Ej. Juan PÃ©rez">
                 </div>
                 <div class="form-group">
                     <label>Nombre de Usuario</label>
                     <input type="text" id="new-user-email" class="form-control" placeholder="Ej. jperez">
                 </div>
                 <div class="form-group">
-                    <label>Contraseña Provisional</label>
-                    <input type="password" id="new-user-password" class="form-control" placeholder="Mínimo 6 caracteres">
+                    <label>ContraseÃ±a Provisional</label>
+                    <input type="password" id="new-user-password" class="form-control" placeholder="MÃ­nimo 6 caracteres">
                 </div>
                 <div class="form-group">
                     <label>Rol / Nivel de Acceso</label>
                     <select id="new-user-role" class="form-control">
                         <option value="viewer">Lector (Solo ver reportes)</option>
-                        <option value="editor">Editor (Registrar nómina, sin borrar)</option>
+                        <option value="editor">Editor (Registrar nÃ³mina, sin borrar)</option>
                         <option value="admin">Administrador (Acceso total)</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Módulos Autorizados</label>
+                    <label>MÃ³dulos Autorizados</label>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 5px; max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #444; border-radius: 4px;">
                         ${[
             { id: 'dashboard', name: 'Dashboard' },
@@ -1102,7 +1102,7 @@ window.showAddUserModal = () => {
             { id: 'activities', name: 'Actividades' },
             { id: 'tss', name: 'TSS / Seguros' },
             { id: 'employees', name: 'Empleados' },
-            { id: 'employee-record', name: 'Récord de Empleado' },
+            { id: 'employee-record', name: 'RÃ©cord de Empleado' },
             { id: 'discounts', name: 'Descuentos' },
             { id: 'overtime', name: 'Horas Extras' },
             { id: 'incentives', name: 'Incentivos' },
@@ -1110,12 +1110,12 @@ window.showAddUserModal = () => {
             { id: 'benefits', name: 'Prestaciones' },
             { id: 'vacations', name: 'Vacaciones' },
             { id: 'periods', name: 'Periodos' },
-            { id: 'payroll-runs', name: 'Abrir Nómina' },
+            { id: 'payroll-runs', name: 'Abrir NÃ³mina' },
             { id: 'daily-registration', name: 'Registro Diario' },
-            { id: 'closing', name: 'Cierre Nómina' },
+            { id: 'closing', name: 'Cierre NÃ³mina' },
             { id: 'reports', name: 'Reportes' },
             { id: 'tss-report', name: 'Reporte TSS' },
-            { id: 'payroll-entry', name: 'Entrada de Nómina' }
+            { id: 'payroll-entry', name: 'Entrada de NÃ³mina' }
         ].map(m => `
                             <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; font-size: 0.85rem;">
                                 <input type="checkbox" class="user-module-check" value="${m.id}" checked> ${m.name}
@@ -1155,13 +1155,13 @@ window.showAddUserModal = () => {
                 alert("Error: Script de Firebase Backend no responde.");
             }
         } else {
-            alert("Complete todos los campos. La contraseña debe tener al menos 6 caracteres.");
+            alert("Complete todos los campos. La contraseÃ±a debe tener al menos 6 caracteres.");
         }
     });
 };
 
 window.deleteUser = (uid) => {
-    if (confirm('¿Está seguro de revocar el acceso a este usuario?')) {
+    if (confirm('Â¿EstÃ¡ seguro de revocar el acceso a este usuario?')) {
         if (window.removeUserAccess) {
             window.removeUserAccess(uid);
         }
@@ -1181,7 +1181,7 @@ const renderBanks = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th style="width: 50px">Nº</th>
+                        <th style="width: 50px">NÂº</th>
                         <th>Nombre</th>
                         <th>Registrado por</th>
                         <th style="width: 100px">Acciones</th>
@@ -1243,7 +1243,7 @@ const renderDepartments = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th style="width: 50px">Nº</th>
+                        <th style="width: 50px">NÂº</th>
                         <th>Nombre</th>
                         <th>Registrado por</th>
                         <th style="width: 100px">Acciones</th>
@@ -1272,7 +1272,7 @@ const renderDepartments = (container) => {
         showModal('Nuevo Departamento', `
             <div class="form-group">
                 <label>Nombre del Departamento</label>
-                <input type="text" id="dept-name" class="form-control" placeholder="Ej: Producción">
+                <input type="text" id="dept-name" class="form-control" placeholder="Ej: ProducciÃ³n">
             </div>
         `, () => {
             const name = document.getElementById('dept-name').value;
@@ -1306,17 +1306,17 @@ const renderOperations = (container) => {
         <div class="header-action">
             <h1>Operaciones</h1>
             <button class="btn btn-primary" id="add-op-btn">
-                <i class="fas fa-plus"></i> Nueva Operación
+                <i class="fas fa-plus"></i> Nueva OperaciÃ³n
             </button>
         </div>
         <div class="card mt-4">
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th style="width: 50px">Nº</th>
+                        <th style="width: 50px">NÂº</th>
                         <th>Nombre</th>
                         <th>Cuenta Contable</th>
-                        <th>Propósito</th>
+                        <th>PropÃ³sito</th>
                         <th>Registrado por</th>
                         <th>Estado</th>
                         <th style="width: 100px">Acciones</th>
@@ -1331,7 +1331,7 @@ const renderOperations = (container) => {
                             <td>
                                 <div style="display: flex; gap: 5px; flex-wrap: wrap;">
                                     ${(op.useInAccounting === undefined || op.useInAccounting) ? '<span class="status-badge fixed" style="font-size: 0.6rem">Contabilidad</span>' : ''}
-                                    ${(op.useInLabor === undefined || op.useInLabor) ? '<span class="status-badge mobile" style="font-size: 0.6rem">Fijos/Móviles</span>' : ''}
+                                    ${(op.useInLabor === undefined || op.useInLabor) ? '<span class="status-badge mobile" style="font-size: 0.6rem">Fijos/MÃ³viles</span>' : ''}
                                 </div>
                             </td>
                             <td><small>${op.createdBy || 'Sistema'}</small></td>
@@ -1356,23 +1356,23 @@ const renderOperations = (container) => {
     `;
 
     document.getElementById('add-op-btn').onclick = () => {
-        showModal('Nueva Operación', `
+        showModal('Nueva OperaciÃ³n', `
             <div class="form-group">
-                <label>Nombre de la Operación</label>
+                <label>Nombre de la OperaciÃ³n</label>
                 <input type="text" id="op-name" class="form-control" placeholder="Ej: Cosecha">
             </div>
             <div class="form-group">
-                <label>Número de Cuenta Contable</label>
+                <label>NÃºmero de Cuenta Contable</label>
                 <input type="text" id="op-account" class="form-control" placeholder="Ej: 6010101">
             </div>
             <div class="form-group">
-                <label>Propósitos de la Operación:</label>
+                <label>PropÃ³sitos de la OperaciÃ³n:</label>
                 <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px;">
                     <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
                         <input type="checkbox" id="op-use-acc" checked> Utilizar en contabilidad
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
-                        <input type="checkbox" id="op-use-labor" checked> Utilizar en empleados fijos y móviles
+                        <input type="checkbox" id="op-use-labor" checked> Utilizar en empleados fijos y mÃ³viles
                     </label>
                 </div>
             </div>
@@ -1413,9 +1413,9 @@ const renderActivities = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th style="width: 50px">Nº</th>
+                        <th style="width: 50px">NÂº</th>
                         <th>Nombre</th>
-                        <th>Valor/Número</th>
+                        <th>Valor/NÃºmero</th>
                         <th>Salario Diario</th>
                         <th style="width: 100px">Acciones</th>
                     </tr>
@@ -1451,7 +1451,7 @@ const renderActivities = (container) => {
                 <input type="text" id="act-name" class="form-control" placeholder="Ej: Limpieza">
             </div>
             <div class="form-group">
-                <label>Valor / Número (Otro objetivo)</label>
+                <label>Valor / NÃºmero (Otro objetivo)</label>
                 <input type="number" id="act-value" class="form-control" placeholder="Ej: 50.00">
             </div>
             <div class="form-group">
@@ -1493,10 +1493,10 @@ const renderEmployees = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Nº Reg.</th>
+                        <th>NÂº Reg.</th>
                         <th>Nombre Completo</th>
-                        <th>Cédula/Pasaporte</th>
-                        <th>Género</th>
+                        <th>CÃ©dula/Pasaporte</th>
+                        <th>GÃ©nero</th>
                         <th>Tipo</th>
                         <th>Estado</th>
                         <th>Departamento</th>
@@ -1513,7 +1513,7 @@ const renderEmployees = (container) => {
                             <td>${emp.firstName} ${emp.lastName}</td>
                             <td>${emp.idNumber}</td>
                             <td>${emp.gender === 'M' ? 'Masculino' : (emp.gender === 'F' ? 'Femenino' : '-')}</td>
-                            <td><span class="status-badge ${emp.type}">${emp.type === 'fixed' ? 'Fijo' : 'Móvil'}</span></td>
+                            <td><span class="status-badge ${emp.type}">${emp.type === 'fixed' ? 'Fijo' : 'MÃ³vil'}</span></td>
                             <td>
                                 <span class="status-badge ${emp.active !== false ? 'success' : 'gray'}" style="cursor: pointer" onclick="window.toggleEmployeeStatus(${index})">
                                     ${emp.active !== false ? 'Activo' : 'Inactivo'}
@@ -1538,7 +1538,7 @@ const renderEmployees = (container) => {
                                     <button class="btn-icon" onclick="quickAddChristmasSalary('[${emp.regNumber}] ${emp.firstName} ${emp.lastName}')" title="Salario Navidad">
                                         <i class="fas fa-tree"></i>
                                     </button>
-                                    <button class="btn-icon" onclick="window.printEmployeeRecord(${index})" title="Imprimir Récord">
+                                    <button class="btn-icon" onclick="window.printEmployeeRecord(${index})" title="Imprimir RÃ©cord">
                                         <i class="fas fa-print"></i>
                                     </button>
                                     <button class="btn-icon edit" onclick="editEmployee(${index})" title="Editar">
@@ -1551,7 +1551,7 @@ const renderEmployees = (container) => {
                             </td>
                         </tr>
                     `}).join('')}
-                    ${window.getVisibleEmployees().length === 0 ? '<tr><td colspan="9" style="text-align:center">No hay empleados registrados para su visualización</td></tr>' : ''}
+                    ${window.getVisibleEmployees().length === 0 ? '<tr><td colspan="9" style="text-align:center">No hay empleados registrados para su visualizaciÃ³n</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -1562,11 +1562,11 @@ const renderEmployees = (container) => {
         showModal('Nuevo Empleado', `
             <div class="form-row">
                 <div class="form-group">
-                    <label>Nº de Registro</label>
+                    <label>NÂº de Registro</label>
                     <input type="number" id="emp-reg" class="form-control" value="${nextRegNum}">
                 </div>
                 <div class="form-group">
-                    <label>Género</label>
+                    <label>GÃ©nero</label>
                     <select id="emp-gender" class="form-control">
                         <option value="">Seleccionar...</option>
                         <option value="M">Masculino</option>
@@ -1586,25 +1586,25 @@ const renderEmployees = (container) => {
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>Cédula o Pasaporte</label>
+                    <label>CÃ©dula o Pasaporte</label>
                     <input type="text" id="emp-id" class="form-control">
                 </div>
                 <div class="form-group">
                     <label>Tipo de Empleado</label>
                     <select id="emp-type" class="form-control">
                         <option value="fixed">Fijo</option>
-                        <option value="mobile">Móvil</option>
+                        <option value="mobile">MÃ³vil</option>
                     </select>
                 </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>Teléfono</label>
+                    <label>TelÃ©fono</label>
                     <input type="text" id="emp-phone" class="form-control" placeholder="Ej: 809-555-5555">
                 </div>
                 <div class="form-group">
-                    <label>Frecuencia de Nómina</label>
+                    <label>Frecuencia de NÃ³mina</label>
                     <select id="emp-frequency" class="form-control">
-                        <option value="">Todas (Cualquier Nómina)</option>
+                        <option value="">Todas (Cualquier NÃ³mina)</option>
                         <option value="Semanal">Semanal</option>
                         <option value="Bisemanal">Bisemanal</option>
                         <option value="Quincenal">Quincenal</option>
@@ -1614,9 +1614,9 @@ const renderEmployees = (container) => {
                 </div>
             </div>
             <div class="form-group" id="emp-tss-calc-group">
-                <label>Cálculo de TSS</label>
+                <label>CÃ¡lculo de TSS</label>
                 <select id="emp-calc-tss" class="form-control">
-                    <option value="auto">Automático</option>
+                    <option value="auto">AutomÃ¡tico</option>
                     <option value="manual">No calcular (Manual)</option>
                 </select>
             </div>
@@ -1625,7 +1625,7 @@ const renderEmployees = (container) => {
                 <input type="number" id="emp-salary" class="form-control" placeholder="0.00">
             </div>
             <div class="form-group">
-                <label>Dirección</label>
+                <label>DirecciÃ³n</label>
                 <input type="text" id="emp-address" class="form-control">
             </div>
             <div class="form-group">
@@ -1641,7 +1641,7 @@ const renderEmployees = (container) => {
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Operación Defecto</label>
+                    <label>OperaciÃ³n Defecto</label>
                     <select id="emp-op" class="form-control">
                         <option value="">Seleccionar...</option>
                         ${state.operations.filter(o => o.active !== false && (o.useInLabor === undefined || o.useInLabor)).map(o => `<option value="${o.name}">${o.name}</option>`).join('')}
@@ -1657,7 +1657,7 @@ const renderEmployees = (container) => {
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Método de Pago</label>
+                    <label>MÃ©todo de Pago</label>
                     <select id="emp-payment-method" class="form-control">
                         <option value="cash">Efectivo</option>
                         <option value="transfer">Transferencia</option>
@@ -1673,18 +1673,18 @@ const renderEmployees = (container) => {
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Número de Cuenta</label>
+                    <label>NÃºmero de Cuenta</label>
                     <input type="text" id="emp-account-number" class="form-control">
                 </div>
             </div>
             <div class="form-group">
                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="emp-active" checked> Empleado Activo (Aparece en Nómina)
+                    <input type="checkbox" id="emp-active" checked> Empleado Activo (Aparece en NÃ³mina)
                 </label>
             </div>
             <div class="form-group">
                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="emp-isr" checked> Aplicar Retención de ISR (Impuesto Sobre la Renta)
+                    <input type="checkbox" id="emp-isr" checked> Aplicar RetenciÃ³n de ISR (Impuesto Sobre la Renta)
                 </label>
             </div>
             <div class="form-group" id="emp-fixed-isr-group" style="display: none; margin-left: 20px;">
@@ -1764,12 +1764,12 @@ const renderEmployees = (container) => {
 // --- Module: TSS ---
 const renderTSS = (container) => {
     container.innerHTML = `
-                <h1>Configuración General y Contable</h1>
+                <h1>ConfiguraciÃ³n General y Contable</h1>
                 <div class="card mt-4">
                     <div style="max-width: 500px">
                         <div class="form-group">
                             <label>Nombre de la Empresa</label>
-                            <input type="text" id="company-name" class="form-control" value="${state.settings.companyName || 'NóminaApp'}">
+                            <input type="text" id="company-name" class="form-control" value="${state.settings.companyName || 'NÃ³minaApp'}">
                         </div>
                         <div class="form-row">
                             <div class="form-group">
@@ -1805,7 +1805,7 @@ const renderTSS = (container) => {
                         </div>
                         
                         <h3 class="mt-4 mb-2">Cuentas Contables por Defecto</h3>
-                        <p class="text-sm text-gray mb-4">Seleccione la cuenta (Operación) que se asociará automáticamente a cada rubro de nómina.</p>
+                        <p class="text-sm text-gray mb-4">Seleccione la cuenta (OperaciÃ³n) que se asociarÃ¡ automÃ¡ticamente a cada rubro de nÃ³mina.</p>
                         
                         <div class="form-group">
                             <label>Cuenta para Cuadre de Incentivos</label>
@@ -1843,28 +1843,28 @@ const renderTSS = (container) => {
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Cuenta para Retención SFS (Crédito)</label>
+                            <label>Cuenta para RetenciÃ³n SFS (CrÃ©dito)</label>
                             <select id="acc-sfs" class="form-control">
                                 <option value="">Seleccionar...</option>
                                 ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.sfs === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Cuenta para Retención AFP (Crédito)</label>
+                            <label>Cuenta para RetenciÃ³n AFP (CrÃ©dito)</label>
                             <select id="acc-afp" class="form-control">
                                 <option value="">Seleccionar...</option>
                                 ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.afp === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Cuenta para Retención ISR (Crédito)</label>
+                            <label>Cuenta para RetenciÃ³n ISR (CrÃ©dito)</label>
                             <select id="acc-isr" class="form-control">
                                 <option value="">Seleccionar...</option>
                                 ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.isr === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Cuenta para Nómina por Pagar (Neto - Crédito)</label>
+                            <label>Cuenta para NÃ³mina por Pagar (Neto - CrÃ©dito)</label>
                             <select id="acc-payable" class="form-control">
                                 <option value="">Seleccionar...</option>
                                 ${state.operations.filter(o => o.active !== false && (o.useInAccounting === undefined || o.useInAccounting)).map(op => `<option value="${op.name}" ${state.settings.payrollAccounts?.payable === op.name ? 'selected' : ''}>${op.name}</option>`).join('')}
@@ -1872,18 +1872,18 @@ const renderTSS = (container) => {
                         </div>
                         
                         <h3 class="mt-4 mb-2">Escalas de ISR (Escala Anual)</h3>
-                        <p class="text-sm text-gray mb-4">Configure los límites anuales para el cálculo del Impuesto Sobre la Renta.</p>
+                        <p class="text-sm text-gray mb-4">Configure los lÃ­mites anuales para el cÃ¡lculo del Impuesto Sobre la Renta.</p>
                         
                         <div class="form-group">
-                            <label>Límite Exento Anual (RD$)</label>
+                            <label>LÃ­mite Exento Anual (RD$)</label>
                             <input type="number" id="isr-exempt" class="form-control" value="${state.settings.isrThresholds.exempt}">
                         </div>
                         <div class="form-group">
-                            <label>Límite Tramo 15% (RD$)</label>
+                            <label>LÃ­mite Tramo 15% (RD$)</label>
                             <input type="number" id="isr-mid" class="form-control" value="${state.settings.isrThresholds.mid}">
                         </div>
                         <div class="form-group">
-                            <label>Límite Tramo 20% (RD$)</label>
+                            <label>LÃ­mite Tramo 20% (RD$)</label>
                             <input type="number" id="isr-high" class="form-control" value="${state.settings.isrThresholds.high}">
                         </div>
                         <div class="form-row">
@@ -1935,7 +1935,7 @@ const renderTSS = (container) => {
             base2: parseFloat(document.getElementById('isr-base2').value)
         };
         saveState();
-        alert('Configuración guardada correctamente.');
+        alert('ConfiguraciÃ³n guardada correctamente.');
     };
 };
 
@@ -1943,7 +1943,7 @@ const renderTSS = (container) => {
 const renderPeriods = (container) => {
     container.innerHTML = `
         <div class="header-action">
-            <h1>Definición de Periodos</h1>
+            <h1>DefiniciÃ³n de Periodos</h1>
             <button class="btn btn-primary" id="add-period-btn">
                 <i class="fas fa-plus"></i> Nuevo Tipo de Periodo
             </button>
@@ -2021,7 +2021,7 @@ const renderDiscounts = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th style="width: 50px">Nº</th>
+                        <th style="width: 50px">NÂº</th>
                         <th>Empleado</th>
                         <th class="text-right">Deuda Total</th>
                         <th class="text-right">Cuota</th>
@@ -2069,7 +2069,7 @@ const renderDiscounts = (container) => {
                         </tr>
                     `;
     }).join('')}
-                    ${(!state.discounts || state.discounts.length === 0) ? '<tr><td colspan="8" style="text-align:center">No hay préstamos o descuentos registrados</td></tr>' : ''}
+                    ${(!state.discounts || state.discounts.length === 0) ? '<tr><td colspan="8" style="text-align:center">No hay prÃ©stamos o descuentos registrados</td></tr>' : ''}
                 </tbody>
             </table>
         </div>
@@ -2100,7 +2100,7 @@ const renderDiscounts = (container) => {
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Nómina</th>
+                                <th>NÃ³mina</th>
                                 <th>Fecha</th>
                                 <th class="text-right">Monto Cobrado</th>
                             </tr>
@@ -2113,7 +2113,7 @@ const renderDiscounts = (container) => {
                                     <td class="text-right" style="font-weight: bold">$${parseFloat(h.amount).toFixed(2)}</td>
                                 </tr>
                             `).join('')}
-                            ${history.length === 0 ? '<tr><td colspan="3" style="text-align:center">No se han registrado cobros aún para este préstamo.</td></tr>' : ''}
+                            ${history.length === 0 ? '<tr><td colspan="3" style="text-align:center">No se han registrado cobros aÃºn para este prÃ©stamo.</td></tr>' : ''}
                         </tbody>
                     </table>
                 `, () => hideModal());
@@ -2132,12 +2132,12 @@ const renderDiscounts = (container) => {
                 <input type="number" id="disc-total" class="form-control" placeholder="0.00">
             </div>
             <div class="form-group">
-                <label>Cuota a Descontar por Nómina</label>
+                <label>Cuota a Descontar por NÃ³mina</label>
                 <input type="number" id="disc-installment" class="form-control" placeholder="0.00">
             </div>
             <div class="form-group">
                 <label>Concepto / Motivo</label>
-                <input type="text" id="disc-reason" class="form-control" placeholder="Ej: Préstamo personal">
+                <input type="text" id="disc-reason" class="form-control" placeholder="Ej: PrÃ©stamo personal">
             </div>
         `, () => {
             const empName = document.getElementById('disc-emp').value;
@@ -2180,7 +2180,7 @@ const renderDiscounts = (container) => {
                         <input type="text" class="form-control" value="${d.employeeName}" disabled>
                     </div>
                     <div class="form-group">
-                        <label>Monto Ya Descontado (Histórico)</label>
+                        <label>Monto Ya Descontado (HistÃ³rico)</label>
                         <input type="text" class="form-control text-success" value="$${paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}" disabled>
                         <small class="text-gray">El nuevo Monto Deuda Total no puede ser menor a esto.</small>
                     </div>
@@ -2189,7 +2189,7 @@ const renderDiscounts = (container) => {
                         <input type="number" id="edit-disc-total" class="form-control" value="${originalAmount}" step="0.01">
                     </div>
                     <div class="form-group">
-                        <label>Nueva Cuota por Nómina</label>
+                        <label>Nueva Cuota por NÃ³mina</label>
                         <input type="number" id="edit-disc-installment" class="form-control" value="${d.installment}" step="0.01">
                     </div>
                     <div class="form-group">
@@ -2210,7 +2210,7 @@ const renderDiscounts = (container) => {
             const newInstallment = parseFloat(newInstallmentStr);
 
             if (newTotal < paidAmount) {
-                alert(`Transacción denegada. El empleado ya ha pagado $${paidAmount.toFixed(2)}. La deuda total no puede ser menor a lo que ya se cobró.`);
+                alert(`TransacciÃ³n denegada. El empleado ya ha pagado $${paidAmount.toFixed(2)}. La deuda total no puede ser menor a lo que ya se cobrÃ³.`);
                 return;
             }
 
@@ -2338,7 +2338,7 @@ const renderDiscountsReport = (container) => {
 const renderOvertime = (container) => {
     container.innerHTML = `
                             < div class= "header-action" >
-                            <h1>Gestión de Horas Extras</h1>
+                            <h1>GestiÃ³n de Horas Extras</h1>
         </div >
         
         <div class="card mt-4">
@@ -2367,12 +2367,12 @@ const renderOvertime = (container) => {
             <div class="form-row">
                 <div class="form-group" style="display: flex; align-items: center; margin-top: 15px;">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
-                        <input type="checkbox" id="ot-apply-tss"> Calcular retención de TSS
+                        <input type="checkbox" id="ot-apply-tss"> Calcular retenciÃ³n de TSS
                     </label>
                 </div>
             </div>
             <div id="ot-result" class="mt-4 p-4 glass-bg rounded-md hidden">
-                <h3 style="margin-bottom: 5px;">Cálculo Estimado: <span id="ot-pay-value" class="text-accent"></span></h3>
+                <h3 style="margin-bottom: 5px;">CÃ¡lculo Estimado: <span id="ot-pay-value" class="text-accent"></span></h3>
                 <small id="ot-formula-info" class="text-gray"></small>
             </div>
             <button class="btn btn-primary mt-4" id="save-ot-btn">
@@ -2385,7 +2385,7 @@ const renderOvertime = (container) => {
             <table class="data-table mt-2">
                 <thead>
                     <tr>
-                        <th style="width: 50px">Nº</th>
+                        <th style="width: 50px">NÂº</th>
                         <th>Fecha</th>
                         <th>Empleado</th>
                         <th>Horas</th>
@@ -2412,7 +2412,7 @@ const renderOvertime = (container) => {
                                 <td>${ot.hours}</td>
                                 <td>${ot.factor}</td>
                                 <td class="td-numeric">$${parseFloat(ot.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                <td>${ot.applyTSS ? '<span class="status-badge fixed">Sí</span>' : '<span class="status-badge mobile">No</span>'}</td>
+                                <td>${ot.applyTSS ? '<span class="status-badge fixed">SÃ­</span>' : '<span class="status-badge mobile">No</span>'}</td>
                                 <td><small>${ot.createdBy || 'Sistema'}</small></td>
                                 <td>
                                     <button class="btn-icon delete admin-only" onclick="deleteItem('overtime', ${ot.idx})">
@@ -2444,7 +2444,7 @@ const renderOvertime = (container) => {
         if (salary && hours && date) {
             const bounds = getPayrollBounds();
             if (bounds && (date < bounds.min || date > bounds.max)) {
-                alert(`La fecha debe estar dentro del rango de la nómina(${bounds.min} a ${bounds.max})`);
+                alert(`La fecha debe estar dentro del rango de la nÃ³mina(${bounds.min} a ${bounds.max})`);
                 return;
             }
 
@@ -2495,7 +2495,7 @@ const renderOvertime = (container) => {
 
             let previewHTML = `$${extraPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             if (applyTSS && tssDeduction > 0) {
-                previewHTML += `<br><span style="font-size: 0.85em; color: #d32f2f;">Retención TSS Estimada: -$${tssDeduction.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
+                previewHTML += `<br><span style="font-size: 0.85em; color: #d32f2f;">RetenciÃ³n TSS Estimada: -$${tssDeduction.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
             }
 
             document.getElementById('ot-pay-value').innerHTML = previewHTML;
@@ -2527,7 +2527,7 @@ const renderIncentives = (container) => {
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th style="width: 50px">Nº</th>
+                            <th style="width: 50px">NÂº</th>
                             <th>Fecha</th>
                             <th>Empleado</th>
                             <th>Monto</th>
@@ -2605,7 +2605,7 @@ const renderIncentives = (container) => {
             if (inc.employeeName && inc.amount && inc.date) {
                 const bounds = getPayrollBounds();
                 if (bounds && (inc.date < bounds.min || inc.date > bounds.max)) {
-                    alert(`La fecha debe estar dentro del rango de la nómina(${bounds.min} a ${bounds.max})`);
+                    alert(`La fecha debe estar dentro del rango de la nÃ³mina(${bounds.min} a ${bounds.max})`);
                     return;
                 }
 
@@ -2681,7 +2681,7 @@ window.printManualSheet = (payrollId, deptFilter = 'all') => {
     const bounds = getPayrollBounds(payrollId);
     
     let columns = [];
-    const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const dayNames = ['Dom', 'Lun', 'Mar', 'MiÃ©', 'Jue', 'Vie', 'SÃ¡b'];
     
     if (bounds && bounds.min && bounds.max) {
         let current = new Date(bounds.min + 'T00:00:00');
@@ -2693,7 +2693,7 @@ window.printManualSheet = (payrollId, deptFilter = 'all') => {
             current.setDate(current.getDate() + 1);
         }
     } else {
-        columns = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+        columns = ["Lunes", "Martes", "MiÃ©rcoles", "Jueves", "Viernes", "SÃ¡bado", "Domingo"];
     }
     columns.push("Total");
 
@@ -2752,7 +2752,7 @@ window.printManualSheet = (payrollId, deptFilter = 'all') => {
             return `
                 <tr>
                     <td style="border: 1px solid #ccc; padding: 3px; text-align: center;">${i + 1}</td>
-                    <td style="border: 1px solid #ccc; padding: 3px; font-weight: bold; font-size: 0.8rem;">${emp.firstName} ${emp.lastName} <small style="font-weight: normal; color: #666;">(${emp.type === 'mobile' ? 'Móvil' : 'Fijo'})</small></td>
+                    <td style="border: 1px solid #ccc; padding: 3px; font-weight: bold; font-size: 0.8rem;">${emp.firstName} ${emp.lastName} <small style="font-weight: normal; color: #666;">(${emp.type === 'mobile' ? 'MÃ³vil' : 'Fijo'})</small></td>
                     <td style="border: 1px solid #ccc; padding: 3px;"></td>
                     ${tdHtml}
                 </tr>
@@ -2762,7 +2762,7 @@ window.printManualSheet = (payrollId, deptFilter = 'all') => {
         contentHtml += `
             <div style="page-break-after: ${deptIndex < deptNames.length - 1 ? 'always' : 'auto'}; margin-bottom: 30px;">
                 <div style="text-align: center; margin-bottom: 15px;">
-                    <h2 style="margin: 0; color: black; text-transform: uppercase;">Planilla de Control Manual de Nómina</h2>
+                    <h2 style="margin: 0; color: black; text-transform: uppercase;">Planilla de Control Manual de NÃ³mina</h2>
                     <h3 style="margin: 3px 0; color: #333; font-weight: 600;">Departamento: ${dept}</h3>
                     <p style="margin: 3px 0; font-size: 1.1rem; color: black; font-weight: bold;">${run.name}</p>
                     <p style="margin: 0; font-size: 0.9rem; color: #333;">Periodo: ${bounds ? bounds.min + ' al ' + bounds.max : run.startDate}</p>
@@ -2796,7 +2796,7 @@ window.printManualSheet = (payrollId, deptFilter = 'all') => {
             }
         </style>
         <div class="header-action no-print">
-            <h1>Planilla de Nómina Manual</h1>
+            <h1>Planilla de NÃ³mina Manual</h1>
             <div style="display: flex; gap: 10px;">
                 <button class="btn btn-secondary" onclick="renderSection('payroll-runs')"><i class="fas fa-arrow-left"></i> Volver</button>
                 <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir</button>
@@ -2816,9 +2816,9 @@ window.printManualSheet = (payrollId, deptFilter = 'all') => {
 const renderPayrollRuns = (container) => {
     container.innerHTML = `
             <div class="header-action">
-            <h1>Gestión de Pagos (Nóminas Abiertas)</h1>
+            <h1>GestiÃ³n de Pagos (NÃ³minas Abiertas)</h1>
             <button class="btn btn-primary" id="open-payroll-btn">
-                <i class="fas fa-play"></i> Abrir Nueva Nómina
+                <i class="fas fa-play"></i> Abrir Nueva NÃ³mina
             </button>
         </div>
             <div class="card mt-4">
@@ -2837,16 +2837,16 @@ const renderPayrollRuns = (container) => {
                                 </div>
                             `).join('')}
                         </div>
-                    ` : '<p>No hay ninguna nómina habilitada para pago en este momento.</p>'}
+                    ` : '<p>No hay ninguna nÃ³mina habilitada para pago en este momento.</p>'}
                 </div>
             </div>
         `;
 
     document.getElementById('open-payroll-btn').onclick = () => {
-        showModal('Abrir Nómina', `
+        showModal('Abrir NÃ³mina', `
             <div class="form-group">
                 <label>Nombre identificador</label>
-                <input type="text" id="run-name" class="form-control" placeholder="Ej: Nómina Marzo Q1">
+                <input type="text" id="run-name" class="form-control" placeholder="Ej: NÃ³mina Marzo Q1">
             </div>
             <div class="form-group">
                 <label>Tipo de Periodo</label>
@@ -2879,7 +2879,7 @@ const renderPayrollRuns = (container) => {
 // --- Module: Daily Registration ---
 const renderDailyRegistration = (container) => {
     if (!state.activePayrolls || state.activePayrolls.length === 0) {
-        container.innerHTML = '<h1>Registro Diario</h1><div class="card mt-4"><p class="text-danger">Debe abrir una nómina primero en la sección "Abrir Nómina".</p></div>';
+        container.innerHTML = '<h1>Registro Diario</h1><div class="card mt-4"><p class="text-danger">Debe abrir una nÃ³mina primero en la secciÃ³n "Abrir NÃ³mina".</p></div>';
         return;
     }
 
@@ -2899,7 +2899,7 @@ const renderDailyRegistration = (container) => {
 
     container.innerHTML = `
             <div class="header-action">
-            <h1>Registro Diario - Empleados Móviles</h1>
+            <h1>Registro Diario - Empleados MÃ³viles</h1>
             <div style="display: flex; gap: 15px; align-items: center;">
                 <select id="daily-payroll-select" class="form-control" style="width: auto; font-weight: bold; padding: 5px 10px;" onchange="window.selectedDailyPayrollId = this.value; renderSection('daily-registration')">
                     ${payrollOptions}
@@ -2928,8 +2928,8 @@ const renderDailyRegistration = (container) => {
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Empleado Móvil</label>
-                    <input list="list-emp-search" id="reg-emp" class="form-control" style="font-weight: 500;" placeholder="Escriba nombre o Nº de registro..." autocomplete="off">
+                    <label>Empleado MÃ³vil</label>
+                    <input list="list-emp-search" id="reg-emp" class="form-control" style="font-weight: 500;" placeholder="Escriba nombre o NÂº de registro..." autocomplete="off">
                     <datalist id="list-emp-search">
                         ${window.getVisibleEmployees(activePayroll?.periodType).filter(e => e.type === 'mobile' && e.active !== false).map(e => `<option value="${`[${e.regNumber}] ${(e.firstName||'')} ${(e.lastName||'')}`.replace(/\\s+/g, ' ').trim()}"></option>`).join('')}
                     </datalist>
@@ -2937,8 +2937,8 @@ const renderDailyRegistration = (container) => {
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>Operación</label>
-                    <input list="list-op" id="reg-op" class="form-control" placeholder="Buscar operación...">
+                    <label>OperaciÃ³n</label>
+                    <input list="list-op" id="reg-op" class="form-control" placeholder="Buscar operaciÃ³n...">
                 </div>
                 <div class="form-group">
                     <label>Actividad</label>
@@ -2947,18 +2947,18 @@ const renderDailyRegistration = (container) => {
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>Monto Real del Día ($)</label>
+                    <label>Monto Real del DÃ­a ($)</label>
                     <input type="number" id="reg-amount" class="form-control" placeholder="0.00">
                 </div>
                 <div class="form-group">
-                    <label>¿Aplicar Descuento TSS?</label>
+                    <label>Â¿Aplicar Descuento TSS?</label>
                     <select id="reg-tss" class="form-control">
-                        <option value="si">Sí — Descontar TSS</option>
-                        <option value="no" selected>No — Sin descuento TSS</option>
+                        <option value="si">SÃ­ â€” Descontar TSS</option>
+                        <option value="no" selected>No â€” Sin descuento TSS</option>
                     </select>
                 </div>
             </div>
-            <button class="btn btn-primary" id="save-daily">Registrar Día de Trabajo</button>
+            <button class="btn btn-primary" id="save-daily">Registrar DÃ­a de Trabajo</button>
         </div>
         ` : `
         <div class="card mt-4">
@@ -2978,13 +2978,13 @@ const renderDailyRegistration = (container) => {
                     </select>
                 </div>
                 <div class="form-group" style="flex: 2;">
-                    <label>Acción en Lote (Aplicar a todos)</label>
+                    <label>AcciÃ³n en Lote (Aplicar a todos)</label>
                     <div style="display: flex; gap: 5px;">
-                        <input list="list-op" id="batch-op" class="form-control" placeholder="Operación...">
+                        <input list="list-op" id="batch-op" class="form-control" placeholder="OperaciÃ³n...">
                         <input list="list-act" id="batch-act" class="form-control" placeholder="Actividad..." onchange="updateBatchAmount(this.value)">
                         <select id="batch-tss" class="form-control" style="width: 100px;">
                             <option value="no">No TSS</option>
-                            <option value="si">Sí</option>
+                            <option value="si">SÃ­</option>
                         </select>
                         <button class="btn btn-secondary" onclick="applyBatchToAll()">Aplicar</button>
                         <button class="btn btn-danger" onclick="window.removeSelectedBulkRows()" title="Quitar empleados seleccionados del lote" style="margin-left: 10px;">
@@ -3002,7 +3002,7 @@ const renderDailyRegistration = (container) => {
                                 <input type="checkbox" id="bulk-select-all" onclick="window.toggleAllBulkRows(this.checked)" title="Seleccionar todos">
                             </th>
                             <th>Trabajador</th>
-                            <th>Operación</th>
+                            <th>OperaciÃ³n</th>
                             <th>Actividad</th>
                             <th>Monto</th>
                             <th>TSS</th>
@@ -3028,11 +3028,11 @@ const renderDailyRegistration = (container) => {
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th style="width: 50px">Nº</th>
+                        <th style="width: 50px">NÂº</th>
                         <th>Fecha</th>
                         <th>Empleado</th>
                         <th>Reg.</th>
-                        <th>Operación</th>
+                        <th>OperaciÃ³n</th>
                         <th>Monto</th>
                         <th>TSS</th>
                         <th>Registrado por</th>
@@ -3050,7 +3050,7 @@ const renderDailyRegistration = (container) => {
                             <td style="font-weight: 500; font-family: monospace;">${log.empReg || '<span class="text-gray">N/A</span>'}</td>
                             <td>${log.op}</td>
                             <td>$${(isAnnulled ? 0 : parseFloat(log.amount)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            <td>${log.applyTSS === 'si' ? '<span class="status-badge fixed">Sí</span>' : '<span class="status-badge mobile">No</span>'}</td>
+                            <td>${log.applyTSS === 'si' ? '<span class="status-badge fixed">SÃ­</span>' : '<span class="status-badge mobile">No</span>'}</td>
                             <td><small>${log.createdBy || 'Sistema'}</small></td>
                             <td>
                                 ${!isAnnulled ? `
@@ -3100,7 +3100,7 @@ const renderDailyRegistration = (container) => {
                 empInputEl.style.borderColor = 'var(--danger)';
                 empInputEl.focus();
             }
-            alert('Debe rellenar el campo seleccionando un empleado válido de la lista desplegable.');
+            alert('Debe rellenar el campo seleccionando un empleado vÃ¡lido de la lista desplegable.');
             return;
         }
 
@@ -3126,7 +3126,7 @@ const renderDailyRegistration = (container) => {
                 empInputEl.style.borderColor = 'var(--danger)';
                 empInputEl.focus();
             }
-            alert(`El empleado "${inputVal}" no existe. Debe seleccionar un empleado válido de la lista.`);
+            alert(`El empleado "${inputVal}" no existe. Debe seleccionar un empleado vÃ¡lido de la lista.`);
             return;
         }
 
@@ -3139,7 +3139,7 @@ const renderDailyRegistration = (container) => {
         const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
         const bounds = getPayrollBounds(activePayroll.id);
         if (bounds && (regDate < bounds.min || regDate > bounds.max)) {
-            alert(`La fecha debe estar dentro del rango de la nómina abierta (${bounds.min} a ${bounds.max})`);
+            alert(`La fecha debe estar dentro del rango de la nÃ³mina abierta (${bounds.min} a ${bounds.max})`);
             return;
         }
 
@@ -3154,7 +3154,7 @@ const renderDailyRegistration = (container) => {
                 opInputEl.style.borderColor = 'var(--danger)';
                 opInputEl.focus();
             }
-            alert('Debe seleccionar una operación válida de la lista desplegable.');
+            alert('Debe seleccionar una operaciÃ³n vÃ¡lida de la lista desplegable.');
             return;
         }
 
@@ -3163,7 +3163,7 @@ const renderDailyRegistration = (container) => {
                 actInputEl.style.borderColor = 'var(--danger)';
                 actInputEl.focus();
             }
-            alert('Debe seleccionar una actividad válida de la lista desplegable.');
+            alert('Debe seleccionar una actividad vÃ¡lida de la lista desplegable.');
             return;
         }
 
@@ -3194,7 +3194,7 @@ const renderDailyRegistration = (container) => {
                 return l.employee === log.employee && l.date === log.date;
             });
             if (isDuplicate) {
-                alert(`Atención: El empleado ${log.employee} ya tiene un salario digitado para el día ${log.date}.`);
+                alert(`AtenciÃ³n: El empleado ${log.employee} ya tiene un salario digitado para el dÃ­a ${log.date}.`);
                 return;
             }
 
@@ -3249,7 +3249,7 @@ const renderDailyRegistration = (container) => {
             } else {
                 regEmpInput.style.borderColor = 'var(--danger)';
                 regEmpInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.3)';
-                regEmpInput.title = 'Seleccione un empleado válido de la lista';
+                regEmpInput.title = 'Seleccione un empleado vÃ¡lido de la lista';
             }
 
             // Filter the log table below
@@ -3272,7 +3272,7 @@ const renderDailyRegistration = (container) => {
         regEmpInput.oninput = checkEmpValidity;
         regEmpInput.onchange = checkEmpValidity;
 
-        // On blur: only show error (no forced focus — save button is the real gate)
+        // On blur: only show error (no forced focus â€” save button is the real gate)
         regEmpInput.onblur = () => {
             const val = regEmpInput.value.trim();
             if (!val) return;
@@ -3304,24 +3304,24 @@ const renderDailyRegistration = (container) => {
 const renderISR = (container) => {
     container.innerHTML = `
         <div class="header-action">
-            <h1>Gestión de ISR (Impuesto Sobre la Renta)</h1>
-            <p class="text-gray">Active o desactive la retención de ISR para cada empleado. El sistema calculará el impuesto automáticamente solo para los marcados.</p>
+            <h1>GestiÃ³n de ISR (Impuesto Sobre la Renta)</h1>
+            <p class="text-gray">Active o desactive la retenciÃ³n de ISR para cada empleado. El sistema calcularÃ¡ el impuesto automÃ¡ticamente solo para los marcados.</p>
         </div>
         
         <div class="card mt-4">
             <div class="search-box mb-4">
-                <input type="text" id="isr-search" class="form-control" placeholder="Buscar empleado por nombre o cédula..." oninput="filterISRTable(this.value)">
+                <input type="text" id="isr-search" class="form-control" placeholder="Buscar empleado por nombre o cÃ©dula..." oninput="filterISRTable(this.value)">
             </div>
             
             <table class="data-table">
                 <thead>
                     <tr>
                         <th>Empleado</th>
-                        <th>Cédula</th>
+                        <th>CÃ©dula</th>
                         <th>Departamento</th>
                         <th>Tipo</th>
                         <th>Salario Base</th>
-                        <th style="text-align: center">¿Aplica ISR?</th>
+                        <th style="text-align: center">Â¿Aplica ISR?</th>
                     </tr>
                 </thead>
                 <tbody id="isr-tbody">
@@ -3330,7 +3330,7 @@ const renderISR = (container) => {
                             <td><strong>${emp.firstName} ${emp.lastName}</strong></td>
                             <td>${emp.idNumber || '-'}</td>
                             <td>${emp.department || '-'}</td>
-                            <td>${emp.type === 'fixed' ? 'Fijo' : 'Móvil'}</td>
+                            <td>${emp.type === 'fixed' ? 'Fijo' : 'MÃ³vil'}</td>
                             <td>$${(parseFloat(emp.salary) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                             <td style="text-align: center">
                                 <label class="switch">
@@ -3395,7 +3395,7 @@ window.renderBulkTable = () => {
         });
 
     if (emps.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center" class="text-gray">No hay empleados móviles en este departamento</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center" class="text-gray">No hay empleados mÃ³viles en este departamento</td></tr>';
         return;
     }
 
@@ -3427,7 +3427,7 @@ window.renderBulkTable = () => {
                         <td>
                             <select class="form-control bulk-tss">
                                 <option value="no">No</option>
-                                <option value="si">Sí</option>
+                                <option value="si">SÃ­</option>
                             </select>
                         </td>
                         <td>
@@ -3500,7 +3500,7 @@ window.saveBulkLogs = () => {
     const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
     const bounds = getPayrollBounds(activePayroll.id);
     if (bounds && (date < bounds.min || date > bounds.max)) {
-        alert(`La fecha debe estar dentro del rango de la nómina abierta (${bounds.min} a ${bounds.max})`);
+        alert(`La fecha debe estar dentro del rango de la nÃ³mina abierta (${bounds.min} a ${bounds.max})`);
         return;
     }
 
@@ -3533,13 +3533,13 @@ window.saveBulkLogs = () => {
             if (op && !validOps.includes(op)) {
                 opInput.style.borderColor = 'var(--danger)';
                 opInput.focus();
-                alert(`La operación "${op}" para el empleado ${emp} no es válida. Debe seleccionarla de la lista.`);
+                alert(`La operaciÃ³n "${op}" para el empleado ${emp} no es vÃ¡lida. Debe seleccionarla de la lista.`);
                 throw new Error('Validation failed');
             }
             if (act && !validActs.includes(act)) {
                 actInput.style.borderColor = 'var(--danger)';
                 actInput.focus();
-                alert(`La actividad "${act}" para el empleado ${emp} no es válida. Debe seleccionarla de la lista.`);
+                alert(`La actividad "${act}" para el empleado ${emp} no es vÃ¡lida. Debe seleccionarla de la lista.`);
                 throw new Error('Validation failed');
             }
 
@@ -3547,7 +3547,7 @@ window.saveBulkLogs = () => {
                 if (!op) {
                     opInput.style.borderColor = 'var(--danger)';
                     opInput.focus();
-                    alert(`El empleado ${emp} no tiene una operación asignada. Debe asignarle una operación para poder registrarlo.`);
+                    alert(`El empleado ${emp} no tiene una operaciÃ³n asignada. Debe asignarle una operaciÃ³n para poder registrarlo.`);
                     throw new Error('Validation failed');
                 }
                 if (!act) {
@@ -3581,12 +3581,12 @@ window.saveBulkLogs = () => {
     }
 
     if (logsToAdd.length === 0) {
-        alert("No hay registros válidos para guardar o todos son duplicados.");
+        alert("No hay registros vÃ¡lidos para guardar o todos son duplicados.");
         return;
     }
 
     if (duplicates > 0) {
-        if (!confirm(`${duplicates} empleados ya tenían registros para esta fecha y fueron ignorados. ¿Desea guardar el resto? `)) return;
+        if (!confirm(`${duplicates} empleados ya tenÃ­an registros para esta fecha y fueron ignorados. Â¿Desea guardar el resto? `)) return;
     }
 
     if (!activePayroll.dailyLogs) activePayroll.dailyLogs = [];
@@ -3607,7 +3607,7 @@ window.saveBulkLogs = () => {
 const renderClosing = (container) => {
     let html = `
             <div class="header-action">
-                <h1>Cierre de Nómina</h1>
+                <h1>Cierre de NÃ³mina</h1>
             </div>
         `;
 
@@ -3615,14 +3615,14 @@ const renderClosing = (container) => {
         html += `
             <div class="card mt-4" style="text-align: center; padding: 40px;">
                 <i class="fas fa-check-circle" style="font-size: 48px; color: var(--success); margin-bottom: 20px;"></i>
-                <h2>No hay ninguna nómina abierta actualmente.</h2>
-                <p class="text-gray">Puede abrir una nueva nómina desde la sección de "Abrir Nómina".</p>
+                <h2>No hay ninguna nÃ³mina abierta actualmente.</h2>
+                <p class="text-gray">Puede abrir una nueva nÃ³mina desde la secciÃ³n de "Abrir NÃ³mina".</p>
             </div>
         `;
     } else {
         html += `
             <div class="card mt-4">
-                <p>Al cerrar la nómina, los registros del periodo quedarán bloqueados y pasarán al historial.</p>
+                <p>Al cerrar la nÃ³mina, los registros del periodo quedarÃ¡n bloqueados y pasarÃ¡n al historial.</p>
                 <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;">
         `;
 
@@ -3635,7 +3635,7 @@ const renderClosing = (container) => {
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <button class="btn btn-danger close-payroll-btn" data-id="${payroll.id}">
-                            <i class="fas fa-lock"></i> Cerrar Nómina
+                            <i class="fas fa-lock"></i> Cerrar NÃ³mina
                         </button>
                         <button class="btn btn-secondary delete-open-payroll-btn" data-id="${payroll.id}" style="background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;">
                             <i class="fas fa-trash-alt"></i> Descartar
@@ -3653,13 +3653,13 @@ const renderClosing = (container) => {
 
     html += `
             < div class="mt-5" >
-                    <h2 class="mb-4"><i class="fas fa-history"></i> Historial de Nóminas Cerradas</h2>
+                    <h2 class="mb-4"><i class="fas fa-history"></i> Historial de NÃ³minas Cerradas</h2>
                     <div class="card">
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 50px">Nº</th>
-                                    <th>Nombre de la Nómina</th>
+                                    <th style="width: 50px">NÂº</th>
+                                    <th>Nombre de la NÃ³mina</th>
                                     <th>Periodo</th>
                                     <th>Fecha de Cierre</th>
                                     <th>Cerrado por</th>
@@ -3685,7 +3685,7 @@ const renderClosing = (container) => {
                                             </td>
                                         </tr>
                                     `).join('') :
-            '<tr><td colspan="6" style="text-align: center; padding: 20px;">No hay nóminas cerradas en el historial.</td></tr>'
+            '<tr><td colspan="6" style="text-align: center; padding: 20px;">No hay nÃ³minas cerradas en el historial.</td></tr>'
         }
                             </tbody>
                         </table>
@@ -3702,14 +3702,14 @@ const renderClosing = (container) => {
                 const targetId = btn.getAttribute('data-id');
                 const targetPayroll = state.activePayrolls.find(p => p.id == targetId);
 
-                if (confirm(`¿Está seguro que desea cerrar la nómina "${targetPayroll.name}"? Los montos calculados se guardarán en el historial para fines de Regalía Pascual.`)) {
+                if (confirm(`Â¿EstÃ¡ seguro que desea cerrar la nÃ³mina "${targetPayroll.name}"? Los montos calculados se guardarÃ¡n en el historial para fines de RegalÃ­a Pascual.`)) {
                     try {
                         const bounds = getPayrollBounds(targetId);
-                        if (!bounds) throw new Error("No se pudierón calcular los límites del periodo.");
+                        if (!bounds) throw new Error("No se pudierÃ³n calcular los lÃ­mites del periodo.");
 
                         const snapshot = {
                             id: Date.now(),
-                            payrollName: targetPayroll.name || "Nómina sin nombre",
+                            payrollName: targetPayroll.name || "NÃ³mina sin nombre",
                             payrollNumber: state.payrollHistory.length > 0 ? Math.max(0, ...state.payrollHistory.map(h => parseInt(h.payrollNumber) || 0)) + 1 : 1,
                             periodType: targetPayroll.periodType,
                             periodStart: bounds.min,
@@ -3804,10 +3804,10 @@ const renderClosing = (container) => {
 
                         saveState();
                         renderSection('closing');
-                        alert('Nómina cerrada exitosamente.');
+                        alert('NÃ³mina cerrada exitosamente.');
                     } catch (globalErr) {
-                        console.error("Error crítico al cerrar nómina:", globalErr);
-                        alert("No se pudo cerrar la nómina. Error: " + globalErr.message);
+                        console.error("Error crÃ­tico al cerrar nÃ³mina:", globalErr);
+                        alert("No se pudo cerrar la nÃ³mina. Error: " + globalErr.message);
                     }
                 }
             };
@@ -3823,17 +3823,17 @@ const renderClosing = (container) => {
 
                 // Added condition: do not allow deletion if there are records
                 if (targetPayroll.dailyLogs && targetPayroll.dailyLogs.length > 0) {
-                    alert(`No se puede eliminar la nómina "${targetPayroll.name}" porque ya tiene registros diarios. Debe cerrar la nómina o eliminar los registros individualmente primero.`);
+                    alert(`No se puede eliminar la nÃ³mina "${targetPayroll.name}" porque ya tiene registros diarios. Debe cerrar la nÃ³mina o eliminar los registros individualmente primero.`);
                     return;
                 }
 
-                if (confirm(`¿Está TOTALMENTE SEGURO de eliminar la nómina "${targetPayroll.name}"?\n\nEsto borrará todos los registros diarios asociados y no se podrá deshacer.`)) {
+                if (confirm(`Â¿EstÃ¡ TOTALMENTE SEGURO de eliminar la nÃ³mina "${targetPayroll.name}"?\n\nEsto borrarÃ¡ todos los registros diarios asociados y no se podrÃ¡ deshacer.`)) {
                     state.activePayrolls = state.activePayrolls.filter(p => String(p.id) !== String(targetId));
                     if (String(window.selectedDailyPayrollId) === String(targetId)) window.selectedDailyPayrollId = null;
 
                     saveState();
                     renderSection('closing');
-                    alert('Nómina eliminada permanentemente.');
+                    alert('NÃ³mina eliminada permanentemente.');
                 }
             };
         });
@@ -3903,7 +3903,7 @@ window.viewHistoricalPayroll = (index) => {
                 <tr>
                     <td>${res.fullName}</td>
                     <td>${res.idNumber || '-'}</td>
-                    <td>${res.type === 'fixed' ? 'Fijo' : 'Móvil'}</td>
+                    <td>${res.type === 'fixed' ? 'Fijo' : 'MÃ³vil'}</td>
                     <td class="td-numeric">$${res.base.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td class="td-numeric">$${res.incentives.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td class="td-numeric">$${res.overtime.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -3924,7 +3924,7 @@ window.viewHistoricalPayroll = (index) => {
                     <thead>
                         <tr>
                             <th>Empleado</th>
-                            <th>Cédula</th>
+                            <th>CÃ©dula</th>
                             <th>Tipo</th>
                             <th class="text-right">Sueldo Base</th>
                             <th class="text-right">Incentivos</th>
@@ -3965,7 +3965,7 @@ window.viewHistoricalPayroll = (index) => {
                 <button class="btn btn-secondary" onclick="renderSection('closing')">
                     <i class="fas fa-arrow-left"></i> Volver
                 </button>
-                <h1>Consulta de Nómina Histórica</h1>
+                <h1>Consulta de NÃ³mina HistÃ³rica</h1>
                 
                 <div class="multi-select-container no-print ${window.activeDropdownId === 'hist-dept-multi-select' ? 'active' : ''}" id="hist-dept-multi-select">
                     <div class="multi-select-btn" onclick="window.activeDropdownId = window.activeDropdownId === 'hist-dept-multi-select' ? null : 'hist-dept-multi-select'; this.parentElement.classList.toggle('active')">
@@ -3994,7 +3994,7 @@ window.viewHistoricalPayroll = (index) => {
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button class="btn btn-info" onclick="window.renderMobileDetailedReport(${index})">
-                    <i class="fas fa-list-alt"></i> Detalle Labores Móviles
+                    <i class="fas fa-list-alt"></i> Detalle Labores MÃ³viles
                 </button>
                 <button class="btn btn-info" onclick="window.renderMobileEmployeeDeptReport(${index})">
                     <i class="fas fa-users"></i> Detalle por Depto/Empleado
@@ -4019,7 +4019,7 @@ window.viewHistoricalPayroll = (index) => {
 
             <div class="card mt-4 print-area">
                 <div style="text-align: center; margin-bottom: 20px;">
-                    <h1 style="margin: 0; color: var(--primary);">REPORTE DE NÓMINA</h1>
+                    <h1 style="margin: 0; color: var(--primary);">REPORTE DE NÃ“MINA</h1>
                     <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.payrollName}</p>
                     <p class="text-gray">Periodo: ${run.periodStart} al ${run.periodEnd} | Cerrado el: ${new Date(run.closedAt).toLocaleString()}</p>
                 </div>
@@ -4087,7 +4087,7 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
 
     const bounds = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds(run.id);
     if (!bounds || !bounds.min || !bounds.max) {
-        alert("No hay un periodo definido para esta nómina.");
+        alert("No hay un periodo definido para esta nÃ³mina.");
         return;
     }
 
@@ -4164,7 +4164,7 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                         <button class="btn btn-secondary" onclick="${isHistorical ? `window.viewHistoricalPayroll(${historyIndex})` : 'renderSection(\'reports\')'}">
                             <i class="fas fa-arrow-left"></i> Volver
                         </button>
-                        <h1>Detalle Móvil</h1>
+                        <h1>Detalle MÃ³vil</h1>
                     </div>
                     
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
@@ -4202,7 +4202,7 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
                 </div >
             <div class="card mt-4 print-area">
                 <div style="text-align: center; margin-bottom: 20px;">
-                    <h1 style="margin: 0; color: var(--primary);">RELACIÓN DIARIA DE LABORES MÓVILES</h1>
+                    <h1 style="margin: 0; color: var(--primary);">RELACIÃ“N DIARIA DE LABORES MÃ“VILES</h1>
                     <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.name || run.payrollName}</p>
                     <p class="text-gray">Periodo: ${bounds.min} al ${bounds.max}</p>
                 </div>
@@ -4228,14 +4228,14 @@ const renderMobileDetailedReport = (historyIndex = null, filterOps = null, filte
 
         html += `
                     <div class="mb-5">
-                        <h3 class="text-accent" style="border-bottom: 2px solid var(--accent-color); padding-bottom: 5px; margin-bottom: 15px;">Operación: ${op}</h3>
+                        <h3 class="text-accent" style="border-bottom: 2px solid var(--accent-color); padding-bottom: 5px; margin-bottom: 15px;">OperaciÃ³n: ${op}</h3>
                         <table class="data-table" style="font-size: 0.85rem">
                             <thead>
                                 <tr>
                                     <th>Empleado</th>
                                     <th>Actividad</th>
                                     ${dateHeaders.map(h => `<th class="text-center" style="width: 40px">${h.day}<br><small style="font-size: 0.6rem">${h.date.split('-')[2]}</small></th>`).join('')}
-                                    <th class="text-center" style="width: 40px">Días</th>
+                                    <th class="text-center" style="width: 40px">DÃ­as</th>
                                     <th class="text-right" style="font-weight: bold">Suma</th>
                                 </tr>
                             </thead>
@@ -4378,7 +4378,7 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
 
     const bounds = isHistorical ? { min: run.periodStart, max: run.periodEnd } : getPayrollBounds(run.id);
     if (!bounds || !bounds.min || !bounds.max) {
-        alert("No hay un periodo definido para esta nómina.");
+        alert("No hay un periodo definido para esta nÃ³mina.");
         return;
     }
 
@@ -4415,6 +4415,8 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
 
         // Filter by Department Access
         if (emp && !window.hasDepartmentAccess(emp.department)) return;
+
+
 
         // Filter by selected Department
         if (filterDept && filterDept !== 'all' && dept !== filterDept) return;
@@ -4499,7 +4501,7 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
                 </div>
             <div class="card mt-4 print-area">
                 <div style="text-align: center; margin-bottom: 20px;">
-                    <h1 style="margin: 0; color: var(--primary);">RELACIÓN DIARIA POR DEPARTAMENTO Y EMPLEADO</h1>
+                    <h1 style="margin: 0; color: var(--primary);">RELACIÃ“N DIARIA POR DEPARTAMENTO Y EMPLEADO</h1>
                     <p style="font-size: 1.2rem; font-weight: 600; margin: 5px 0;">${run.name || run.payrollName}</p>
                     <p class="text-gray">Periodo: ${bounds.min} al ${bounds.max}</p>
                 </div>
@@ -4531,7 +4533,7 @@ const renderMobileEmployeeDeptReport = (historyIndex = null, filterDept = null, 
                                 <tr>
                                     <th>Empleado</th>
                                     ${dateHeaders.map(h => `<th class="text-center" style="width: 40px">${h.day}<br><small style="font-size: 0.6rem">${h.date.split('-')[2]}</small></th>`).join('')}
-                                    <th class="text-center" style="width: 40px">Días</th>
+                                    <th class="text-center" style="width: 40px">DÃ­as</th>
                                     <th class="text-right" style="font-weight: bold">Suma</th>
                                 </tr>
                             </thead>
@@ -4796,8 +4798,8 @@ const calculateEmployeePayrollData = (emp, activePayroll) => {
 
 
 
-    // Las vacaciones ahora se manejan de manera totalmente individual y no se suman a la nómina.
-    // (El salario base ya fue reducido proporcionalmente arriba para los días de descanso físico).
+    // Las vacaciones ahora se manejan de manera totalmente individual y no se suman a la nÃ³mina.
+    // (El salario base ya fue reducido proporcionalmente arriba para los dÃ­as de descanso fÃ­sico).
 
     chr = (state.christmasSalary || []).filter(c => {
         if (c.empReg && emp.regNumber) return String(c.empReg) === String(emp.regNumber) && filterByPeriod(c);
@@ -4939,9 +4941,9 @@ const renderReports = (container) => {
             return `
             <div class="status-box danger no-print" style="margin-bottom: 20px; font-size: 0.9rem; background-color: #fef2f2; border: 1px solid #ef4444; color: #b91c1c; padding: 12px; border-radius: 8px;">
                 <i class="fas fa-exclamation-circle"></i> 
-                <strong>Atención:</strong> Hay registros para nombres que no coinciden con empleados activos: 
+                <strong>AtenciÃ³n:</strong> Hay registros para nombres que no coinciden con empleados activos: 
                 <span style="font-weight: 700;">${orphanList}</span>. 
-                Estos montos <strong>NO</strong> se están sumando. Verifique tildes o espacios.
+                Estos montos <strong>NO</strong> se estÃ¡n sumando. Verifique tildes o espacios.
             </div>
         `;
         })();
@@ -4949,7 +4951,7 @@ const renderReports = (container) => {
         const searchWarning = state.globalSearchQuery ? `
         <div class="status-box warning no-print" style="margin-bottom: 20px; font-size: 0.9rem;">
             <i class="fas fa-exclamation-triangle"></i> 
-            <strong>Aviso:</strong> El reporte está siendo filtrado por la búsqueda: "<strong>${state.globalSearchQuery}</strong>". 
+            <strong>Aviso:</strong> El reporte estÃ¡ siendo filtrado por la bÃºsqueda: "<strong>${state.globalSearchQuery}</strong>". 
             Esto afecta los totales. <span style="text-decoration: underline; cursor: pointer;" onclick="document.getElementById('global-search').value = ''; state.globalSearchQuery = ''; renderSection('reports');">Limpiar</span>
         </div>
     ` : '';
@@ -4959,7 +4961,7 @@ const renderReports = (container) => {
             ${searchWarning}
             <div class="header-action">
             <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-                <h1>Reporte de Nómina</h1>
+                <h1>Reporte de NÃ³mina</h1>
                 <div class="no-print">
                     <select class="form-control" style="min-width: 200px; padding: 5px 10px;" onchange="window.currentReportPayrollId = this.value; renderSection('reports')">
                         ${(state.activePayrolls || []).map(p => `<option value="${p.id}" ${window.currentReportPayrollId == p.id ? 'selected' : ''}>${p.name} (${p.periodType})</option>`).join('')}
@@ -4967,7 +4969,7 @@ const renderReports = (container) => {
                 </div>
                 <div class="multi-select-container no-print ${window.activeDropdownId === 'dept-multi-select' ? 'active' : ''}" id="dept-multi-select">
                     <div class="multi-select-btn" onclick="window.activeDropdownId = window.activeDropdownId === 'dept-multi-select' ? null : 'dept-multi-select'; this.parentElement.classList.toggle('active')">
-                        ${filter.length === state.departments.length ? 'Todos los Departamentos' : (filter.length === 0 ? 'Ningún Departamento' : `${filter.length} Seleccionados`)}
+                        ${filter.length === state.departments.length ? 'Todos los Departamentos' : (filter.length === 0 ? 'NingÃºn Departamento' : `${filter.length} Seleccionados`)}
                     </div>
                     <div class="multi-select-content">
                         <div class="multi-select-actions">
@@ -5003,7 +5005,7 @@ const renderReports = (container) => {
                     </button>
                 </div>
                 <button class="btn btn-info" onclick="window.renderMobileDetailedReport(null, null, null, window.currentReportPayrollId)">
-                    <i class="fas fa-list-alt"></i> Detalle Labores Móviles
+                    <i class="fas fa-list-alt"></i> Detalle Labores MÃ³viles
                 </button>
                 <button class="btn btn-info" onclick="window.renderMobileEmployeeDeptReport(null, null, window.currentReportPayrollId)">
                     <i class="fas fa-users"></i> Detalle por Depto/Empleado
@@ -5092,7 +5094,7 @@ const renderReports = (container) => {
 
                         const vacRow = res.vacations > 0 ? `
                         <tr style="font-size: 0.8rem; background: rgba(var(--accent-rgb), 0.03);">
-                            <td colspan="3" style="padding-left: 20px; color: var(--accent-color);">└ Vacaciones (Descanso Físico)</td>
+                            <td colspan="3" style="padding-left: 20px; color: var(--accent-color);">â”” Vacaciones (Descanso FÃ­sico)</td>
                             <td class="td-numeric">$${res.vacations.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td colspan="8"></td>
                         </tr>` : '';
@@ -5101,7 +5103,7 @@ const renderReports = (container) => {
                         <tr>
                             <td>${emp.firstName} ${emp.lastName}</td>
                             <td>${emp.idNumber || '-'}</td>
-                            <td>${emp.type === 'fixed' ? 'Fijo' : 'Móvil'}</td>
+                            <td>${emp.type === 'fixed' ? 'Fijo' : 'MÃ³vil'}</td>
                             <td class="td-numeric">$${res.base.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric">$${res.inc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td class="td-numeric">$${res.ot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -5146,7 +5148,7 @@ const renderReports = (container) => {
                                 <thead>
                                     <tr>
                                         <th>Empleado</th>
-                                        <th>Cédula</th>
+                                        <th>CÃ©dula</th>
                                         <th>Tipo</th>
                                         <th class="text-right">Sueldo Base</th>
                                         <th class="text-right">Incentivos</th>
@@ -5275,12 +5277,12 @@ const renderReports = (container) => {
                     reportHtml += `
                     <div class="alert alert-warning mt-4 no-print">
                         <h4 style="margin-bottom: 10px;"><i class="fas fa-exclamation-triangle"></i> Registros de Labores no Asignados (${uniqueOrphans.length})</h4>
-                        <p>Los siguientes nombres en la labor diaria NO coinciden con ningún empleado activo. El monto de estas labores NO se está sumando a ninguna nómina:</p>
+                        <p>Los siguientes nombres en la labor diaria NO coinciden con ningÃºn empleado activo. El monto de estas labores NO se estÃ¡ sumando a ninguna nÃ³mina:</p>
                         <ul style="margin-top: 10px; column-count: 2;">
                             ${uniqueOrphans.map(name => `<li><strong>${name}</strong></li>`).join('')}
                         </ul>
                         <hr>
-                        <small><strong>¿Cómo arreglarlo?</strong> Asegúrese de que el nombre del empleado sea similar al registrado. El sistema ahora es más flexible, pero si el nombre es totalmente diferente (ej: "Juan" vs "Jonathan"), deberá corregirlo.</small>
+                        <small><strong>Â¿CÃ³mo arreglarlo?</strong> AsegÃºrese de que el nombre del empleado sea similar al registrado. El sistema ahora es mÃ¡s flexible, pero si el nombre es totalmente diferente (ej: "Juan" vs "Jonathan"), deberÃ¡ corregirlo.</small>
                     </div>
                 `;
                 }
@@ -5298,7 +5300,7 @@ const renderReports = (container) => {
         container.innerHTML = `
             <div class="alert alert-danger p-5 text-center">
                 <h2><i class="fas fa-bug"></i> Error al Generar Reporte</h2>
-                <p class="mb-3">Ha ocurrido un error inesperado al procesar los datos de la nómina.</p>
+                <p class="mb-3">Ha ocurrido un error inesperado al procesar los datos de la nÃ³mina.</p>
                 <div style="background: rgba(0,0,0,0.1); padding: 15px; border-radius: 5px; font-family: monospace; text-align: left; margin: 20px auto; max-width: 600px; font-size: 0.9rem; overflow-x: auto;">
                     <strong>Detalles del error:</strong><br>
                     ${err.message}<br><br>
@@ -5372,7 +5374,7 @@ const renderTSSReport = (container) => {
                         payrollDetailsMap[idKey] = {
                             name: res.fullName || 'Desconocido',
                             idNumber: res.idNumber || '',
-                            source: 'Nómina',
+                            source: 'NÃ³mina',
                             base: 0,
                             empTss: 0,
                             empEmployerTss: 0,
@@ -5458,26 +5460,26 @@ const renderTSSReport = (container) => {
         
         <div class="card printable-page" style="padding: 30px;">
             <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #ddd; padding-bottom: 20px;">
-                <h2 style="margin: 0; font-size: 24px; color: #333;">${state.settings.companyName || 'NóminaApp'}</h2>
+                <h2 style="margin: 0; font-size: 24px; color: #333;">${state.settings.companyName || 'NÃ³minaApp'}</h2>
                 <p style="margin: 5px 0 0; font-weight: bold; font-size: 18px; color: #555;">Reporte de Aportes y Retenciones a la TSS (Desglosado)</p>
                 <p style="margin: 5px 0 0; color: #777;">Periodo: <strong>${selectedMonth}</strong></p>
             </div>
             
             <div style="margin-bottom: 20px;">
-                <p>Este reporte consolida las retenciones realizadas a los empleados y los aportes estimados del empleador para la Tesorería de la Seguridad Social (TSS).</p>
+                <p>Este reporte consolida las retenciones realizadas a los empleados y los aportes estimados del empleador para la TesorerÃ­a de la Seguridad Social (TSS).</p>
                 <div style="display: flex; gap: 40px; font-size: 0.9rem; color: #666; margin-top: 15px;">
                     <div>
                         <strong>Tasa Empleado: ${(tssEmployeeRate * 100).toFixed(2)}%</strong>
                         <ul style="margin-top: 5px; padding-left: 20px;">
                             <li>SFS (Salud): ${(sfsEmpRate * 100).toFixed(2)}%</li>
-                            <li>AFP (Pensión): ${(afpEmpRate * 100).toFixed(2)}%</li>
+                            <li>AFP (PensiÃ³n): ${(afpEmpRate * 100).toFixed(2)}%</li>
                         </ul>
                     </div>
                     <div>
                         <strong>Tasa Empleador: ${(tssEmployerRate * 100).toFixed(2)}%</strong>
                         <ul style="margin-top: 5px; padding-left: 20px;">
                             <li>SFS (Salud): ${(sfsEmprRate * 100).toFixed(2)}%</li>
-                            <li>AFP (Pensión): ${(afpEmprRate * 100).toFixed(2)}%</li>
+                            <li>AFP (PensiÃ³n): ${(afpEmprRate * 100).toFixed(2)}%</li>
                             <li>SRL (Riesgo Laboral): ${(srlEmprRate * 100).toFixed(2)}%</li>
                         </ul>
                     </div>
@@ -5490,7 +5492,7 @@ const renderTSSReport = (container) => {
                     <tr>
                         <th style="text-align: left;">Concepto de Seguro</th>
                         <th style="text-align: right; background: #fafafa; color: #333;">Base Cotizable</th>
-                        <th style="text-align: right; color: #d32f2f;">Retención Empleado</th>
+                        <th style="text-align: right; color: #d32f2f;">RetenciÃ³n Empleado</th>
                         <th style="text-align: right; color: #1976d2;">Aporte Empleador</th>
                         <th style="text-align: right; font-weight: bold; background: #fafafa; color: #333;">Total a Pagar</th>
                     </tr>
@@ -5532,10 +5534,10 @@ const renderTSSReport = (container) => {
                 <thead>
                     <tr>
                         <th style="text-align: left;" rowspan="2">Empleado</th>
-                        <th style="text-align: left;" rowspan="2">Cédula</th>
+                        <th style="text-align: left;" rowspan="2">CÃ©dula</th>
                         <th style="text-align: center;" rowspan="2">Origen</th>
                         <th style="text-align: right;" rowspan="2">Base Cotizable</th>
-                        <th style="text-align: center; color: #d32f2f; border-bottom: 1px solid #ccc; background: #fff5f5;" colspan="3">Retención Empleado</th>
+                        <th style="text-align: center; color: #d32f2f; border-bottom: 1px solid #ccc; background: #fff5f5;" colspan="3">RetenciÃ³n Empleado</th>
                         <th style="text-align: center; color: #1976d2; border-bottom: 1px solid #ccc; background: #f0f7ff;" colspan="4">Aporte Empleador</th>
                     </tr>
                     <tr>
@@ -5553,7 +5555,7 @@ const renderTSSReport = (container) => {
                         <tr>
                             <td><strong>${d.name}</strong></td>
                             <td>${d.idNumber || '-'}</td>
-                            <td style="text-align: center;"><span style="background: ${d.source === 'Nómina' ? '#e3f2fd' : '#fff3e0'}; color: ${d.source === 'Nómina' ? '#0d47a1' : '#e65100'}; font-weight: bold; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem;">${d.source}</span></td>
+                            <td style="text-align: center;"><span style="background: ${d.source === 'NÃ³mina' ? '#e3f2fd' : '#fff3e0'}; color: ${d.source === 'NÃ³mina' ? '#0d47a1' : '#e65100'}; font-weight: bold; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem;">${d.source}</span></td>
                             <td style="text-align: right;">${fmt(d.base)}</td>
                             <td style="text-align: right; color: #d32f2f; background: #fffcfc;">${fmt(d.sfsEmp)}</td>
                             <td style="text-align: right; color: #d32f2f; background: #fffcfc;">${fmt(d.afpEmp)}</td>
@@ -5568,7 +5570,7 @@ const renderTSSReport = (container) => {
             </table>
             
             <div style="margin-top: 30px; font-size: 0.8rem; color: #888; text-align: justify; line-height: 1.4;">
-                * <strong>Nota aclaratoria:</strong> Este documento es de uso interno para fines de cuadre o estimación y no sustituye la factura oficial emitida por el Sistema Único de Información y Recaudo (SUIR) de la TSS. Los montos exactos pueden variar ligeramente debido al redondeo que aplica la TSS a nivel de cada empleado y el cálculo del SRL según el riesgo específico de la empresa.
+                * <strong>Nota aclaratoria:</strong> Este documento es de uso interno para fines de cuadre o estimaciÃ³n y no sustituye la factura oficial emitida por el Sistema Ãšnico de InformaciÃ³n y Recaudo (SUIR) de la TSS. Los montos exactos pueden variar ligeramente debido al redondeo que aplica la TSS a nivel de cada empleado y el cÃ¡lculo del SRL segÃºn el riesgo especÃ­fico de la empresa.
             </div>
         </div>
     `;
@@ -5615,7 +5617,7 @@ window.renderTransferReport = (payrollId, filterDepts) => {
     }
     
     if (!selectedPayroll) {
-        alert("Seleccione una nómina activa primero.");
+        alert("Seleccione una nÃ³mina activa primero.");
         return;
     }
 
@@ -5636,7 +5638,7 @@ window.renderTransferReport = (payrollId, filterDepts) => {
         <div class="card mt-4 print-area">
             <h2 style="text-align: center; margin-bottom: 5px;">Reporte de Pagos por Transferencia</h2>
             <p style="text-align: center; font-weight: 500; color: var(--gray); margin-bottom: 20px;">
-                Nómina: ${selectedPayroll.name}
+                NÃ³mina: ${selectedPayroll.name}
             </p>
     `;
 
@@ -5721,9 +5723,9 @@ window.renderTransferReport = (payrollId, filterDepts) => {
                 <table class="data-table" style="table-layout: fixed; width: 100%;">
                     <thead>
                         <tr>
-                            <th style="width: 8%;">Nº Emp.</th>
+                            <th style="width: 8%;">NÂº Emp.</th>
                             <th style="width: 30%;">Nombre Completo</th>
-                            <th style="width: 15%;">Cédula</th>
+                            <th style="width: 15%;">CÃ©dula</th>
                             <th style="width: 17%;">Banco</th>
                             <th style="width: 15%;">Cuenta</th>
                             <th class="text-right" style="width: 15%;">Total a Cobrar</th>
@@ -5744,7 +5746,7 @@ window.renderTransferReport = (payrollId, filterDepts) => {
     });
 
     if (totalTransfer === 0) {
-        reportHtml += `<p style="text-align: center; margin-top: 30px;">No hay empleados con pago por transferencia en los departamentos seleccionados que tengan cobro en esta nómina.</p>`;
+        reportHtml += `<p style="text-align: center; margin-top: 30px;">No hay empleados con pago por transferencia en los departamentos seleccionados que tengan cobro en esta nÃ³mina.</p>`;
     } else {
         reportHtml += `
             <div style="margin-top: 30px; text-align: right; padding: 15px; background: var(--glass-bg); border-radius: 8px; border: 2px solid var(--accent-color);">
@@ -5811,10 +5813,10 @@ const renderEmployeeRecord = (container) => {
 
     container.innerHTML = `
             <div class="header-action no-print">
-                    <h1>Récord de Ganancias por Empleado</h1>
+                    <h1>RÃ©cord de Ganancias por Empleado</h1>
                     <div style="display: flex; gap: 10px;">
                         <button class="btn btn-secondary" onclick="window.print()">
-                            <i class="fas fa-print"></i> Imprimir Récord
+                            <i class="fas fa-print"></i> Imprimir RÃ©cord
                         </button>
                     </div>
                 </div>
@@ -5844,7 +5846,7 @@ const renderEmployeeRecord = (container) => {
 
                 <div class="card mt-4 print-area landscape-print">
                     <div class="record-print-header" style="text-align: center; margin-bottom: 25px;">
-                        <h2 style="margin-bottom: 5px;">DETALLE DE GANANCIAS POR NÓMINA</h2>
+                        <h2 style="margin-bottom: 5px;">DETALLE DE GANANCIAS POR NÃ“MINA</h2>
                         <h3 style="color: var(--accent-color);">${data.employeeName || 'Seleccione un empleado'}</h3>
                         <p style="color: var(--gray);">Rango: ${data.startDate} al ${data.endDate}</p>
                     </div>
@@ -5852,7 +5854,7 @@ const renderEmployeeRecord = (container) => {
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Nómina</th>
+                                <th>NÃ³mina</th>
                                 <th>Cierre</th>
                                 <th class="text-right">Sueldo Base</th>
                                 <th class="text-right">Incentivos</th>
@@ -5918,11 +5920,11 @@ const renderPayrollEntry = (container) => {
     if (!hasActive && !hasHistory) {
         container.innerHTML = `
             <div class="header-action">
-                <h1>Entrada de Nómina</h1>
+                <h1>Entrada de NÃ³mina</h1>
                     </div >
             <div class="card mt-4">
                 <div class="status-box warning">
-                    <p>No hay nóminas activas ni históricas para visualizar.</p>
+                    <p>No hay nÃ³minas activas ni histÃ³ricas para visualizar.</p>
                 </div>
             </div>
         `;
@@ -5960,6 +5962,11 @@ const renderPayrollEntry = (container) => {
         isHistorical = !hasActive || getRunId(run) != state.activePayrolls[0].id;
     }
 
+    if (window.selectedEntryDept === undefined) {
+        window.selectedEntryDept = 'all';
+    }
+    const filterDept = window.selectedEntryDept;
+
     const debits = {}; // key: "Account|Activity", value: amount
     let totalCredits = {
         tss: 0,
@@ -5975,6 +5982,7 @@ const renderPayrollEntry = (container) => {
         run.results.forEach(res => {
             const dept = res.dept || res.department || 'Sin clasificar';
             if (!window.hasDepartmentAccess(dept)) return;
+            if (filterDept !== 'all' && dept !== filterDept) return;
             
             totalCredits.tss += (res.tss || 0);
             totalCredits.isr += (res.isr || 0);
@@ -6047,13 +6055,18 @@ const renderPayrollEntry = (container) => {
             }
             
             if (!window.hasDepartmentAccess(dept)) return;
+            if (filterDept !== 'all' && dept !== filterDept) return;
             const key = `${l.op || 'Sin Cuenta'}|${l.act || '-'}`;
             debits[key] = (debits[key] || 0) + (parseFloat(l.amount) || 0);
         });
 
     } else {
         // Active Case or Fallback: Calculate fresh
-        window.getVisibleEmployees(run?.periodType).filter(e => e.active !== false).forEach(emp => {
+        window.getVisibleEmployees(run?.periodType).filter(e => {
+            if (e.active === false) return false;
+            if (filterDept !== 'all' && e.department !== filterDept) return false;
+            return true;
+        }).forEach(emp => {
             const data = calculateEmployeePayrollData(emp, run);
             const empFullName = `${emp.firstName} ${emp.lastName} `;
 
@@ -6126,7 +6139,7 @@ const renderPayrollEntry = (container) => {
     container.innerHTML = `
             <div class="header-action">
                     <div>
-                        <h1>Entrada de Nómina</h1>
+                        <h1>Entrada de NÃ³mina</h1>
                         <div class="mt-2 no-print" style="display: flex; gap: 5px;">
                             <button class="btn ${viewMode === 'summary' ? 'btn-primary' : 'btn-secondary'} btn-sm" onclick="window.payrollEntryViewMode = 'summary'; renderSection('payroll-entry')">
                                 <i class="fas fa-list"></i> Resumen (Diario)
@@ -6138,13 +6151,20 @@ const renderPayrollEntry = (container) => {
                     </div>
                     <div style="display: flex; gap: 10px; align-items: flex-end;">
                         <div class="no-print">
-                            <label style="display: block; font-size: 0.8rem; margin-bottom: 4px;">Seleccionar Nómina:</label>
+                            <label style="display: block; font-size: 0.8rem; margin-bottom: 4px;">Seleccionar Departamento:</label>
+                            <select class="form-control" style="width: 200px;" onchange="window.selectedEntryDept = this.value; renderSection('payroll-entry')">
+                                <option value="all" ${filterDept === 'all' ? 'selected' : ''}>Todos los Departamentos</option>
+                                ${(state.departments || []).map(d => `<option value="${d.name}" ${filterDept === d.name ? 'selected' : ''}>${d.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="no-print">
+                            <label style="display: block; font-size: 0.8rem; margin-bottom: 4px;">Seleccionar NÃ³mina:</label>
                             <select class="form-control" style="width: 250px;" onchange="window.selectedEntryRunId = this.value; renderSection('payroll-entry')">
-                                ${(state.activePayrolls || []).length > 0 ? `<optgroup label="Nóminas Abiertas">` : ''}
+                                ${(state.activePayrolls || []).length > 0 ? `<optgroup label="NÃ³minas Abiertas">` : ''}
                                 ${(state.activePayrolls || []).map(p => `<option value="${p.id}" ${currentRunId == p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                                 ${(state.activePayrolls || []).length > 0 ? `</optgroup>` : ''}
                                 
-                                ${(state.payrollHistory || []).length > 0 ? `<optgroup label="Histórico">` : ''}
+                                ${(state.payrollHistory || []).length > 0 ? `<optgroup label="HistÃ³rico">` : ''}
                                 ${(state.payrollHistory || []).map(h => {
         const rid = getRunId(h);
         return `<option value="${rid}" ${currentRunId == rid ? 'selected' : ''}>${h.payrollName || h.name} (${h.periodStart})</option>`;
@@ -6162,7 +6182,7 @@ const renderPayrollEntry = (container) => {
 
             <div class="card mt-4 print-area" id="journal-entry-container">
                 <div style="text-align: center; margin-bottom: 25px;">
-                    <h2 style="margin: 0; color: var(--primary);">${viewMode === 'summary' ? 'ENTRADA DE DIARIO - NÓMINA' : 'CARGOS POR TRABAJADOR - NÓMINA'}</h2>
+                    <h2 style="margin: 0; color: var(--primary);">${viewMode === 'summary' ? 'ENTRADA DE DIARIO - NÃ“MINA' : 'CARGOS POR TRABAJADOR - NÃ“MINA'}</h2>
                     <p style="margin: 5px 0; font-weight: 600;">${run.name || run.payrollName}</p>
                     <p class="text-gray" style="font-size: 0.9rem;">Fecha de Proceso: ${new Date().toLocaleDateString()}</p>
                 </div>
@@ -6283,6 +6303,8 @@ const renderPayrollEntry = (container) => {
                 run.results.forEach(res => {
                     const emp = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
                     if (emp && !window.hasDepartmentAccess(emp.department)) return;
+                    const dept = res.dept || res.department || (emp ? emp.department : 'Sin clasificar');
+                    if (filterDept !== 'all' && dept !== filterDept) return;
                     const rType = (res.type || (emp ? emp.type : '')).toLowerCase();
                     const isFixed = rType.includes('fix') || rType.includes('fij') || rType.includes('mensual');
 
@@ -6323,12 +6345,14 @@ const renderPayrollEntry = (container) => {
                 run.results.forEach(res => {
                     const empCheck = state.employees.find(e => (e.idNumber && res.idNumber && e.idNumber === res.idNumber) || (`${e.firstName} ${e.lastName}`.trim().toLowerCase() === (res.fullName || '').trim().toLowerCase()));
                     if (empCheck && !window.hasDepartmentAccess(empCheck.department)) return;
+                    const dept = res.dept || res.department || (empCheck ? empCheck.department : 'Sin clasificar');
+                    if (filterDept !== 'all' && dept !== filterDept) return;
                     if (res.incentives > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.incentives || 'Incentivos'), act: '-', amt: res.incentives });
                     if (res.overtime > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.overtime || 'Horas Extras'), act: '-', amt: res.overtime });
                     if (res.christmas > 0) rows.push({ name: res.fullName, acc: getAccNum(state.settings.payrollAccounts?.christmas || 'Navidad'), act: '-', amt: res.christmas });
                 });
             } else {
-                window.getVisibleEmployees(run?.periodType).filter(e => e.active !== false).forEach(emp => {
+                window.getVisibleEmployees(run?.periodType).filter(e => { if (e.active === false) return false; if (filterDept !== 'all' && e.department !== filterDept) return false; return true; }).forEach(emp => {
                     const data = calculateEmployeePayrollData(emp, run);
                     const empFullName = `${emp.firstName} ${emp.lastName}`;
                     if (emp.type === 'fixed') {
@@ -6566,11 +6590,11 @@ const renderChristmasSalary = (container) => {
 
     container.innerHTML = `
             <div class="header-action no-print">
-            <h1>Salario de Navidad (Regalía Pascual)</h1>
+            <h1>Salario de Navidad (RegalÃ­a Pascual)</h1>
             <div class="action-group" style="gap: 10px">
                 <select id="chr-payment-mode" class="form-control" style="width: 250px">
-                    <option value="current">Agregar a Nómina Abierta</option>
-                    <option value="new">Crear Nómina Especial Solo Regalía</option>
+                    <option value="current">Agregar a NÃ³mina Abierta</option>
+                    <option value="new">Crear NÃ³mina Especial Solo RegalÃ­a</option>
                 </select>
                 <button class="btn btn-primary" id="process-christmas-btn">
                     <i class="fas fa-check-circle"></i> Procesar Pagos Seleccionados
@@ -6581,11 +6605,11 @@ const renderChristmasSalary = (container) => {
         <div class="card mt-4 no-print">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; align-items: flex-end;">
                 <div class="form-group mb-0">
-                    <label>Desde (Inicio Acumulación)</label>
+                    <label>Desde (Inicio AcumulaciÃ³n)</label>
                     <input type="date" id="chr-start-date" class="form-control" value="${filters.startDate}">
                 </div>
                 <div class="form-group mb-0">
-                    <label>Hasta (Fin Acumulación)</label>
+                    <label>Hasta (Fin AcumulaciÃ³n)</label>
                     <input type="date" id="chr-end-date" class="form-control" value="${filters.endDate}">
                 </div>
                 <button class="btn btn-secondary" style="height: 42px;" id="chr-refresh-btn">
@@ -6612,7 +6636,7 @@ const renderChristmasSalary = (container) => {
 
         <div class="card mt-4">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3>Calculadora de Regalía</h3>
+                <h3>Calculadora de RegalÃ­a</h3>
                 <p class="text-gray" style="font-size: 0.9rem;">Periodo: 12va parte de lo ganado en el rango seleccionado.</p>
             </div>
             <table class="data-table">
@@ -6620,11 +6644,11 @@ const renderChristmasSalary = (container) => {
                     <tr>
                         <th style="width: 40px"><input type="checkbox" id="select-all-chr"></th>
                         <th>Empleado</th>
-                        <th>Rango de Cálculo</th>
+                        <th>Rango de CÃ¡lculo</th>
                         <th style="text-align: right">Historicos</th>
                         <th style="text-align: right">Acumulado</th>
                         <th style="text-align: right">Calculado (1/12)</th>
-                        <th>¿OK?</th>
+                        <th>Â¿OK?</th>
                         <th style="text-align: right">Monto Pagar</th>
                     </tr>
                 </thead>
@@ -6634,7 +6658,7 @@ const renderChristmasSalary = (container) => {
                             <td><input type="checkbox" class="chr-select" data-index="${i}"></td>
                             <td>
                                 <strong>${d.name}</strong><br>
-                                <small class="text-gray" title="${d.detailList.join('\\n')}">${d.payrollsCounted} nóminas incluidas</small>
+                                <small class="text-gray" title="${d.detailList.join('\\n')}">${d.payrollsCounted} nÃ³minas incluidas</small>
                             </td>
                             <td>
                                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -6643,7 +6667,7 @@ const renderChristmasSalary = (container) => {
                                 </div>
                             </td>
                             <td style="text-align: right">
-                                <button class="btn-icon" onclick="alert('Detalle de nóminas:\\n\\n${d.detailList.join('\\n') || 'Ninguna nómina encontrada en este rango'}')" title="Ver detalle">
+                                <button class="btn-icon" onclick="alert('Detalle de nÃ³minas:\\n\\n${d.detailList.join('\\n') || 'Ninguna nÃ³mina encontrada en este rango'}')" title="Ver detalle">
                                     <i class="fas fa-search-plus"></i>
                                 </button>
                             </td>
@@ -6651,7 +6675,7 @@ const renderChristmasSalary = (container) => {
                             <td style="text-align: right; font-weight: bold; color: var(--primary);">$${d.calculated.toFixed(2)}</td>
                             <td>
                                 <select class="form-control chr-agreement" data-index="${i}" style="width: 65px; padding: 2px 5px; height: 30px;">
-                                    <option value="si">SÍ</option>
+                                    <option value="si">SÃ</option>
                                     <option value="no">NO</option>
                                 </select>
                             </td>
@@ -6666,7 +6690,7 @@ const renderChristmasSalary = (container) => {
         </div>
 
         <div class="card mt-4">
-            <h3>Historial de Pagos de Regalía</h3>
+            <h3>Historial de Pagos de RegalÃ­a</h3>
             <table class="data-table">
                 <thead>
                     <tr>
@@ -6723,9 +6747,9 @@ const renderChristmasSalary = (container) => {
         if (selected.length === 0) return alert('Seleccione empleados.');
 
         const mode = document.getElementById('chr-payment-mode').value;
-        if (mode === 'current' && !state.activePayroll) return alert('Abra una nómina primero.');
+        if (mode === 'current' && !state.activePayroll) return alert('Abra una nÃ³mina primero.');
 
-        if (!confirm(`¿Procesar pagos para ${selected.length} empleados?`)) return;
+        if (!confirm(`Â¿Procesar pagos para ${selected.length} empleados?`)) return;
 
         const payments = selected.map(idx => {
             const data = christmasData[idx];
@@ -6739,7 +6763,7 @@ const renderChristmasSalary = (container) => {
                 date: new Date().toISOString().split('T')[0],
                 periodStart: data.startDate,
                 periodEnd: data.endDate,
-                reason: `Regalía Pascual`,
+                reason: `RegalÃ­a Pascual`,
                 createdBy: window.globalState.currentUser?.name || 'Desconocido'
             };
         });
@@ -6749,7 +6773,7 @@ const renderChristmasSalary = (container) => {
         } else {
             const newPayroll = {
                 id: Date.now(),
-                name: `REGALÍA PASCUAL ${new Date().getFullYear()}`,
+                name: `REGALÃA PASCUAL ${new Date().getFullYear()}`,
                 periodType: 'Especial (Navidad)',
                 startDate: payments[0].periodStart,
                 endDate: payments[0].periodEnd,
@@ -6767,7 +6791,7 @@ const renderChristmasSalary = (container) => {
 };
 
 window.deleteChristmasPayment = (index) => {
-    if (!confirm('¿Seguro que desea eliminar este registro de pago? El cálculo volverá a incluir este periodo.')) return;
+    if (!confirm('Â¿Seguro que desea eliminar este registro de pago? El cÃ¡lculo volverÃ¡ a incluir este periodo.')) return;
     state.christmasSalary.splice(index, 1);
     saveState();
     renderSection('christmas-salary');
@@ -6876,7 +6900,7 @@ window.renderChristmasReportByDepartment = () => {
         <div class="card mt-4 print-area">
             <h2 style="text-align: center; margin-bottom: 5px;">Reporte Salario de Navidad por Departamento</h2>
             <p style="text-align: center; font-weight: 500; color: var(--gray); margin-bottom: 20px;">
-                Rango de Cálculo: ${filters.startDate} al ${filters.endDate}
+                Rango de CÃ¡lculo: ${filters.startDate} al ${filters.endDate}
             </p>
     `;
 
@@ -6913,13 +6937,13 @@ window.renderChristmasReportByDepartment = () => {
                 <thead>
                     <tr>
                         <th style="width: 40%;">Empleado</th>
-                        <th style="width: 20%;">Cédula</th>
+                        <th style="width: 20%;">CÃ©dula</th>
                         <th class="text-right" style="width: 20%;">Total Acumulado</th>
                         <th class="text-right" style="width: 20%;">Navidad Calculada (1/12)</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${rows || '<tr><td colspan="4" style="text-align:center">No hay empleados con cálculo mayor a 0</td></tr>'}
+                    ${rows || '<tr><td colspan="4" style="text-align:center">No hay empleados con cÃ¡lculo mayor a 0</td></tr>'}
                 </tbody>
                 <tfoot style="display: table-row-group; font-weight: bold; border-top: 2px solid #ddd;">
                     <tr>
@@ -6991,7 +7015,7 @@ window.editDailyLog = (index) => {
                 </div >
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Operación</label>
+                        <label>OperaciÃ³n</label>
                         <select id="edit-reg-op" class="form-control">
                             ${state.operations.filter(o => o.active !== false && (o.useInLabor === undefined || o.useInLabor)).map(o => `<option value="${o.name}" ${log.op === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
                         </select>
@@ -7005,14 +7029,14 @@ window.editDailyLog = (index) => {
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Monto Real del Día ($)</label>
+                        <label>Monto Real del DÃ­a ($)</label>
                         <input type="number" id="edit-reg-amount" class="form-control" value="${log.amount}">
                     </div>
                     <div class="form-group">
-                        <label>¿Aplicar Descuento TSS?</label>
+                        <label>Â¿Aplicar Descuento TSS?</label>
                         <select id="edit-reg-tss" class="form-control">
-                            <option value="si" ${log.applyTSS === 'si' ? 'selected' : ''}>Sí — Descontar TSS</option>
-                            <option value="no" ${log.applyTSS === 'no' ? 'selected' : ''}>No — Sin descuento TSS</option>
+                            <option value="si" ${log.applyTSS === 'si' ? 'selected' : ''}>SÃ­ â€” Descontar TSS</option>
+                            <option value="no" ${log.applyTSS === 'no' ? 'selected' : ''}>No â€” Sin descuento TSS</option>
                         </select>
                     </div>
                 </div>
@@ -7048,7 +7072,7 @@ window.editDailyLog = (index) => {
 };
 
 window.annulDailyLog = (index) => {
-    if (confirm('¿Seguro que desea anular este registro diario?')) {
+    if (confirm('Â¿Seguro que desea anular este registro diario?')) {
         const activePayroll = state.activePayrolls.find(p => p.id == window.selectedDailyPayrollId) || state.activePayrolls[0];
         const log = activePayroll.dailyLogs[index];
         log.status = 'anulado';
@@ -7066,11 +7090,11 @@ window.editEmployee = (index) => {
     showModal('Editar Empleado', `
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Nº de Registro</label>
+                        <label>NÂº de Registro</label>
                         <input type="number" id="edit-emp-reg" class="form-control" value="${emp.regNumber || ''}">
                     </div>
                     <div class="form-group">
-                        <label>Género</label>
+                        <label>GÃ©nero</label>
                         <select id="edit-emp-gender" class="form-control">
                             <option value="">Seleccionar...</option>
                             <option value="M" ${emp.gender === 'M' ? 'selected' : ''}>Masculino</option>
@@ -7090,25 +7114,25 @@ window.editEmployee = (index) => {
                 </div >
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Cédula o Pasaporte</label>
+                        <label>CÃ©dula o Pasaporte</label>
                         <input type="text" id="edit-emp-id" class="form-control" value="${emp.idNumber}">
                     </div>
                     <div class="form-group">
                         <label>Tipo de Empleado</label>
                         <select id="edit-emp-type" class="form-control">
                             <option value="fixed" ${emp.type === 'fixed' ? 'selected' : ''}>Fijo</option>
-                            <option value="mobile" ${emp.type === 'mobile' ? 'selected' : ''}>Móvil</option>
+                            <option value="mobile" ${emp.type === 'mobile' ? 'selected' : ''}>MÃ³vil</option>
                         </select>
                     </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Teléfono</label>
+                        <label>TelÃ©fono</label>
                         <input type="text" id="edit-emp-phone" class="form-control" value="${emp.phone || ''}">
                     </div>
                     <div class="form-group">
-                        <label>Frecuencia de Nómina</label>
+                        <label>Frecuencia de NÃ³mina</label>
                         <select id="edit-emp-frequency" class="form-control">
-                            <option value="">Todas (Cualquier Nómina)</option>
+                            <option value="">Todas (Cualquier NÃ³mina)</option>
                             <option value="Semanal" ${(emp.payrollFrequency || '').toLowerCase() === 'semanal' ? 'selected' : ''}>Semanal</option>
                             <option value="Bisemanal" ${(emp.payrollFrequency || '').toLowerCase() === 'bisemanal' ? 'selected' : ''}>Bisemanal</option>
                             <option value="Quincenal" ${(emp.payrollFrequency || '').toLowerCase() === 'quincenal' ? 'selected' : ''}>Quincenal</option>
@@ -7118,9 +7142,9 @@ window.editEmployee = (index) => {
                     </div>
                 </div>
                 <div class="form-group" id="edit-emp-tss-calc-group" style="display: ${emp.type === 'fixed' ? 'block' : 'none'};">
-                    <label>Cálculo de TSS</label>
+                    <label>CÃ¡lculo de TSS</label>
                     <select id="edit-emp-calc-tss" class="form-control">
-                        <option value="auto" ${emp.calcTSS !== false ? 'selected' : ''}>Automático</option>
+                        <option value="auto" ${emp.calcTSS !== false ? 'selected' : ''}>AutomÃ¡tico</option>
                         <option value="manual" ${emp.calcTSS === false ? 'selected' : ''}>No calcular (Manual)</option>
                     </select>
                 </div>
@@ -7129,7 +7153,7 @@ window.editEmployee = (index) => {
                     <input type="number" id="edit-emp-salary" class="form-control" value="${emp.salary}" ${emp.type === 'mobile' ? 'disabled' : ''}>
                 </div>
                 <div class="form-group">
-                    <label>Dirección</label>
+                    <label>DirecciÃ³n</label>
                     <input type="text" id="edit-emp-address" class="form-control" value="${emp.address || ''}">
                 </div>
                 <div class="form-group">
@@ -7145,7 +7169,7 @@ window.editEmployee = (index) => {
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Operación Defecto</label>
+                        <label>OperaciÃ³n Defecto</label>
                         <select id="edit-emp-op" class="form-control">
                             <option value="">Seleccionar...</option>
                             ${state.operations.filter(o => o.active !== false && (o.useInLabor === undefined || o.useInLabor)).map(o => `<option value="${o.name}" ${emp.operation === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
@@ -7161,7 +7185,7 @@ window.editEmployee = (index) => {
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Método de Pago</label>
+                        <label>MÃ©todo de Pago</label>
                         <select id="edit-emp-payment-method" class="form-control">
                             <option value="cash" ${emp.paymentMethod === 'cash' ? 'selected' : ''}>Efectivo</option>
                             <option value="transfer" ${emp.paymentMethod === 'transfer' ? 'selected' : ''}>Transferencia</option>
@@ -7177,18 +7201,18 @@ window.editEmployee = (index) => {
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Número de Cuenta</label>
+                        <label>NÃºmero de Cuenta</label>
                         <input type="text" id="edit-emp-account-number" class="form-control" value="${emp.accountNumber || ''}">
                     </div>
                 </div>
                 <div class="form-group">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" id="edit-emp-active" ${emp.active !== false ? 'checked' : ''}> Empleado Activo (Aparece en Nómina)
+                        <input type="checkbox" id="edit-emp-active" ${emp.active !== false ? 'checked' : ''}> Empleado Activo (Aparece en NÃ³mina)
                     </label>
                 </div>
                 <div class="form-group">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" id="edit-emp-isr" ${emp.applyISR !== false ? 'checked' : ''}> Aplicar Retención de ISR (Impuesto Sobre la Renta)
+                        <input type="checkbox" id="edit-emp-isr" ${emp.applyISR !== false ? 'checked' : ''}> Aplicar RetenciÃ³n de ISR (Impuesto Sobre la Renta)
                     </label>
                 </div>
                 <div class="form-group" id="edit-emp-fixed-isr-group" style="display: ${emp.applyISR !== false ? 'none' : 'block'}; margin-left: 20px;">
@@ -7286,7 +7310,7 @@ window.printEmployeeRecord = (index) => {
         salaryHtml = `
             <div class="info-group">
                 <span class="label">Tipo de Salario:</span>
-                <span class="value">Móvil (Por rendimiento/tarea)</span>
+                <span class="value">MÃ³vil (Por rendimiento/tarea)</span>
             </div>
         `;
     }
@@ -7295,7 +7319,7 @@ window.printEmployeeRecord = (index) => {
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Récord de Empleado - ${emp.firstName} ${emp.lastName}</title>
+            <title>RÃ©cord de Empleado - ${emp.firstName} ${emp.lastName}</title>
             <style>
                 body {
                     font-family: 'Arial', sans-serif;
@@ -7370,15 +7394,15 @@ window.printEmployeeRecord = (index) => {
             </div>
             
             <div class="header">
-                <h1>Récord de Empleado</h1>
-                <p>Sistema de Gestión de Nómina</p>
+                <h1>RÃ©cord de Empleado</h1>
+                <p>Sistema de GestiÃ³n de NÃ³mina</p>
             </div>
 
             <div class="section">
-                <div class="section-title">Información Principal</div>
+                <div class="section-title">InformaciÃ³n Principal</div>
                 <div class="grid">
                     <div class="info-group">
-                        <span class="label">Número Único de Registro:</span>
+                        <span class="label">NÃºmero Ãšnico de Registro:</span>
                         <span class="value" style="font-size: 1.3em; font-weight: bold; color: #dc2626;">${emp.regNumber || 'N/A'}</span>
                     </div>
                     <div class="info-group">
@@ -7390,7 +7414,7 @@ window.printEmployeeRecord = (index) => {
                         <span class="value">${emp.firstName} ${emp.lastName}</span>
                     </div>
                     <div class="info-group">
-                        <span class="label">Cédula/Pasaporte:</span>
+                        <span class="label">CÃ©dula/Pasaporte:</span>
                         <span class="value">${emp.idNumber || 'N/A'}</span>
                     </div>
                 </div>
@@ -7400,22 +7424,22 @@ window.printEmployeeRecord = (index) => {
                 <div class="section-title">Datos Personales</div>
                 <div class="grid">
                     <div class="info-group">
-                        <span class="label">Género:</span>
+                        <span class="label">GÃ©nero:</span>
                         <span class="value">${emp.gender === 'M' ? 'Masculino' : (emp.gender === 'F' ? 'Femenino' : 'No especificado')}</span>
                     </div>
                     <div class="info-group">
-                        <span class="label">Teléfono:</span>
+                        <span class="label">TelÃ©fono:</span>
                         <span class="value">${emp.phone || 'N/A'}</span>
                     </div>
                     <div class="info-group" style="grid-column: 1 / -1;">
-                        <span class="label">Dirección:</span>
+                        <span class="label">DirecciÃ³n:</span>
                         <span class="value">${emp.address || 'N/A'}</span>
                     </div>
                 </div>
             </div>
 
             <div class="section">
-                <div class="section-title">Información Laboral</div>
+                <div class="section-title">InformaciÃ³n Laboral</div>
                 <div class="grid">
                     <div class="info-group">
                         <span class="label">Fecha de Ingreso:</span>
@@ -7426,7 +7450,7 @@ window.printEmployeeRecord = (index) => {
                         <span class="value">${emp.department || 'N/A'}</span>
                     </div>
                     <div class="info-group">
-                        <span class="label">Operación Asignada:</span>
+                        <span class="label">OperaciÃ³n Asignada:</span>
                         <span class="value">${emp.operation || 'N/A'}</span>
                     </div>
                     <div class="info-group">
@@ -7437,15 +7461,15 @@ window.printEmployeeRecord = (index) => {
             </div>
 
             <div class="section">
-                <div class="section-title">Información de Pago</div>
+                <div class="section-title">InformaciÃ³n de Pago</div>
                 <div class="grid">
                     <div class="info-group">
                         <span class="label">Tipo de Empleado:</span>
-                        <span class="value">${emp.type === 'fixed' ? 'Fijo' : 'Móvil'}</span>
+                        <span class="value">${emp.type === 'fixed' ? 'Fijo' : 'MÃ³vil'}</span>
                     </div>
                     ${salaryHtml}
                     <div class="info-group">
-                        <span class="label">Método de Pago:</span>
+                        <span class="label">MÃ©todo de Pago:</span>
                         <span class="value">${emp.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'}</span>
                     </div>
                     ${emp.paymentMethod === 'transfer' ? `
@@ -7458,7 +7482,7 @@ window.printEmployeeRecord = (index) => {
             </div>
 
             <div class="footer">
-                Documento generado por NóminaApp el ${new Date().toLocaleString()}<br>
+                Documento generado por NÃ³minaApp el ${new Date().toLocaleString()}<br>
                 Registrado en sistema por: ${emp.createdBy || 'Sistema'}
             </div>
         </body>
@@ -7471,23 +7495,23 @@ window.printEmployeeRecord = (index) => {
 
 window.editOperation = (index) => {
     const op = state.operations[index];
-    showModal('Editar Operación', `
+    showModal('Editar OperaciÃ³n', `
             < div class="form-group" >
-                    <label>Nombre de la Operación</label>
+                    <label>Nombre de la OperaciÃ³n</label>
                     <input type="text" id="edit-op-name" class="form-control" value="${op.name}">
                 </div>
                 <div class="form-group">
-                    <label>Número de Cuenta Contable</label>
+                    <label>NÃºmero de Cuenta Contable</label>
                     <input type="text" id="edit-op-account" class="form-control" value="${op.account}">
                 </div>
                 <div class="form-group">
-                    <label>Propósitos de la Operación:</label>
+                    <label>PropÃ³sitos de la OperaciÃ³n:</label>
                     <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px;">
                         <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
                             <input type="checkbox" id="edit-op-use-acc" ${(op.useInAccounting === undefined || op.useInAccounting) ? 'checked' : ''}> Utilizar en contabilidad
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
-                            <input type="checkbox" id="edit-op-use-labor" ${(op.useInLabor === undefined || op.useInLabor) ? 'checked' : ''}> Utilizar en empleados fijos y móviles
+                            <input type="checkbox" id="edit-op-use-labor" ${(op.useInLabor === undefined || op.useInLabor) ? 'checked' : ''}> Utilizar en empleados fijos y mÃ³viles
                         </label>
                     </div>
                 </div>
@@ -7540,7 +7564,7 @@ window.editActivity = (index) => {
                     <input type="text" id="edit-act-name" class="form-control" value="${act.name}">
                 </div>
                 <div class="form-group">
-                    <label>Valor / Número (Otro objetivo)</label>
+                    <label>Valor / NÃºmero (Otro objetivo)</label>
                     <input type="number" id="edit-act-value" class="form-control" value="${act.value || 0}">
                 </div>
                 <div class="form-group">
@@ -7588,7 +7612,7 @@ window.editActivity = (index) => {
 };
 
 window.deleteItem = (key, index) => {
-    if (confirm('¿Seguro que desea eliminar este registro?')) {
+    if (confirm('Â¿Seguro que desea eliminar este registro?')) {
         state[key].splice(index, 1);
         saveState();
         renderSection(key);
@@ -7638,7 +7662,7 @@ window.quickAddIncentive = (employeeName) => {
         if (inc.employeeName && inc.amount && inc.date) {
             const bounds = getPayrollBounds();
             if (bounds && (inc.date < bounds.min || inc.date > bounds.max)) {
-                alert(`La fecha debe estar dentro del rango de la nómina(${bounds.min} a ${bounds.max})`);
+                alert(`La fecha debe estar dentro del rango de la nÃ³mina(${bounds.min} a ${bounds.max})`);
                 return;
             }
 
@@ -7668,7 +7692,7 @@ window.quickAddOvertime = (employeeName) => {
         return `${e.firstName} ${e.lastName} ` === empNameFinal;
     });
     if (!employee || employee.type !== 'fixed') {
-        alert('Solo empleados fijos aplican para horas extras automáticas.');
+        alert('Solo empleados fijos aplican para horas extras automÃ¡ticas.');
         return;
     }
 
@@ -7694,7 +7718,7 @@ window.quickAddOvertime = (employeeName) => {
             <div class="form-row">
                 <div class="form-group" style="display: flex; align-items: center; margin-top: 15px;">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
-                        <input type="checkbox" id="ot-apply-tss"> Calcular retención de TSS
+                        <input type="checkbox" id="ot-apply-tss"> Calcular retenciÃ³n de TSS
                     </label>
                 </div>
             </div>
@@ -7708,7 +7732,7 @@ window.quickAddOvertime = (employeeName) => {
         if (hours && date) {
             const bounds = getPayrollBounds();
             if (bounds && (date < bounds.min || date > bounds.max)) {
-                alert(`La fecha debe estar dentro del rango de la nómina(${bounds.min} a ${bounds.max})`);
+                alert(`La fecha debe estar dentro del rango de la nÃ³mina(${bounds.min} a ${bounds.max})`);
                 return;
             }
 
@@ -7905,9 +7929,9 @@ window.printHistoricalBenefits = (docId) => {
     document.getElementById('rep-spd').innerText = fmt(record.SPD);
     document.getElementById('rep-salario').innerText = fmt(record.salaryMonthly) + ' Mensual';
 
-    document.getElementById('rep-preaviso').innerHTML = parseFloat(record.montoPreaviso) > 0 ? `${fmt(record.montoPreaviso)} (${record.diasPreaviso || 0} días)` : 'RD$0.00';
-    document.getElementById('rep-cesantia').innerHTML = parseFloat(record.montoCesantia) > 0 ? `${fmt(record.montoCesantia)} (${record.diasCesantia || 0} días)` : 'RD$0.00';
-    document.getElementById('rep-vacaciones').innerHTML = parseFloat(record.montoVacaciones) > 0 ? `${fmt(record.montoVacaciones)} (${record.diasVacaciones || 0} días)` : '0.00';
+    document.getElementById('rep-preaviso').innerHTML = parseFloat(record.montoPreaviso) > 0 ? `${fmt(record.montoPreaviso)} (${record.diasPreaviso || 0} dÃ­as)` : 'RD$0.00';
+    document.getElementById('rep-cesantia').innerHTML = parseFloat(record.montoCesantia) > 0 ? `${fmt(record.montoCesantia)} (${record.diasCesantia || 0} dÃ­as)` : 'RD$0.00';
+    document.getElementById('rep-vacaciones').innerHTML = parseFloat(record.montoVacaciones) > 0 ? `${fmt(record.montoVacaciones)} (${record.diasVacaciones || 0} dÃ­as)` : '0.00';
 
     document.getElementById('rep-subtotal').innerText = fmt(record.subTotal);
 
@@ -7918,7 +7942,7 @@ window.printHistoricalBenefits = (docId) => {
 
     const end = (typeof record.dateEnd === 'string') ? new Date(record.dateEnd) : (record.dateEnd && record.dateEnd.toDate ? record.dateEnd.toDate() : new Date());
     const monthNames = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
-    document.getElementById('rep-fecha-doc').innerText = `DADO A LOS ${end.getDate().toString().padStart(2, '0')} DÍAS DEL MES DE ${monthNames[end.getMonth()]} DEL AÑO ${end.getFullYear()}`;
+    document.getElementById('rep-fecha-doc').innerText = `DADO A LOS ${end.getDate().toString().padStart(2, '0')} DÃAS DEL MES DE ${monthNames[end.getMonth()]} DEL AÃ‘O ${end.getFullYear()}`;
 
     document.getElementById('benefits-report-area').style.display = 'block';
     
@@ -7932,7 +7956,7 @@ window.printHistoricalBenefits = (docId) => {
 };
 
 window.revertBenefits = async (docId, employeeId, idNumber) => {
-    if (!confirm("¿Seguro que desea reversar este registro? El empleado volverá a estar activo (se quitará su fecha de salida) y el registro se eliminará.")) return;
+    if (!confirm("Â¿Seguro que desea reversar este registro? El empleado volverÃ¡ a estar activo (se quitarÃ¡ su fecha de salida) y el registro se eliminarÃ¡.")) return;
     try {
         await firebase.firestore().collection('benefitsHistory').doc(docId).delete();
         const empIndex = state.employees.findIndex(e => (employeeId && e.id === employeeId) || (idNumber && e.idNumber === idNumber));
@@ -7953,16 +7977,16 @@ window.revertBenefits = async (docId, employeeId, idNumber) => {
 const renderBenefits = (container) => {
     container.innerHTML = `
         <div class="header-action hidden-print">
-            <h1>Cálculo de Prestaciones Laborales</h1>
+            <h1>CÃ¡lculo de Prestaciones Laborales</h1>
             <div>
                 <button class="btn btn-secondary" onclick="window.viewBenefitsHistory()" style="margin-right: 10px;">
-                    <i class="fas fa-history"></i> Histórico
+                    <i class="fas fa-history"></i> HistÃ³rico
                 </button>
                 <button class="btn btn-primary" id="btn-register-benefits" style="display:none; margin-right: 10px; background-color: var(--success);">
                     <i class="fas fa-save"></i> Registrar Prestaciones
                 </button>
                 <button class="btn btn-primary" onclick="window.printBenefitsReport()" id="btn-print-benefits" style="display:none;">
-                    <i class="fas fa-print"></i> Imprimir Liquidación
+                    <i class="fas fa-print"></i> Imprimir LiquidaciÃ³n
                 </button>
             </div>
         </div>
@@ -7971,7 +7995,7 @@ const renderBenefits = (container) => {
             <div class="form-row">
                 <div class="form-group">
                     <label>Escriba el Empleado a Buscar</label>
-                    <input list="ben-emp-list" id="ben-emp-search" class="form-control" placeholder="Buscar por nombre o cédula...">
+                    <input list="ben-emp-list" id="ben-emp-search" class="form-control" placeholder="Buscar por nombre o cÃ©dula...">
                     <datalist id="ben-emp-list">
                         ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${((e.idNumber ? e.idNumber + ' - ' : '') + (e.firstName || '') + ' ' + (e.lastName || '')).trim()}"></option>`).join('')}
                     </datalist>
@@ -8002,10 +8026,10 @@ const renderBenefits = (container) => {
                             <input type="checkbox" id="ben-preaviso"> El empleador ya dio el Preaviso (No pagar)
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 10px;">
-                            <input type="checkbox" id="ben-cesantia-omitir"> Omitir Cesantía (Desahucio no aplica u otra causa)
+                            <input type="checkbox" id="ben-cesantia-omitir"> Omitir CesantÃ­a (Desahucio no aplica u otra causa)
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 10px;">
-                            <input type="checkbox" id="ben-vacaciones-tomadas"> El empleado ya tomó sus vacaciones este año (No pagar)
+                            <input type="checkbox" id="ben-vacaciones-tomadas"> El empleado ya tomÃ³ sus vacaciones este aÃ±o (No pagar)
                         </label>
                     </div>
                 </div>
@@ -8019,17 +8043,17 @@ const renderBenefits = (container) => {
         <div id="benefits-report-area" style="display: none;" class="mt-4 card printable-page">
             <div class="report-header" style="text-align: center; margin-bottom: 20px;">
                 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Coat_of_arms_of_the_Dominican_Republic.svg/150px-Coat_of_arms_of_the_Dominican_Republic.svg.png" alt="Escudo RD" style="height: 80px; margin-bottom: 10px;">
-                <h1 style="font-size: 24px; margin: 0; font-family: 'Times New Roman', Times, serif;">República Dominicana</h1>
+                <h1 style="font-size: 24px; margin: 0; font-family: 'Times New Roman', Times, serif;">RepÃºblica Dominicana</h1>
                 <h2 style="font-size: 18px; margin: 0; font-family: 'Times New Roman', Times, serif; font-weight: normal;">Ministerio de Trabajo</h2>
             </div>
             
             <hr style="border: 0; border-top: 1px solid #ccc; margin: 15px 0;">
-            <p style="text-align: center; font-size: 12px; font-family: 'Times New Roman', Times, serif;">Cálculo Prestaciones Laborales y Derechos Adquiridos</p>
+            <p style="text-align: center; font-size: 12px; font-family: 'Times New Roman', Times, serif;">CÃ¡lculo Prestaciones Laborales y Derechos Adquiridos</p>
             <hr style="border: 0; border-top: 1px solid #ccc; margin: 15px 0 25px 0;">
             
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-family: 'Arial', sans-serif; font-size: 13px;">
                 <tr>
-                    <td style="padding: 5px; font-weight: bold; width: 30%;">Cédula:</td>
+                    <td style="padding: 5px; font-weight: bold; width: 30%;">CÃ©dula:</td>
                     <td id="rep-cedula" style="padding: 5px;">-</td>
                     <td style="padding: 5px;"></td>
                     <td style="padding: 5px;"></td>
@@ -8040,7 +8064,7 @@ const renderBenefits = (container) => {
                 </tr>
                 <tr>
                     <td style="padding: 5px; font-weight: bold;">Lugar de Trabajo o Empleador:</td>
-                    <td id="rep-empleador" style="padding: 5px; text-transform: uppercase;" colspan="3">${state.settings.companyName || 'NÓMINAAPP'}</td>
+                    <td id="rep-empleador" style="padding: 5px; text-transform: uppercase;" colspan="3">${state.settings.companyName || 'NÃ“MINAAPP'}</td>
                 </tr>
                 <tr>
                     <td style="padding: 5px; font-weight: bold;">Fecha de Ingreso:</td>
@@ -8071,11 +8095,11 @@ const renderBenefits = (container) => {
                     <td id="rep-preaviso" style="padding: 5px; text-align: left;">-</td>
                 </tr>
                 <tr>
-                    <td style="padding: 5px; text-align: right; font-weight: bold;">Cesantía (Art. 80 C.T. antes 29/05/1992):</td>
+                    <td style="padding: 5px; text-align: right; font-weight: bold;">CesantÃ­a (Art. 80 C.T. antes 29/05/1992):</td>
                     <td style="padding: 5px; text-align: left;">RD$0.00</td>
                 </tr>
                 <tr>
-                    <td style="padding: 5px; text-align: right; font-weight: bold;">Cesantía (Art.80 C.T. después 29/05/1992):</td>
+                    <td style="padding: 5px; text-align: right; font-weight: bold;">CesantÃ­a (Art.80 C.T. despuÃ©s 29/05/1992):</td>
                     <td id="rep-cesantia" style="padding: 5px; text-align: left;">-</td>
                 </tr>
                 <tr>
@@ -8099,7 +8123,7 @@ const renderBenefits = (container) => {
             </table>
 
             <div style="margin-top: 50px; font-family: 'Arial', sans-serif; font-size: 10px; text-align: justify; line-height: 1.4;">
-                <strong>NOTA:</strong> ESTOS CÁLCULOS HAN SIDO REALIZADOS EN BASE A LAS INFORMACIONES SUMINISTRADAS POR LA PARTE INTERESADA. POR TANTO, LOS MISMOS NO SE IMPONEN A LA PARTE CONTRARIA NI AL JUEZ DE TRABAJO Y NO APLICAN EN LOS CASOS DE TRABAJADORAS PROTEGIDAS POR LA MATERNIDAD, TRABAJADORES PROTEGIDOS POR EL FUERO SINDICAL, TRABAJADORES CON VIH, NI PARA LOS DEMÁS CASOS EN LOS QUE LAS NORMAS LABORALES PROHIBEN LA TERMINACIÓN DEL CONTRATO DE TRABAJO.
+                <strong>NOTA:</strong> ESTOS CÃLCULOS HAN SIDO REALIZADOS EN BASE A LAS INFORMACIONES SUMINISTRADAS POR LA PARTE INTERESADA. POR TANTO, LOS MISMOS NO SE IMPONEN A LA PARTE CONTRARIA NI AL JUEZ DE TRABAJO Y NO APLICAN EN LOS CASOS DE TRABAJADORAS PROTEGIDAS POR LA MATERNIDAD, TRABAJADORES PROTEGIDOS POR EL FUERO SINDICAL, TRABAJADORES CON VIH, NI PARA LOS DEMÃS CASOS EN LOS QUE LAS NORMAS LABORALES PROHIBEN LA TERMINACIÃ“N DEL CONTRATO DE TRABAJO.
                 <div style="text-align: center; margin-top: 15px; font-weight: bold; font-size: 11px;" id="rep-fecha-doc"></div>
             </div>
 
@@ -8176,9 +8200,9 @@ const renderBenefits = (container) => {
         // Si es movil destajero que no tiene sueldo, sugerir poner sueldo prop.
         if (emp.type === 'mobile' && (!emp.salary || emp.salary == 0)) {
             // Replace annoying alert with a console log or non-blocking notification
-            console.warn("Atención: El empleado seleccionado es Móvil y no tiene salario base. Por favor inserte manualmente el Promedio Mensual devengado en los últimos 12 meses.");
+            console.warn("AtenciÃ³n: El empleado seleccionado es MÃ³vil y no tiene salario base. Por favor inserte manualmente el Promedio Mensual devengado en los Ãºltimos 12 meses.");
             warningMsg.style.display = 'block';
-            warningMsg.innerHTML = '<i class="fas fa-info-circle"></i> <strong>Atención:</strong> El empleado seleccionado es Móvil y no tiene salario base. Por favor inserte manualmente el Promedio Mensual devengado en los últimos 12 meses.';
+            warningMsg.innerHTML = '<i class="fas fa-info-circle"></i> <strong>AtenciÃ³n:</strong> El empleado seleccionado es MÃ³vil y no tiene salario base. Por favor inserte manualmente el Promedio Mensual devengado en los Ãºltimos 12 meses.';
         }
 
         detailsSection.style.display = 'block';
@@ -8197,7 +8221,7 @@ const renderBenefits = (container) => {
         const omitVacaciones = document.getElementById('ben-vacaciones-tomadas').checked;
 
         if (!dateStartStr || !dateEndStr || salaryMonthly <= 0) {
-            alert('Asegúrese de proveer fecha de salida válida y un salario mayor a 0.');
+            alert('AsegÃºrese de proveer fecha de salida vÃ¡lida y un salario mayor a 0.');
             return;
         }
 
@@ -8212,7 +8236,7 @@ const renderBenefits = (container) => {
             return;
         }
 
-        // --- CÁLCULOS LÓGICA MIN. TRABAJO ---
+        // --- CÃLCULOS LÃ“GICA MIN. TRABAJO ---
         function calculateDRLaborTime(dStart, dEnd) {
             if (dEnd < dStart) return { years: 0, months: 0, days: 0 };
             if (dStart.getFullYear() === dEnd.getFullYear() && dStart.getMonth() === dEnd.getMonth()) {
@@ -8270,7 +8294,7 @@ const renderBenefits = (container) => {
         }
         const montoPreaviso = diasPreaviso * SPD;
 
-        // 4. Cesantía (Art 80)
+        // 4. CesantÃ­a (Art 80)
         let diasCesantia = 0;
         if (!omitCesantia) {
             if (diffYears >= 1 && diffYears < 5) diasCesantia += diffYears * 21;
@@ -8300,7 +8324,7 @@ const renderBenefits = (container) => {
         }
         const montoVacaciones = diasVacaciones * SPD;
 
-        // 6. Regalía Pascual (Art 219) - Proporcional al año de salida
+        // 6. RegalÃ­a Pascual (Art 219) - Proporcional al aÃ±o de salida
         const inicioAno = new Date(end.getFullYear(), 0, 1);
         let startDateRegalia = start > inicioAno ? start : inicioAno;
 
@@ -8339,9 +8363,9 @@ const renderBenefits = (container) => {
         const subTotal = montoPreaviso + montoCesantia + montoVacaciones;
         const total = subTotal + montoRegalia;
 
-        // Formato visual temporal Regalía
+        // Formato visual temporal RegalÃ­a
         const regaliaTime = calculateDRLaborTime(startDateRegalia, end);
-        let regDaysStr = `(${regaliaTime.months} meses${regaliaTime.days > 0 ? ' y ' + regaliaTime.days + ' día(s)' : ''})`;
+        let regDaysStr = `(${regaliaTime.months} meses${regaliaTime.days > 0 ? ' y ' + regaliaTime.days + ' dÃ­a(s)' : ''})`;
 
         // --- RENDERIZADO DEL INFORME ---
         const fmt = (num) => 'RD$' + parseFloat(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -8354,13 +8378,13 @@ const renderBenefits = (container) => {
         document.getElementById('rep-nombre').innerText = `${currentSelectedEmployee.firstName} ${currentSelectedEmployee.lastName}`;
         document.getElementById('rep-ingreso').innerText = formatDate(start);
         document.getElementById('rep-salida').innerText = formatDate(end);
-        document.getElementById('rep-tiempo').innerText = `${diffYears} años , ${diffMonths} meses y ${diffDays} días`;
+        document.getElementById('rep-tiempo').innerText = `${diffYears} aÃ±os , ${diffMonths} meses y ${diffDays} dÃ­as`;
         document.getElementById('rep-spd').innerText = fmt(SPD);
         document.getElementById('rep-salario').innerText = fmt(salaryMonthly) + ' Mensual';
 
-        document.getElementById('rep-preaviso').innerHTML = montoPreaviso > 0 ? `${fmt(montoPreaviso)} (${diasPreaviso} días)` : 'RD$0.00';
-        document.getElementById('rep-cesantia').innerHTML = montoCesantia > 0 ? `${fmt(montoCesantia)} (${diasCesantia} días)` : 'RD$0.00';
-        document.getElementById('rep-vacaciones').innerHTML = montoVacaciones > 0 ? `${fmt(montoVacaciones)} (${diasVacaciones} días)` : '0.00';
+        document.getElementById('rep-preaviso').innerHTML = montoPreaviso > 0 ? `${fmt(montoPreaviso)} (${diasPreaviso} dÃ­as)` : 'RD$0.00';
+        document.getElementById('rep-cesantia').innerHTML = montoCesantia > 0 ? `${fmt(montoCesantia)} (${diasCesantia} dÃ­as)` : 'RD$0.00';
+        document.getElementById('rep-vacaciones').innerHTML = montoVacaciones > 0 ? `${fmt(montoVacaciones)} (${diasVacaciones} dÃ­as)` : '0.00';
 
         document.getElementById('rep-subtotal').innerText = fmt(subTotal);
 
@@ -8369,7 +8393,7 @@ const renderBenefits = (container) => {
 
         // Fecha de doc texto
         const monthNames = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
-        document.getElementById('rep-fecha-doc').innerText = `DADO A LOS ${end.getDate().toString().padStart(2, '0')} DÍAS DEL MES DE ${monthNames[end.getMonth()]} DEL AÑO ${end.getFullYear()}`;
+        document.getElementById('rep-fecha-doc').innerText = `DADO A LOS ${end.getDate().toString().padStart(2, '0')} DÃAS DEL MES DE ${monthNames[end.getMonth()]} DEL AÃ‘O ${end.getFullYear()}`;
 
         reportArea.style.display = 'block';
         btnPrint.style.display = 'inline-block';
@@ -8383,7 +8407,7 @@ const renderBenefits = (container) => {
             employeeName: `${currentSelectedEmployee.firstName || ''} ${currentSelectedEmployee.lastName || ''}`.trim(),
             dateStart: start.toISOString(),
             dateEnd: end.toISOString(),
-            timeElapsed: `${diffYears} años , ${diffMonths} meses y ${diffDays} días`,
+            timeElapsed: `${diffYears} aÃ±os , ${diffMonths} meses y ${diffDays} dÃ­as`,
             SPD: SPD || 0,
             salaryMonthly: salaryMonthly || 0,
             montoPreaviso: montoPreaviso || 0,
@@ -8401,7 +8425,7 @@ const renderBenefits = (container) => {
 
     document.getElementById('btn-register-benefits').addEventListener('click', async () => {
         if (!window.currentCalculatedBenefits || !currentSelectedEmployee) return;
-        if (confirm(`¿Desea registrar las prestaciones de ${currentSelectedEmployee.firstName} por un total de RD$${window.currentCalculatedBenefits.total.toLocaleString('en-US', { minimumFractionDigits: 2 })} y deshabilitar al empleado de futuras nóminas?`)) {
+        if (confirm(`Â¿Desea registrar las prestaciones de ${currentSelectedEmployee.firstName} por un total de RD$${window.currentCalculatedBenefits.total.toLocaleString('en-US', { minimumFractionDigits: 2 })} y deshabilitar al empleado de futuras nÃ³minas?`)) {
             try {
                 const registerBtn = document.getElementById('btn-register-benefits');
                 registerBtn.disabled = true;
@@ -8426,7 +8450,7 @@ const renderBenefits = (container) => {
                     saveState();
                 }
 
-                alert('Prestaciones registradas exitosamente. El empleado cobrará sus días trabajados en su última nómina y será inactivado al cerrarla.');
+                alert('Prestaciones registradas exitosamente. El empleado cobrarÃ¡ sus dÃ­as trabajados en su Ãºltima nÃ³mina y serÃ¡ inactivado al cerrarla.');
 
 
                 // Limpiar vista
@@ -8456,7 +8480,7 @@ const renderBenefits = (container) => {
 
 // --- Module: Vacations ---
 const renderVacations = (container) => {
-    // 1. Lógica para determinar Vacaciones Pendientes
+    // 1. LÃ³gica para determinar Vacaciones Pendientes
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const msInDay = 24 * 60 * 60 * 1000;
@@ -8481,9 +8505,9 @@ const renderVacations = (container) => {
             if (diffDays < 0) {
                 statusBadge = '<span class="status-badge inactive">Atrasado</span>';
             } else if (diffDays <= 1) {
-                statusBadge = '<span class="status-badge" style="background-color: var(--warning); color: black;">Mañana</span>';
+                statusBadge = '<span class="status-badge" style="background-color: var(--warning); color: black;">MaÃ±ana</span>';
             } else {
-                statusBadge = `<span class="status-badge" style="background-color: var(--accent-color);">${diffDays} días rest.</span>`;
+                statusBadge = `<span class="status-badge" style="background-color: var(--accent-color);">${diffDays} dÃ­as rest.</span>`;
             }
 
             activeTakenVacations.push({
@@ -8492,7 +8516,7 @@ const renderVacations = (container) => {
                 statusBadge,
                 diffDays
             });
-            return; // Si está de vacaciones, no evaluar "Pendientes"
+            return; // Si estÃ¡ de vacaciones, no evaluar "Pendientes"
         }
 
         // Evaluar Pendientes (Aniversario)
@@ -8504,7 +8528,7 @@ const renderVacations = (container) => {
             let anniversaryThisYear = new Date(currentYear, hireDate.getMonth(), hireDate.getDate());
             let daysUntilAnniversary = Math.round((anniversaryThisYear - today) / msInDay);
 
-            // Verificar si YÁ se le registró vacaciones este año
+            // Verificar si YÃ se le registrÃ³ vacaciones este aÃ±o
             const yaRegistrado = state.vacations.some(v => v.employeeId === emp.idNumber && v.periodYear === currentYear);
 
             if (!yaRegistrado) {
@@ -8516,7 +8540,7 @@ const renderVacations = (container) => {
                     badge = '<span class="status-badge inactive">Atrasado</span>';
                 } else if (daysUntilAnniversary <= 7) {
                     alertPending = true;
-                    badge = `<span class="status-badge" style="background-color: var(--warning); color: black;">En ${daysUntilAnniversary} día(s)</span>`;
+                    badge = `<span class="status-badge" style="background-color: var(--warning); color: black;">En ${daysUntilAnniversary} dÃ­a(s)</span>`;
                 }
 
                 if (alertPending) {
@@ -8538,20 +8562,20 @@ const renderVacations = (container) => {
         
         <!-- Alertas de Pendientes -->
         <div class="card mt-4" style="border-left: 4px solid var(--warning);">
-            <h3><i class="fas fa-exclamation-triangle" style="color: var(--warning);"></i> Vacaciones Pendientes (Próximas o Atrasadas)</h3>
+            <h3><i class="fas fa-exclamation-triangle" style="color: var(--warning);"></i> Vacaciones Pendientes (PrÃ³ximas o Atrasadas)</h3>
             <table class="data-table mt-2">
                 <thead>
                     <tr>
-                        <th>Cédula</th>
+                        <th>CÃ©dula</th>
                         <th>Nombre</th>
                         <th>Fecha Ingreso</th>
                         <th>Aniversario</th>
-                        <th>Años Cumplidos</th>
+                        <th>AÃ±os Cumplidos</th>
                         <th>Estado</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${pendingVacations.length === 0 ? '<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">No hay vacaciones pendientes o próximas (7 días).</td></tr>' : ''}
+                    ${pendingVacations.length === 0 ? '<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">No hay vacaciones pendientes o prÃ³ximas (7 dÃ­as).</td></tr>' : ''}
                     ${pendingVacations.map(p => `
                         <tr>
                             <td>${p.idNumber}</td>
@@ -8568,17 +8592,17 @@ const renderVacations = (container) => {
 
         <!-- Registro de Vacaciones -->
         <div class="card mt-4">
-            <h3><i class="fas fa-plus"></i> Registrar Nueva Vacación</h3>
+            <h3><i class="fas fa-plus"></i> Registrar Nueva VacaciÃ³n</h3>
             <div class="form-row mt-3">
                 <div class="form-group" style="flex: 2;">
-                    <label>Buscar Empleado (Sólo Activos)</label>
-                    <input list="vac-emp-list" id="vac-emp-search" class="form-control" placeholder="Escriba nombre o cédula...">
+                    <label>Buscar Empleado (SÃ³lo Activos)</label>
+                    <input list="vac-emp-list" id="vac-emp-search" class="form-control" placeholder="Escriba nombre o cÃ©dula...">
                     <datalist id="vac-emp-list">
                         ${window.getVisibleEmployees().filter(e => e.active !== false).map(e => `<option value="${e.firstName} ${e.lastName}">[${e.idNumber}] ${e.firstName} ${e.lastName}</option>`).join('')}
                     </datalist>
                 </div>
                 <div class="form-group">
-                    <label>Periodo (Año)</label>
+                    <label>Periodo (AÃ±o)</label>
                     <input type="number" id="vac-period" class="form-control" value="${currentYear}">
                 </div>
             </div>
@@ -8590,11 +8614,11 @@ const renderVacations = (container) => {
                         <input type="number" id="vac-salary" class="form-control" readonly>
                     </div>
                     <div class="form-group">
-                        <label>Años en la Empresa</label>
+                        <label>AÃ±os en la Empresa</label>
                         <input type="number" id="vac-years" class="form-control" readonly>
                     </div>
                     <div class="form-group">
-                        <label>Días Correspondientes</label>
+                        <label>DÃ­as Correspondientes</label>
                         <input type="number" id="vac-days" class="form-control" readonly>
                     </div>
                     <div class="form-group">
@@ -8607,7 +8631,7 @@ const renderVacations = (container) => {
                     <div class="form-group">
                         <label>Modalidad</label>
                         <select id="vac-type" class="form-control">
-                            <option value="Tomada">Tomada (Descanso Físico)</option>
+                            <option value="Tomada">Tomada (Descanso FÃ­sico)</option>
                             <option value="Pagada">Pagada (Sigue Trabajando)</option>
                         </select>
                     </div>
@@ -8624,33 +8648,33 @@ const renderVacations = (container) => {
                 <div class="form-row">
                     <div class="form-group" style="display: flex; align-items: center; margin-top: 15px;">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
-                            <input type="checkbox" id="vac-apply-tss" checked> Calcular retención de TSS
+                            <input type="checkbox" id="vac-apply-tss" checked> Calcular retenciÃ³n de TSS
                         </label>
                     </div>
                 </div>
                 
                 <button class="btn btn-primary mt-3" id="btn-save-vacation" style="width: 100%;">
-                    <i class="fas fa-save"></i> Registrar Vacación
+                    <i class="fas fa-save"></i> Registrar VacaciÃ³n
                 </button>
             </div>
         </div>
 
         <!-- Alertas de Retorno -->
         <div class="card mt-4" style="border-left: 4px solid var(--accent-color);">
-            <h3><i class="fas fa-plane-arrival" style="color: var(--accent-color);"></i> Retornos Próximos o Atrasados (Descanso Físico)</h3>
+            <h3><i class="fas fa-plane-arrival" style="color: var(--accent-color);"></i> Retornos PrÃ³ximos o Atrasados (Descanso FÃ­sico)</h3>
             <table class="data-table mt-2">
                 <thead>
                     <tr>
-                        <th>Cédula</th>
+                        <th>CÃ©dula</th>
                         <th>Nombre</th>
                         <th>Fecha Salida</th>
                         <th>Fecha Retorno</th>
                         <th>Estado</th>
-                        <th>Acción</th>
+                        <th>AcciÃ³n</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${activeTakenVacations.length === 0 ? '<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">No hay empleados actualmente en descanso físico de vacaciones.</td></tr>' : ''}
+                    ${activeTakenVacations.length === 0 ? '<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">No hay empleados actualmente en descanso fÃ­sico de vacaciones.</td></tr>' : ''}
                     ${activeTakenVacations.map((p, idx) => `
                         <tr>
                             <td>${p.idNumber}</td>
@@ -8675,12 +8699,12 @@ const renderVacations = (container) => {
             <table class="data-table mt-2">
                 <thead>
                     <tr>
-                        <th>Cédula</th>
+                        <th>CÃ©dula</th>
                         <th>Nombre</th>
                         <th>Periodo</th>
                         <th>Modalidad</th>
                         <th>Monto (RD$)</th>
-                        <th>Acción</th>
+                        <th>AcciÃ³n</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -8704,7 +8728,7 @@ const renderVacations = (container) => {
         </div>
     `;
 
-    // Interacción del Formulario
+    // InteracciÃ³n del Formulario
     const vacSearch = document.getElementById('vac-emp-search');
     const detailsSection = document.getElementById('vac-details-section');
     const vacType = document.getElementById('vac-type');
@@ -8732,18 +8756,18 @@ const renderVacations = (container) => {
 
         currentVacEmp = emp;
 
-        // Cálculos Pre-rellenados
+        // CÃ¡lculos Pre-rellenados
         let hireDate = new Date(emp.hireDate);
         hireDate.setHours(0, 0, 0, 0);
         let yearsWorked = currentYear - hireDate.getFullYear();
         if (yearsWorked < 1 && (today.getMonth() > hireDate.getMonth() || (today.getMonth() === hireDate.getMonth() && today.getDate() >= hireDate.getDate()))) {
-            yearsWorked = 1; // Si cumplió el primer año ya
+            yearsWorked = 1; // Si cumpliÃ³ el primer aÃ±o ya
         }
 
         let days = 0;
         if (yearsWorked >= 1 && yearsWorked < 5) days = 14;
         else if (yearsWorked >= 5) days = 18;
-        // Si no ha cumplido el año, no deberia tener pero por defecto 0.
+        // Si no ha cumplido el aÃ±o, no deberia tener pero por defecto 0.
 
         const salary = parseFloat(emp.salary) || 0;
         const spd = salary / 23.83;
@@ -8752,7 +8776,7 @@ const renderVacations = (container) => {
         const salaryInput = document.getElementById('vac-salary');
         salaryInput.value = salary;
         
-        // Si es empleado móvil, dejar editar el salario
+        // Si es empleado mÃ³vil, dejar editar el salario
         if (emp.type === 'mobile') {
             salaryInput.readOnly = false;
             salaryInput.style.backgroundColor = 'var(--bg-color)';
@@ -8774,7 +8798,7 @@ const renderVacations = (container) => {
         detailsSection.style.display = 'block';
     });
 
-    // Recalcular si el usuario cambia el salario manualmente (para móviles)
+    // Recalcular si el usuario cambia el salario manualmente (para mÃ³viles)
     document.getElementById('vac-salary').addEventListener('input', (e) => {
         if (!currentVacEmp) return;
         
@@ -8814,7 +8838,7 @@ const renderVacations = (container) => {
         }
 
         if (currentVacCalc.days === 0) {
-            if (!confirm("Este empleado aparentemente no ha cumplido el primer año (0 días correspondientes). ¿Desea guardarlo de todas formas?")) return;
+            if (!confirm("Este empleado aparentemente no ha cumplido el primer aÃ±o (0 dÃ­as correspondientes). Â¿Desea guardarlo de todas formas?")) return;
         }
 
         const newVac = {
@@ -8835,13 +8859,13 @@ const renderVacations = (container) => {
 
         state.vacations.push(newVac);
         saveState();
-        alert("Vacación Registrada Exitosamente.");
+        alert("VacaciÃ³n Registrada Exitosamente.");
         renderSection('vacations'); // Refresh
     });
 };
 
 window.markVacationReturned = (vacId) => {
-    if (confirm("¿Confirmar que este empleado ya ha retornado a la empresa?")) {
+    if (confirm("Â¿Confirmar que este empleado ya ha retornado a la empresa?")) {
         const index = state.vacations.findIndex(v => v.id === vacId);
         if (index > -1) {
             state.vacations[index].returned = true;
@@ -8876,7 +8900,7 @@ window.printVacation = (vacId) => {
         <div class="pay-slips-container" style="display: flex; justify-content: center; padding: 20px;">
             <div class="pay-slip" style="width: 100%; max-width: 600px; padding: 30px; border: 1px solid #ddd; background: #fff; color: #000; font-family: sans-serif;">
                 <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
-                    <h1 style="margin: 0; font-size: 24px; color: #000;">${state.settings.companyName || 'NóminaApp'}</h1>
+                    <h1 style="margin: 0; font-size: 24px; color: #000;">${state.settings.companyName || 'NÃ³minaApp'}</h1>
                     <p style="margin: 5px 0 0; font-weight: bold; font-size: 16px; color: #000;">COMPROBANTE DE VACACIONES</p>
                 </div>
                 
@@ -8886,11 +8910,11 @@ window.printVacation = (vacId) => {
                         <td style="padding: 5px 0; text-align: right;">${vac.employeeName.toUpperCase()}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 5px 0;"><strong>Cédula / Documento:</strong></td>
+                        <td style="padding: 5px 0;"><strong>CÃ©dula / Documento:</strong></td>
                         <td style="padding: 5px 0; text-align: right;">${vac.employeeId}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 5px 0;"><strong>Periodo (Año):</strong></td>
+                        <td style="padding: 5px 0;"><strong>Periodo (AÃ±o):</strong></td>
                         <td style="padding: 5px 0; text-align: right;">${vac.periodYear}</td>
                     </tr>
                     <tr>
@@ -8899,7 +8923,7 @@ window.printVacation = (vacId) => {
                     </tr>
                     <tr>
                         <td style="padding: 5px 0;"><strong>Modalidad:</strong></td>
-                        <td style="padding: 5px 0; text-align: right;">${vac.type === 'Tomada' ? 'Descanso Físico (Tomada)' : 'Pagada'}</td>
+                        <td style="padding: 5px 0; text-align: right;">${vac.type === 'Tomada' ? 'Descanso FÃ­sico (Tomada)' : 'Pagada'}</td>
                     </tr>
                     ${vac.type === 'Tomada' ? `
                     <tr>
@@ -8914,11 +8938,11 @@ window.printVacation = (vacId) => {
                 </table>
 
                 <div style="border-top: 1px dashed #ccc; padding-top: 15px; margin-bottom: 20px;">
-                    <h3 style="margin: 0 0 10px 0; font-size: 16px; text-transform: uppercase; color: #000;">Cálculo Identificado</h3>
+                    <h3 style="margin: 0 0 10px 0; font-size: 16px; text-transform: uppercase; color: #000;">CÃ¡lculo Identificado</h3>
                     <table style="width: 100%; border-collapse: collapse; color: #000;">
                         <tr>
-                            <td style="padding: 3px 0;">Días Correspondientes:</td>
-                            <td style="padding: 3px 0; text-align: right;">${vac.days || 0} días</td>
+                            <td style="padding: 3px 0;">DÃ­as Correspondientes:</td>
+                            <td style="padding: 3px 0; text-align: right;">${vac.days || 0} dÃ­as</td>
                         </tr>
                         <tr>
                             <td style="padding: 3px 0;">Salario Promedio Diario (SPD):</td>
@@ -8930,7 +8954,7 @@ window.printVacation = (vacId) => {
                         </tr>
                         ${vac.applyTSS ? `
                         <tr>
-                            <td style="padding: 3px 0; color: #d32f2f;">Retención TSS:</td>
+                            <td style="padding: 3px 0; color: #d32f2f;">RetenciÃ³n TSS:</td>
                             <td style="padding: 3px 0; text-align: right; color: #d32f2f;">- RD$ ${((vac.totalPay || 0) * (state.settings.tss_rate || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                         </tr>
                         <tr>
@@ -8972,7 +8996,7 @@ const renderPaySlips = (historyIndex = null, activePayrollId = null, optionalDep
     }
 
     if (!run) {
-        alert("No se encontró la nómina seleccionada.");
+        alert("No se encontrÃ³ la nÃ³mina seleccionada.");
         return;
     }
 
@@ -9033,13 +9057,13 @@ const renderPaySlips = (historyIndex = null, activePayrollId = null, optionalDep
                 <div class="pay-slip">
                     <div class="pay-slip-header">
                         <div class="pay-slip-company">
-                            <h1>${state.settings.companyName || 'NóminaApp'}</h1>
-                            <p>COMPROBANTE DE NÓMINA</p>
+                            <h1>${state.settings.companyName || 'NÃ³minaApp'}</h1>
+                            <p>COMPROBANTE DE NÃ“MINA</p>
                         </div>
                         <div class="pay-slip-title">
                             <h2>Bolante de Pago</h2>
-                            <p>PERÍODO: ${formattedMonth} ${year}</p>
-                            <p>TIPO: ${res.type === 'fixed' ? 'FIJO' : 'MÓVIL'}</p>
+                            <p>PERÃODO: ${formattedMonth} ${year}</p>
+                            <p>TIPO: ${res.type === 'fixed' ? 'FIJO' : 'MÃ“VIL'}</p>
                         </div>
                     </div>
 
@@ -9049,7 +9073,7 @@ const renderPaySlips = (historyIndex = null, activePayrollId = null, optionalDep
                             <span>${res.fullName.toUpperCase()}</span>
                         </div>
                         <div class="info-item">
-                            <label>Cédula</label>
+                            <label>CÃ©dula</label>
                             <span>${res.idNumber || 'N/A'}</span>
                         </div>
                         <div class="info-item">
@@ -9058,7 +9082,7 @@ const renderPaySlips = (historyIndex = null, activePayrollId = null, optionalDep
                         </div>
                         ${res.type === 'mobile' ? `
                         <div class="info-item">
-                            <label>Días Pagados</label>
+                            <label>DÃ­as Pagados</label>
                             <span>${res.daysPaid || 0}</span>
                         </div>` : ''}
                     </div>
@@ -9101,7 +9125,7 @@ const renderPaySlips = (historyIndex = null, activePayrollId = null, optionalDep
 
                     <div class="pay-slip-footer">
                         <div class="signature-line">FIRMA DEL EMPLEADO</div>
-                        <div>${state.settings.companyName || 'NóminaApp'} · ${year}</div>
+                        <div>${state.settings.companyName || 'NÃ³minaApp'} Â· ${year}</div>
                     </div>
                 </div>
             `;
@@ -9134,7 +9158,7 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
                 </button>
             </div>
             <div class="card mt-4">
-                <p style="text-align: center; color: var(--text-secondary);">No se encontró la nómina para generar el desglose.</p>
+                <p style="text-align: center; color: var(--text-secondary);">No se encontrÃ³ la nÃ³mina para generar el desglose.</p>
             </div>
         `;
         return;
@@ -9261,18 +9285,18 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
                 </div>
 
                 <div style="margin-left: 10px;">
-                    Reporte de Desglose de Efectivo - <strong>${payroll.payrollName || payroll.name || 'Nómina'}</strong>
+                    Reporte de Desglose de Efectivo - <strong>${payroll.payrollName || payroll.name || 'NÃ³mina'}</strong>
                 </div>
             </div>
         </div>
         <div class="print-area" style="padding: 20px;">
             <div class="card">
-                <h1 style="text-align: center; margin-bottom: 10px;">${state.settings.companyName || 'NóminaApp'}</h1>
+                <h1 style="text-align: center; margin-bottom: 10px;">${state.settings.companyName || 'NÃ³minaApp'}</h1>
                 <h2 style="text-align: center; color: var(--accent-color); margin-bottom: 20px;">Desglose de Efectivo (Denominaciones)</h2>
                 
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; width: 100%; flex-wrap: wrap; gap: 10px;" class="report-header-flex">
                     <div style="flex: 1; min-width: 300px;">
-                        <p><strong>Nómina:</strong> ${payroll.payrollName || payroll.name || 'N/A'}</p>
+                        <p><strong>NÃ³mina:</strong> ${payroll.payrollName || payroll.name || 'N/A'}</p>
                         <p><strong>Periodo:</strong> ${payroll.periodStart} al ${payroll.periodEnd}</p>
                         <p><strong>Cantidad de Empleados:</strong> ${results.length}</p>
                     </div>
@@ -9288,7 +9312,7 @@ const renderCashBreakdownReport = (container, historyIndex = null) => {
                 <table class="data-table mt-2 summary-table" style="max-width: 300px; margin-left: 0;">
                     <thead>
                         <tr>
-                            <th>Denominación</th>
+                            <th>DenominaciÃ³n</th>
                             <th style="text-align: center;">Cant.</th>
                             <th style="text-align: right;">Total</th>
                         </tr>
@@ -9352,7 +9376,7 @@ const exportPayrollToExcel = (historyIndex = null, activePayrollId = null) => {
     }
 
     if (!run) {
-        alert("No se encontró la nómina para exportar.");
+        alert("No se encontrÃ³ la nÃ³mina para exportar.");
         return;
     }
 
@@ -9379,7 +9403,7 @@ const exportPayrollToExcel = (historyIndex = null, activePayrollId = null) => {
 
     const data = results.map(r => ({
         "Empleado": r.fullName.toUpperCase(),
-        "Cédula": r.idNumber || 'N/A',
+        "CÃ©dula": r.idNumber || 'N/A',
         "Departamento": (r.dept || 'GENERAL').toUpperCase(),
         "Sueldo Base": r.base,
         "Incentivos": r.incentives || r.inc || 0,
@@ -9399,12 +9423,12 @@ const exportPayrollToExcel = (historyIndex = null, activePayrollId = null) => {
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Nómina");
+    XLSX.utils.book_append_sheet(wb, ws, "NÃ³mina");
 
     // Setting column widths for better Excel presentation
     const wscols = [
         { wch: 30 }, // Empleado
-        { wch: 15 }, // Cédula
+        { wch: 15 }, // CÃ©dula
         { wch: 20 }, // Dept
         { wch: 12 }, // Base
         { wch: 12 }, // Inc
@@ -9430,19 +9454,19 @@ window.comparisonNomina2 = window.comparisonNomina2 || null;
 const renderPayrollComparison = (container) => {
     let html = `
         <div class="header-action">
-            <h1>Comparación de Nóminas</h1>
+            <h1>ComparaciÃ³n de NÃ³minas</h1>
         </div>
         <div class="card mt-4 no-print" style="background: var(--glass-bg);">
             <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
                 <div class="form-group" style="flex: 1; min-width: 250px;">
-                    <label>Nómina 1 (Base)</label>
+                    <label>NÃ³mina 1 (Base)</label>
                     <select class="form-control" onchange="window.comparisonNomina1 = this.value; renderSection('payroll-comparison')">
-                        <option value="">Seleccione una nómina...</option>
-                        <optgroup label="Nóminas Activas">
+                        <option value="">Seleccione una nÃ³mina...</option>
+                        <optgroup label="NÃ³minas Activas">
                             ${(state.activePayrolls || []).map(p => `<option value="active_${p.id}" ${window.comparisonNomina1 === 'active_' + p.id ? 'selected' : ''}>[Activa] ${p.name} (${p.periodType})</option>`).join('')}
                         </optgroup>
                         ${(state.payrollHistory || []).length > 0 ? `
-                        <optgroup label="Histórico">
+                        <optgroup label="HistÃ³rico">
                             ${(state.payrollHistory || []).slice().reverse().map((p, idx) => {
                                 const realIdx = state.payrollHistory.length - 1 - idx;
                                 return `<option value="history_${realIdx}" ${window.comparisonNomina1 === 'history_' + realIdx ? 'selected' : ''}>[Cerrada] ${p.payrollName || p.name} (${p.periodEnd || p.date})</option>`
@@ -9452,14 +9476,14 @@ const renderPayrollComparison = (container) => {
                     </select>
                 </div>
                 <div class="form-group" style="flex: 1; min-width: 250px;">
-                    <label>Nómina 2 (A Comparar)</label>
+                    <label>NÃ³mina 2 (A Comparar)</label>
                     <select class="form-control" onchange="window.comparisonNomina2 = this.value; renderSection('payroll-comparison')">
-                        <option value="">Seleccione una nómina...</option>
-                        <optgroup label="Nóminas Activas">
+                        <option value="">Seleccione una nÃ³mina...</option>
+                        <optgroup label="NÃ³minas Activas">
                             ${(state.activePayrolls || []).map(p => `<option value="active_${p.id}" ${window.comparisonNomina2 === 'active_' + p.id ? 'selected' : ''}>[Activa] ${p.name} (${p.periodType})</option>`).join('')}
                         </optgroup>
                         ${(state.payrollHistory || []).length > 0 ? `
-                        <optgroup label="Histórico">
+                        <optgroup label="HistÃ³rico">
                             ${(state.payrollHistory || []).slice().reverse().map((p, idx) => {
                                 const realIdx = state.payrollHistory.length - 1 - idx;
                                 return `<option value="history_${realIdx}" ${window.comparisonNomina2 === 'history_' + realIdx ? 'selected' : ''}>[Cerrada] ${p.payrollName || p.name} (${p.periodEnd || p.date})</option>`
@@ -9478,7 +9502,7 @@ const renderPayrollComparison = (container) => {
     `;
 
     if (!window.comparisonNomina1 || !window.comparisonNomina2) {
-        html += `<div class="card mt-4 text-center"><p class="text-gray">Seleccione dos nóminas para comparar.</p></div>`;
+        html += `<div class="card mt-4 text-center"><p class="text-gray">Seleccione dos nÃ³minas para comparar.</p></div>`;
         container.innerHTML = html;
         return;
     }
@@ -9524,7 +9548,7 @@ const renderPayrollComparison = (container) => {
     const data2 = getPayrollData(window.comparisonNomina2);
 
     if (!data1.name || !data2.name) {
-         html += `<div class="card mt-4 text-center"><p class="text-gray">Error cargando una de las nóminas.</p></div>`;
+         html += `<div class="card mt-4 text-center"><p class="text-gray">Error cargando una de las nÃ³minas.</p></div>`;
          container.innerHTML = html;
          return;
     }
@@ -9588,7 +9612,7 @@ const renderPayrollComparison = (container) => {
                     <span class="stat-value">$${totalN2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div class="stat-card" style="border-left: 4px solid ${totalDiff > 0 ? 'var(--danger)' : (totalDiff < 0 ? 'var(--success)' : 'var(--gray)')}">
-                    <span class="stat-label">Variación General</span>
+                    <span class="stat-label">VariaciÃ³n General</span>
                     <span class="stat-value" style="color: ${totalDiff > 0 ? 'var(--danger)' : (totalDiff < 0 ? 'var(--success)' : 'inherit')}">
                         ${totalDiff > 0 ? '+' : ''}$${totalDiff.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 
                         <small style="font-size: 0.9rem">(${totalVariation > 0 ? '+' : ''}${totalVariation.toFixed(2)}%)</small>
@@ -9603,7 +9627,7 @@ const renderPayrollComparison = (container) => {
                         <th class="text-right">Bruto ${data1.name}</th>
                         <th class="text-right">Bruto ${data2.name}</th>
                         <th class="text-right">Diferencia ($)</th>
-                        <th class="text-right">Variación (%)</th>
+                        <th class="text-right">VariaciÃ³n (%)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -9657,7 +9681,7 @@ window.renderDailyLogsTable = () => {
             <td style="font-weight: 500; font-family: monospace;">${log.empReg || '<span class="text-gray">N/A</span>'}</td>
             <td>${log.op}</td>
             <td>$${(isAnnulled ? 0 : parseFloat(log.amount)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            <td>${log.applyTSS === 'si' ? '<span class="status-badge fixed">Sí</span>' : '<span class="status-badge mobile">No</span>'}</td>
+            <td>${log.applyTSS === 'si' ? '<span class="status-badge fixed">SÃ­</span>' : '<span class="status-badge mobile">No</span>'}</td>
             <td><small>${log.createdBy || 'Sistema'}</small></td>
             <td>
                 ${!isAnnulled ? `
@@ -9756,9 +9780,11 @@ if (installBtn) {
 }
 
 window.addEventListener('appinstalled', (event) => {
-    console.log('👍', 'appinstalled', event);
+    console.log('ðŸ‘', 'appinstalled', event);
     // Clear the deferredPrompt so it can be garbage collected
     deferredPrompt = null;
     if (installBtn) installBtn.style.display = 'none';
 });
+
+
 
